@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V1.2.3](https://github.com/filwu8/g-llm-client/tree/main)
+当前代码版本：[V1.2.4](https://github.com/filwu8/g-llm-client/tree/main)
 
-最近稳定发布：[V1.2.3](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.3)，发布于 2026-07-20。
+最近稳定发布：[V1.2.4](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.4)，发布于 2026-07-24。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V1.2.3 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V1.2.4 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/g-llm-client/releases)
 
@@ -24,14 +24,11 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V1.2.3 工作区与供应商设置稳定性更新
+## V1.2.4 悬浮助手与设置体验更新
 
-- 工作区请求改用流式响应：持续接收模型内容和工具调用，120 秒限制只在模型长时间没有任何新数据时触发，避免复杂文件任务在最终步骤被总时长误判为超时。
-- 快速对话补齐工作区能力：可选择并显示当前文件夹、调用工作区工具、查看执行过程与结果，并与主窗口同步会话状态。
-- 三级授权模式：提供“需要审批”“自动审批”“完全授权”，可在聊天窗口上方随时切换；应用内审批弹窗遵循当前主题并清楚说明操作目的和权限边界。
-- 脚本执行兼容性增强：安全沙箱补充 Base64、Blob 和压缩流能力，支持更多文档与表格处理脚本，同时继续禁止网络、系统命令和工作区外访问。
-- 错误提示更易理解：将缺少运行能力、表格单元格不存在等技术异常转换为普通用户可读的说明，便于判断是环境限制、文件结构变化还是脚本问题。
-- 供应商设置恢复正常：修复抽屉入场动画错误限制嵌套弹窗的问题，点击“新增”后可正常显示供应商创建界面。
+- 悬浮助手显示状态现在会持久保存，并在主窗口、快速对话、托盘和悬浮助手之间实时同步。
+- 优化 Windows 最小化、关闭和重新打开主窗口时的悬浮助手行为，避免状态切换后显示不一致。
+- 增大悬浮提示区域并支持长文案自动换行；助手设置中的操作按钮也能适应窄窗口和较长翻译文本。
 
 ## 当前能力
 
@@ -58,7 +55,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 
 - Windows 托盘、macOS 菜单栏和桌面宠物单击均打开快速对话；右键菜单可打开主窗口或执行其他完整操作。
 - Windows 点击关闭按钮不会退出应用，而是隐藏到系统托盘。
-- 最小化主窗口后显示桌面悬浮 G-LLM logo。
+- 启用悬浮助手时，最小化或关闭主窗口后仍可通过桌面悬浮 G-LLM logo 快速操作。
 - 悬浮 logo 支持拖动，并会吸附到屏幕边缘。
 - 悬浮 logo 右键菜单与托盘/菜单栏右键菜单复用同一套功能：打开快速对话、打开主窗口、显示/隐藏悬浮窗、退出 G-LLM。
 - 快速对话窗口为透明无边框、置顶小窗，适合随时唤起。
@@ -139,11 +136,11 @@ Authorization: Bearer {apiKey}
 
 ## License
 
-G-LLM Desktop Client 由 GPROPHET LIMITED 发布。当前开发版本 V1.2.3 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Desktop Client 由 GPROPHET LIMITED 发布。当前开发版本 V1.2.4 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V1.2.3 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V1.2.4 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

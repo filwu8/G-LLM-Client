@@ -21,7 +21,7 @@ export default function FloatingMascotHint() {
   return (
     <div className={`floating-mascot-hint ${hint.placement} ${hint.tone}`} role="status">
       <span className="floating-mascot-hint-dot" aria-hidden="true" />
-      <span>{hint.message}</span>
+      <span className="floating-mascot-hint-text">{hint.message}</span>
     </div>
   )
 }

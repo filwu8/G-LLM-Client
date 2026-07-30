@@ -445,6 +445,7 @@ export interface AppSettings {
   messageSendShortcut: MessageSendShortcut
   floatingMascotSkin: FloatingMascotAppearance
   floatingMascotHints: boolean
+  floatingMascotVisible: boolean
   telemetryEnabled: boolean
   setupCompleted: boolean
 }

@@ -663,6 +663,7 @@ function getComparableSettings(settings: AppSettings) {
     messageSendShortcut: settings.messageSendShortcut,
     floatingMascotSkin: settings.floatingMascotSkin,
     floatingMascotHints: settings.floatingMascotHints,
+    floatingMascotVisible: settings.floatingMascotVisible,
     telemetryEnabled: settings.telemetryEnabled,
     setupCompleted: settings.setupCompleted
   }
@@ -936,6 +937,12 @@ export default function App() {
       } else if (provider.requiresApiKey && !provider.apiKey.trim()) {
         setSettingsOpen(true)
       }
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.gllm.onSettingsChanged((nextSettings) => {
+      setSettings(nextSettings)
     })
   }, [])
 
@@ -5032,6 +5039,14 @@ function SettingsPanel({
   useEffect(() => {
     if (dataLocation) setDataLocationInfo(dataLocation)
   }, [dataLocation])
+
+  useEffect(() => {
+    setSettingsDraft((current) =>
+      current.floatingMascotVisible === settings.floatingMascotVisible
+        ? current
+        : { ...current, floatingMascotVisible: settings.floatingMascotVisible }
+    )
+  }, [settings.floatingMascotVisible])
 
   useEffect(() => {
     if (!dataLocationInfo) {

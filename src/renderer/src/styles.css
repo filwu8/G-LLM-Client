@@ -3732,8 +3732,14 @@ img.space-logo {
 }
 
 .assistant-avatar-actions .secondary-action {
-  min-width: 98px;
-  height: 34px;
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 34px;
+  height: auto;
+  padding: 7px 10px;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .assistant-settings-modal .assistant-avatar-zoom {
@@ -3818,7 +3824,13 @@ img.space-logo {
 .assistant-settings-actions .secondary-action {
   width: 100%;
   min-width: 0;
-  white-space: nowrap;
+  min-height: 44px;
+  height: auto;
+  padding: 8px 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .assistant-model-note {
@@ -7231,6 +7243,12 @@ img.space-logo {
   border-radius: 50%;
   background: rgb(0 156 166);
   box-shadow: 0 0 0 4px rgb(0 156 166 / 0.12);
+}
+
+.floating-mascot-hint-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
 }
 
 .floating-mascot-hint.success .floating-mascot-hint-dot {

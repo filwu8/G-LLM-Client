@@ -600,6 +600,7 @@ export const defaultSettings: AppSettings = {
   messageSendShortcut: 'enter',
   floatingMascotSkin: 'auto',
   floatingMascotHints: true,
+  floatingMascotVisible: true,
   telemetryEnabled: true,
   setupCompleted: false
 }
@@ -1168,6 +1169,10 @@ export function getSettings(): AppSettings {
         : 'auto',
     floatingMascotHints:
       saved.floatingMascotHints === undefined ? defaultSettings.floatingMascotHints : Boolean(saved.floatingMascotHints),
+    floatingMascotVisible:
+      saved.floatingMascotVisible === undefined
+        ? defaultSettings.floatingMascotVisible
+        : Boolean(saved.floatingMascotVisible),
     telemetryEnabled:
       saved.telemetryEnabled === undefined ? defaultSettings.telemetryEnabled : Boolean(saved.telemetryEnabled),
     setupCompleted: Boolean(saved.setupCompleted)
@@ -1204,6 +1209,10 @@ export function setSettings(settings: AppSettings): AppSettings {
       settings.floatingMascotHints === undefined
         ? defaultSettings.floatingMascotHints
         : Boolean(settings.floatingMascotHints),
+    floatingMascotVisible:
+      settings.floatingMascotVisible === undefined
+        ? defaultSettings.floatingMascotVisible
+        : Boolean(settings.floatingMascotVisible),
     telemetryEnabled:
       settings.telemetryEnabled === undefined ? defaultSettings.telemetryEnabled : Boolean(settings.telemetryEnabled),
     setupCompleted: settings.setupCompleted

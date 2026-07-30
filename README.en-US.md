@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V1.2.3](https://github.com/filwu8/g-llm-client/tree/main)
+Current code version: [V1.2.4](https://github.com/filwu8/g-llm-client/tree/main)
 
-Latest stable release: [V1.2.3](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.3), released on 2026-07-20.
+Latest stable release: [V1.2.4](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.4), released on 2026-07-24.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V1.2.3 release will automatically change to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V1.2.4 release will automatically change to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/g-llm-client/releases)
 
@@ -24,14 +24,11 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V1.2.3 Workspace and Provider Settings Stability
+## V1.2.4 Floating Assistant and Settings Experience
 
-- Streaming workspace requests: model content and tool calls arrive continuously, while the 120-second limit now applies only when no new data arrives, preventing complex file tasks from being mistaken for timeouts at the final step.
-- Full workspace support in Quick Chat: choose and display a folder, invoke workspace tools, review progress and results, and keep conversation state synchronized with the main window.
-- Three approval modes: switch between Ask, Auto Approve, and Full Access at any time above the chat. In-app approval dialogs follow the current theme and explain the operation purpose and permission boundary.
-- More capable script sandbox: safe Base64, Blob, and compression-stream APIs support more document and spreadsheet tasks while network access, system commands, and access outside the workspace remain blocked.
-- Clearer failures: missing runtime capabilities and workbook structure mismatches are translated into user-friendly explanations that distinguish environment limits, changed files, and script errors.
-- Restored provider settings: fixes a drawer-entry animation that incorrectly constrained nested dialogs, so Add Provider opens normally again.
+- The floating assistant visibility preference is now persisted and synchronized across the main window, Quick Chat, the tray, and the floating assistant.
+- Improved floating-assistant behavior when minimizing, closing, and reopening the main window on Windows, preventing inconsistent visibility after state changes.
+- Increased the floating hint area with wrapping for longer messages, while assistant-setting actions now adapt to narrow windows and longer translations.
 
 ## Features
 
@@ -58,7 +55,7 @@ The client includes the following resident desktop behavior:
 
 - A single click on the Windows tray icon, macOS menu-bar icon, or desktop pet opens Quick Chat; the context menu provides Open Main Window and the full set of actions.
 - On Windows, closing the main window hides the app to the system tray instead of quitting.
-- Minimizing the main window shows a floating G-LLM logo on the desktop.
+- When the floating assistant is enabled, minimizing or closing the main window keeps the floating G-LLM logo available for quick access.
 - The floating logo can be dragged and snaps to the screen edge.
 - The floating logo and tray/menu-bar icon share the same right-click menu: open Quick Chat, open the main window, show/hide the floating logo, and quit G-LLM.
 - The quick chat window is transparent, frameless, always-on-top, and designed for fast access.
@@ -132,11 +129,11 @@ Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.
 
 ## License
 
-G-LLM Desktop Client is published by GPROPHET LIMITED. The current V1.2.3 development version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Desktop Client is published by GPROPHET LIMITED. The current V1.2.4 development version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V1.2.3 automatically changes to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+V1.2.4 automatically changes to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 

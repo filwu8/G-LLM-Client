@@ -204,7 +204,7 @@ const FLOATING_LOGO_MIN_SIZE = 72
 const FLOATING_LOGO_MAX_SIZE = 112
 const FLOATING_LOGO_EDGE_GAP = 8
 const FLOATING_HINT_WIDTH = 246
-const FLOATING_HINT_HEIGHT = 78
+const FLOATING_HINT_HEIGHT = 98
 const FLOATING_HINT_GAP = 8
 const SCREENSHOT_WINDOW_HIDE_DELAY_MS = 180
 const APP_USER_MODEL_ID = 'com.gllm.wujijie'
@@ -382,14 +382,15 @@ function syncNativeTheme(settings: Pick<AppSettings, 'theme'>): void {
 }
 
 function createWindow(): BrowserWindow {
+  quickWindowShowPending = false
   quickWindow?.hide()
-  hideFloatingLogo()
   mainHiddenMode = 'none'
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
+    showFloatingLogo()
     return mainWindow
   }
 
@@ -429,20 +430,24 @@ function createWindow(): BrowserWindow {
     if (process.platform !== 'win32' || isQuitting) return
 
     if (mainWindow) lastMainWindowBounds = mainWindow.getNormalBounds()
-    mainHiddenMode = 'floating'
+    const mascotVisible = getSettings().floatingMascotVisible
+    mainHiddenMode = mascotVisible ? 'floating' : 'tray'
     mainWindow?.hide()
     quickWindow?.hide()
-    showFloatingLogo()
+    if (mascotVisible) showFloatingLogo()
+    else hideFloatingLogo()
   })
   mainWindow.on('close', (event) => {
     if (process.platform !== 'win32' || isQuitting) return
 
     event.preventDefault()
     if (mainWindow) lastMainWindowBounds = mainWindow.getNormalBounds()
-    mainHiddenMode = 'tray'
+    const mascotVisible = getSettings().floatingMascotVisible
+    mainHiddenMode = mascotVisible ? 'floating' : 'tray'
     mainWindow?.hide()
     quickWindow?.hide()
-    hideFloatingLogo()
+    if (mascotVisible) showFloatingLogo()
+    else hideFloatingLogo()
   })
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -451,6 +456,7 @@ function createWindow(): BrowserWindow {
   registerExternalLinkHandler(mainWindow)
   loadRenderer(mainWindow)
   lastMainWindowBounds = mainWindow.getBounds()
+  showFloatingLogo()
   return mainWindow
 }
 
@@ -806,13 +812,21 @@ function revealFloatingLogoWindow(window: BrowserWindow): void {
   }
 }
 
+function shouldRevealFloatingLogo(): boolean {
+  return Boolean(
+    getSettings().floatingMascotVisible &&
+    !quickWindowShowPending &&
+    (!quickWindow || quickWindow.isDestroyed() || !quickWindow.isVisible())
+  )
+}
+
 function showFloatingLogo(): void {
-  if (!supportsFloatingMascot || isQuitting) return
+  if (!supportsFloatingMascot || isQuitting || !shouldRevealFloatingLogo()) return
 
   const window = createFloatingLogoWindow()
   if (window.webContents.isLoading()) {
     window.webContents.once('did-finish-load', () => {
-      if (!window.isDestroyed() && mainHiddenMode === 'floating') {
+      if (!window.isDestroyed() && shouldRevealFloatingLogo()) {
         revealFloatingLogoWindow(window)
       }
     })
@@ -831,19 +845,20 @@ function hideFloatingLogo(): void {
 }
 
 function hideFloatingLogoToTray(): void {
-  mainHiddenMode = 'tray'
+  if (mainHiddenMode === 'floating') mainHiddenMode = 'tray'
+  const saved = setSettings({ ...getSettings(), floatingMascotVisible: false })
   hideFloatingLogo()
+  broadcastSettingsChange(saved)
 }
 
 function showFloatingLogoFromTray(): void {
   if (!supportsFloatingMascot) return
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (!mainWindow.isMinimized()) lastMainWindowBounds = mainWindow.getNormalBounds()
-    mainWindow.hide()
+  if (mainHiddenMode === 'tray' && (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible())) {
+    mainHiddenMode = 'floating'
   }
-  quickWindow?.hide()
-  mainHiddenMode = 'floating'
+  const saved = setSettings({ ...getSettings(), floatingMascotVisible: true })
+  broadcastSettingsChange(saved)
   showFloatingLogo()
 }
 
@@ -953,10 +968,7 @@ function showQuickWindow(anchorBounds?: Rectangle): void {
 function hideQuickWindow(): void {
   quickWindowShowPending = false
   quickWindow?.hide()
-
-  if (mainHiddenMode === 'floating') {
-    showFloatingLogo()
-  }
+  showFloatingLogo()
 }
 
 function resolveFloatingMascotSkin(settings: Pick<AppSettings, 'theme' | 'floatingMascotSkin'>): FloatingMascotSkin {
@@ -995,8 +1007,8 @@ function setAppLanguage(language: AppSettings['language']): void {
 }
 
 function buildAppStatusMenu(anchorBounds?: Rectangle): Menu {
-  const floatingLogoVisible = Boolean(floatingLogoWindow && !floatingLogoWindow.isDestroyed() && floatingLogoWindow.isVisible())
   const settings = getSettings()
+  const floatingLogoEnabled = settings.floatingMascotVisible
   const t = (key: string) => mainT(key, settings.language)
 
   return Menu.buildFromTemplate([
@@ -1028,9 +1040,9 @@ function buildAppStatusMenu(anchorBounds?: Rectangle): Menu {
     ...(supportsFloatingMascot
       ? [
           {
-            label: t(floatingLogoVisible ? 'native.hideFloating' : 'native.showFloating'),
+            label: t(floatingLogoEnabled ? 'native.hideFloating' : 'native.showFloating'),
             click: () => {
-              if (floatingLogoVisible) {
+              if (floatingLogoEnabled) {
                 hideFloatingLogoToTray()
               } else {
                 showFloatingLogoFromTray()
@@ -1609,7 +1621,6 @@ app.whenReady().then(() => {
 
   setupTray()
   createWindow()
-  if (supportsFloatingMascot) createFloatingLogoWindow()
   void trackTelemetryEvent('app_started')
 
   screen.on('display-metrics-changed', () => {
