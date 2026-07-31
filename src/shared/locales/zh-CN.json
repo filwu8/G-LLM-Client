@@ -623,7 +623,7 @@
     "confirmRecoverRestart": "{{message}}\n\n现在重启 G-LLM 并载入该数据目录吗？"
   },
   "about": {
-    "productName": "无极界 G-LLM",
+    "productName": "无极界 G-LLM Client",
     "tagline": "本地优先的 AI 助手客户端",
     "description": "无极界 G-LLM 面向企业和个人用户，提供多助手、多会话、模型供应商、本地知识库和长期记忆能力。用户数据默认保存在本机，可按需切换数据目录，便于备份、迁移和私有化使用。",
     "version": "版本",

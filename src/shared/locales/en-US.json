@@ -623,7 +623,7 @@
     "confirmRecoverRestart": "{{message}}\n\nRestart G-LLM now and load this data folder?"
   },
   "about": {
-    "productName": "G-LLM",
+    "productName": "G-LLM Client",
     "tagline": "A local-first AI assistant client",
     "description": "G-LLM gives individuals and organizations multiple assistants and conversations, flexible model providers, local knowledge, and long-term memory. Data stays on your device by default, and you can change the storage folder for backup, migration, or private deployment.",
     "version": "Version",

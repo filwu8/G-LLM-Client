@@ -15,21 +15,25 @@ import {
 
 const handoffCode = 'a'.repeat(64)
 
-test('accepts only the open action and the optional new-api source', () => {
+test('accepts only the open action and a whitelisted G-LLM source', () => {
   assert.deepEqual(parseGllmDeepLink('gllm://open'), { action: 'open' })
   assert.deepEqual(parseGllmDeepLink('gllm://open/'), { action: 'open' })
+  assert.deepEqual(parseGllmDeepLink('gllm://open?source=g-llm'), {
+    action: 'open',
+    source: 'g-llm'
+  })
+  assert.deepEqual(parseGllmDeepLink('GLLM://OPEN/?source=g-llm'), {
+    action: 'open',
+    source: 'g-llm'
+  })
+  assert.deepEqual(parseGllmDeepLink(`gllm://open?source=g-llm&handoff=${handoffCode}`), {
+    action: 'open',
+    source: 'g-llm',
+    handoffCode
+  })
   assert.deepEqual(parseGllmDeepLink('gllm://open?source=new-api'), {
     action: 'open',
     source: 'new-api'
-  })
-  assert.deepEqual(parseGllmDeepLink('GLLM://OPEN/?source=new-api'), {
-    action: 'open',
-    source: 'new-api'
-  })
-  assert.deepEqual(parseGllmDeepLink(`gllm://open?source=new-api&handoff=${handoffCode}`), {
-    action: 'open',
-    source: 'new-api',
-    handoffCode
   })
 })
 
@@ -56,13 +60,13 @@ test('rejects unknown, duplicate, sensitive and non-whitelisted parameters', () 
     'gllm://open?',
     'gllm://open?source=',
     'gllm://open?source=website',
-    'gllm://open?source=NEW-API',
-    'gllm://open?source=new%2Dapi',
-    'gllm://open?source=new-api&source=new-api',
-    'gllm://open?source=new-api&view=chat',
+    'gllm://open?source=G-LLM',
+    'gllm://open?source=g%2Dllm',
+    'gllm://open?source=g-llm&source=g-llm',
+    'gllm://open?source=g-llm&view=chat',
     'gllm://open?handoff=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    'gllm://open?source=new-api&handoff=short',
-    `gllm://open?source=new-api&handoff=${handoffCode}&api_key=secret`,
+    'gllm://open?source=g-llm&handoff=short',
+    `gllm://open?source=g-llm&handoff=${handoffCode}&api_key=secret`,
     'gllm://open?token=secret',
     'gllm://open?access_token=secret',
     'gllm://open?api_key=secret'
@@ -72,18 +76,18 @@ test('rejects unknown, duplicate, sensitive and non-whitelisted parameters', () 
 })
 
 test('redacts deep-link arguments after parsing', () => {
-  const args = ['/app/G-LLM', `gllm://open?source=new-api&handoff=${handoffCode}`, '--flag']
+  const args = ['/app/G-LLM-Client', `gllm://open?source=g-llm&handoff=${handoffCode}`, '--flag']
   redactGllmDeepLinkArguments(args)
-  assert.deepEqual(args, ['/app/G-LLM', 'gllm://open?source=new-api', '--flag'])
+  assert.deepEqual(args, ['/app/G-LLM-Client', 'gllm://open?source=g-llm', '--flag'])
 })
 
 test('finds a link among process arguments and rejects ambiguous candidates', () => {
   assert.deepEqual(inspectGllmDeepLinkArguments(['/app/G-LLM', '--flag']), { kind: 'none' })
   assert.deepEqual(
-    inspectGllmDeepLinkArguments(['/app/G-LLM', '--original-process-start-time=1', 'gllm://open?source=new-api']),
+    inspectGllmDeepLinkArguments(['/app/G-LLM-Client', '--original-process-start-time=1', 'gllm://open?source=g-llm']),
     {
       kind: 'valid',
-      link: { action: 'open', source: 'new-api' }
+      link: { action: 'open', source: 'g-llm' }
     }
   )
   assert.deepEqual(inspectGllmDeepLinkArguments(['/app/G-LLM', 'gllm://open?token=secret']), {

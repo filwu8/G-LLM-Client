@@ -200,8 +200,8 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $installerPath = Join-Path $PWD "dist\G-LLM-Setup-$version-x64.exe"
-          $appPath = Join-Path $PWD "dist\win-unpacked\G-LLM.exe"
+          $installerPath = Join-Path $PWD "dist\G-LLM-Client-Setup-$version-x64.exe"
+          $appPath = Join-Path $PWD "dist\win-unpacked\G-LLM-Client.exe"
 
           function Read-PeMachine([string]$path) {
             $reader = [System.IO.BinaryReader]::new([System.IO.File]::OpenRead($path))
@@ -236,7 +236,7 @@ jobs:
           $installerMachine = Read-PeMachine $installerPath
           $appMachine = Read-PeMachine $appPath
           if ($appMachine -ne 0x8664) {
-            throw "G-LLM.exe is not x64. PE machine: 0x$($appMachine.ToString('X4'))"
+            throw "G-LLM-Client.exe is not x64. PE machine: 0x$($appMachine.ToString('X4'))"
           }
 
           $hash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -262,8 +262,8 @@ jobs:
           }
 
           $targets = @(
-            "dist\G-LLM-Setup-*.exe",
-            "dist\win-unpacked\G-LLM.exe"
+            "dist\G-LLM-Client-Setup-*.exe",
+            "dist\win-unpacked\G-LLM-Client.exe"
           )
 
           $files = foreach ($target in $targets) {

@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "WujiJie / G-LLM desktop client",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -8,9 +8,9 @@
   "homepage": "https://llm.gprophet.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/filwu8/g-llm-client.git"
+    "url": "https://github.com/filwu8/G-LLM-Client.git"
   },
-  "desktopName": "G-LLM",
+  "desktopName": "G-LLM Client",
   "private": true,
   "type": "module",
   "scripts": {
@@ -62,7 +62,7 @@
   },
   "build": {
     "appId": "com.gllm.wujijie",
-    "productName": "G-LLM",
+    "productName": "G-LLM Client",
     "protocols": [
       {
         "name": "com.gllm.wujijie",
@@ -123,10 +123,10 @@
     "files": [
       "out/**/*"
     ],
-    "artifactName": "G-LLM-Setup-${version}-${arch}.${ext}",
+    "artifactName": "G-LLM-Client-Setup-${version}-${arch}.${ext}",
     "win": {
       "icon": "build/icon.ico",
-      "executableName": "G-LLM",
+      "executableName": "G-LLM-Client",
       "target": [
         "nsis"
       ]
@@ -144,7 +144,7 @@
       "menuCategory": "GProphet",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "G-LLM",
+      "shortcutName": "G-LLM Client",
       "deleteAppDataOnUninstall": false
     },
     "mac": {

@@ -18,10 +18,10 @@ Anonymous usage statistics are enabled by default to help us understand version 
 In standard mode, uninstalling the application does not delete user data by default. In portable mode, data is stored with the installation folder. Before moving or deleting that folder, make sure the UserData folder has been backed up if needed.
 
 6. Software license and permitted use
-G-LLM Desktop Client V1.2.4 is licensed under the Business Source License 1.1 (BUSL-1.1). Personal use, research, evaluation and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not distribute a white-label or OEM version, resell or rent the client, release it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau or application service. You may not remove legal notices or bypass license, entitlement or paid-feature controls. The complete and controlling terms are in legal/LICENSE.txt included with the application.
+G-LLM Client V1.2.5 is licensed under the Business Source License 1.1 (BUSL-1.1). Personal use, research, evaluation and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not distribute a white-label or OEM version, resell or rent the client, release it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau or application service. You may not remove legal notices or bypass license, entitlement or paid-feature controls. The complete and controlling terms are in legal/LICENSE.txt included with the application.
 
 7. Automatic conversion and earlier versions
-V1.2.4 automatically changes to AGPL-3.0-only on July 14, 2030. V1.0.10 and earlier remain under the license included with each corresponding release; this agreement does not retroactively withdraw rights already granted.
+V1.2.5 automatically changes to AGPL-3.0-only on July 14, 2030. V1.0.10 and earlier remain under the license included with each corresponding release; this agreement does not retroactively withdraw rights already granted.
 
 8. Intellectual property and trademarks
 Except for rights expressly granted by the applicable license, intellectual property rights in the software and modifications remain with their respective owners. The source license does not grant rights to use G-LLM, WujiJie, related localized product names, logos, icons, slogans or visual assets for branding, white-label distribution or representation as an official product.

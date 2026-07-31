@@ -16,7 +16,7 @@
 - 从“关于本系统”逐一打开源码许可证、第三方声明、商业授权和商标政策，确认三端路径有效。
 - 对新依赖、复制代码、字体、图标、截图和其他资产做来源及许可证复核；不得发布来源不明或许可不兼容的内容。
 - 对拟公开的提交执行凭据、客户数据、私有提示词和内部资产扫描；仓库从私有改为公开前必须单独审批。
-- Windows 执行 `pnpm package:win`，确认生成 `dist/G-LLM-Setup-<version>-x64.exe`。
+- Windows 执行 `pnpm package:win`，确认生成 `dist/G-LLM-Client-Setup-<version>-x64.exe`。
 - macOS 执行 `pnpm package:mac`，确认生成 macOS 产物。
 - Linux 执行 `pnpm package:linux`，确认生成 AppImage 和 deb 产物。
 - 发布前记录 Windows 安装包 SHA256，便于排查不同机器下载到的是否是同一个文件。
@@ -25,9 +25,9 @@
 
 - 首次安装后可以正常启动，主窗口出现在任务栏。
 - 再次双击桌面快捷方式不会创建第二个进程，只会唤起已有窗口。
-- 退出客户端后从浏览器打开 `gllm://open?source=new-api`，客户端冷启动并显示主窗口。
-- 客户端已运行、最小化或隐藏时再次打开 `gllm://open?source=new-api`，只恢复并聚焦已有主窗口。
-- 登录 new-api 后点击首个“聊天”工具，自动创建或选择对应 Key；客户端通过一次性 handoff 配置 G-LLM 供应商，URL 和日志中均不出现明文 Key。
+- 退出客户端后从浏览器打开 `gllm://open?source=g-llm`，客户端冷启动并显示主窗口。
+- 客户端已运行、最小化或隐藏时再次打开 `gllm://open?source=g-llm`，只恢复并聚焦已有主窗口。
+- 登录 G-LLM Web 后点击首个“聊天”工具，自动创建或选择对应 Key；客户端通过一次性 handoff 配置 G-LLM 供应商，URL 和日志中均不出现明文 Key。
 - 同一个 handoff code 第二次兑换失败，超过 90 秒后也不能兑换。
 - `gllm://open?token=test`、未知 path/参数和重复参数不会触发深链接动作。
 - 点击主窗口关闭按钮后应用不退出，进入系统托盘。
@@ -50,7 +50,7 @@
 - 基础聊天、供应商设置、模型拉取可用。
 - 文件/图片附件可添加。
 - 关闭窗口、Dock 图标和菜单栏行为符合 macOS 常规习惯。
-- 从浏览器打开 `gllm://open?source=new-api`，冷启动和已运行状态都能显示并聚焦主窗口。
+- 从浏览器打开 `gllm://open?source=g-llm`，冷启动和已运行状态都能显示并聚焦主窗口。
 - 非白名单 `gllm` 链接不会触发深链接动作。
 - 未配置 Apple Developer 签名和公证时，记录 Gatekeeper 提示，不把它误判为代码功能问题。
 
@@ -61,7 +61,7 @@
 - 基础聊天、供应商设置、模型拉取可用。
 - 文件/图片附件可添加。
 - 桌面图标和应用名称显示为 G-LLM。
-- 安装 deb（或完成 AppImage 桌面集成）后，从浏览器打开 `gllm://open?source=new-api`，冷启动和已运行状态都能显示并聚焦主窗口。
+- 安装 deb（或完成 AppImage 桌面集成）后，从浏览器打开 `gllm://open?source=g-llm`，冷启动和已运行状态都能显示并聚焦主窗口。
 - 非白名单 `gllm` 链接不会触发深链接动作。
 
 ## 分发状态记录

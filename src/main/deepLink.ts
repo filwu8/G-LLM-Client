@@ -8,7 +8,7 @@ export const GLLM_DEEP_LINK_SCHEME = 'gllm'
 
 export interface GllmDeepLink {
   action: 'open'
-  source?: 'new-api'
+  source?: 'g-llm' | 'new-api'
   handoffCode?: string
 }
 
@@ -19,8 +19,7 @@ export type GllmDeepLinkArgumentResult =
 
 const MAX_DEEP_LINK_LENGTH = 256
 const ALLOWED_BASE_URLS = new Set(['gllm://open', 'gllm://open/'])
-const ALLOWED_QUERY = 'source=new-api'
-const HANDOFF_CODE_PATTERN = /^[A-Za-z0-9]{64}$/
+const ALLOWED_SOURCES = new Set(['g-llm', 'new-api'])
 
 function isPotentialGllmDeepLink(value: string): boolean {
   return value.slice(0, `${GLLM_DEEP_LINK_SCHEME}:`.length).toLowerCase() === `${GLLM_DEEP_LINK_SCHEME}:`
@@ -41,10 +40,11 @@ export function parseGllmDeepLink(value: string): GllmDeepLink | null {
   const rawQuery = queryIndex === -1 ? '' : value.slice(queryIndex + 1)
 
   if (!ALLOWED_BASE_URLS.has(rawBase.toLowerCase())) return null
-  const handoffPrefix = `${ALLOWED_QUERY}&handoff=`
-  const handoffCode = rawQuery.startsWith(handoffPrefix) ? rawQuery.slice(handoffPrefix.length) : undefined
-  if (queryIndex !== -1 && rawQuery !== ALLOWED_QUERY && !handoffCode) return null
-  if (handoffCode && !HANDOFF_CODE_PATTERN.test(handoffCode)) return null
+  const queryMatch = rawQuery.match(/^source=(g-llm|new-api)$/)
+  const handoffMatch = rawQuery.match(/^source=(g-llm|new-api)&handoff=([A-Za-z0-9]{64})$/)
+  if (queryIndex !== -1 && !queryMatch && !handoffMatch) return null
+  const source = (handoffMatch?.[1] ?? queryMatch?.[1]) as GllmDeepLink['source']
+  const handoffCode = handoffMatch?.[2]
 
   try {
     const url = new URL(value)
@@ -55,14 +55,14 @@ export function parseGllmDeepLink(value: string): GllmDeepLink | null {
 
     const parameters = [...url.searchParams.entries()]
     if (parameters.length === 0) return { action: 'open' }
-    if (parameters.length === 2 && parameters[0][0] === 'source' && parameters[0][1] === 'new-api') {
+    if (parameters.length === 2 && parameters[0][0] === 'source' && parameters[0][1] === source) {
       if (parameters[1][0] !== 'handoff' || parameters[1][1] !== handoffCode) return null
-      return { action: 'open', source: 'new-api', handoffCode }
+      return { action: 'open', source, handoffCode }
     }
     if (parameters.length !== 1) return null
-    if (parameters[0][0] !== 'source' || parameters[0][1] !== 'new-api') return null
+    if (parameters[0][0] !== 'source' || parameters[0][1] !== source || !source || !ALLOWED_SOURCES.has(source)) return null
 
-    return { action: 'open', source: 'new-api' }
+    return { action: 'open', source }
   } catch {
     return null
   }
@@ -70,7 +70,7 @@ export function parseGllmDeepLink(value: string): GllmDeepLink | null {
 
 export function redactGllmDeepLinkArguments(args: string[]): void {
   for (let index = 0; index < args.length; index += 1) {
-    if (isPotentialGllmDeepLink(args[index])) args[index] = 'gllm://open?source=new-api'
+    if (isPotentialGllmDeepLink(args[index])) args[index] = 'gllm://open?source=g-llm'
   }
 }
 

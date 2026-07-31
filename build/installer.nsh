@@ -23,8 +23,8 @@ Var GLLMDataBrowseButton
 Var GLLMPreviousVersion
 Var GLLMPreviousUninstallString
 
-LangString GLLMPreviousVersionPrompt 1033 "G-LLM $GLLMPreviousVersion is already installed.$\r$\n$\r$\nThe old version must be uninstalled before this version is installed. Conversations, settings, and other user data will be preserved.$\r$\n$\r$\nContinue?"
-LangString GLLMPreviousVersionPrompt 2052 "检测到已安装 G-LLM V$GLLMPreviousVersion。$\r$\n$\r$\n继续安装前将先卸载旧版本；会话、设置和其他用户数据会保留。$\r$\n$\r$\n是否继续？"
+LangString GLLMPreviousVersionPrompt 1033 "G-LLM Client $GLLMPreviousVersion is already installed.$\r$\n$\r$\nThe old version must be uninstalled before this version is installed. Conversations, settings, and other user data will be preserved.$\r$\n$\r$\nContinue?"
+LangString GLLMPreviousVersionPrompt 2052 "检测到已安装 G-LLM Client V$GLLMPreviousVersion。$\r$\n$\r$\n继续安装前将先卸载旧版本；会话、设置和其他用户数据会保留。$\r$\n$\r$\n是否继续？"
 
 !macro customInit
   StrCpy $GLLMPreviousVersion ""
@@ -52,8 +52,8 @@ LangString GLLMInstallModePageTitle 1033 "Choose installation mode"
 LangString GLLMInstallModePageTitle 2052 "选择安装模式"
 LangString GLLMInstallModePageSubtitle 1033 "Choose Standard or Portable before selecting folders."
 LangString GLLMInstallModePageSubtitle 2052 "先选择普通版或便携版，再选择对应目录。"
-LangString GLLMInstallModeIntro 1033 "G-LLM keeps assistants, conversations, knowledge base and settings locally. Pick the storage style that matches how you use this computer."
-LangString GLLMInstallModeIntro 2052 "G-LLM 会把助手、会话、知识库和配置保存在本机。请选择适合当前电脑使用方式的版本。"
+LangString GLLMInstallModeIntro 1033 "G-LLM Client keeps assistants, conversations, knowledge base and settings locally. Pick the storage style that matches how you use this computer."
+LangString GLLMInstallModeIntro 2052 "G-LLM Client 会把助手、会话、知识库和配置保存在本机。请选择适合当前电脑使用方式的版本。"
 LangString GLLMInstallModeNormal 1033 "Standard installation (recommended)"
 LangString GLLMInstallModeNormal 2052 "普通版（推荐）"
 LangString GLLMInstallModeNormalDesc 1033 "Program files: C:\Program Files\GProphet\G-LLM. User data: %APPDATA%\G-LLM by default, and you can choose another data folder."
@@ -276,7 +276,7 @@ Function GLLMDataDirLeave
 FunctionEnd
 
 !macro customInstall
-  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm" "" "URL:G-LLM Protocol"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm" "" "URL:G-LLM Client Protocol"
   WriteRegStr SHELL_CONTEXT "Software\Classes\gllm" "URL Protocol" ""
   WriteRegStr SHELL_CONTEXT "Software\Classes\gllm\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
   WriteRegStr SHELL_CONTEXT "Software\Classes\gllm\shell\open\command" "" '$\"$INSTDIR\${APP_EXECUTABLE_FILENAME}$\" $\"%1$\"'

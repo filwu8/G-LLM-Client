@@ -2,13 +2,13 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V1.2.4](https://github.com/filwu8/g-llm-client/tree/main)
+Current code version: [V1.2.5](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V1.2.4](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.4), released on 2026-07-24.
+Latest stable release: [V1.2.5](https://github.com/filwu8/G-LLM-Client/releases/tag/v1.2.5), released on 2026-07-31.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V1.2.4 release will automatically change to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V1.2.5 release will automatically change to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
-[Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/g-llm-client/releases)
+[Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
 G-LLM Client is a cross-platform desktop AI client built by GPROPHET LIMITED for Windows, macOS, and Linux. The product direction is assistant-first: users choose or create a role-based assistant, then use one desktop client for model configuration, knowledge references, screenshots, file understanding, and multi-turn conversations.
 
@@ -23,6 +23,13 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V1.2.5 Browser Authorization and Narrow-Window Polish
+
+- Signed-in G-LLM Web users can launch the client from Chat and configure their API key through a single-use authorization code that expires after 90 seconds.
+- Windows, macOS, and Linux support cold and running-state `gllm://` activation while preserving a single app instance and focusing the main window.
+- Fixed AI-content overflow in narrow windows and the model picker appearing behind the sidebar.
+- Unified the desktop project and installer artifact branding as **G-LLM Client**.
 
 ## V1.2.4 Floating Assistant and Settings Experience
 
@@ -73,7 +80,7 @@ pnpm install
 pnpm dev
 ```
 
-For browser or new-api integration, follow the [G-LLM custom URL protocol contract](./docs/browser-deep-link.md). Automatic API-key setup puts only a single-use, 90-second handoff code in the URL—never the plaintext credential.
+For browser or G-LLM Web integration, follow the [G-LLM custom URL protocol contract](./docs/browser-deep-link.md). Automatic API-key setup puts only a single-use, 90-second handoff code in the URL—never the plaintext credential.
 
 Build:
 
@@ -131,11 +138,11 @@ Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.
 
 ## License
 
-G-LLM Desktop Client is published by GPROPHET LIMITED. The current V1.2.4 development version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Client is published by GPROPHET LIMITED. The current V1.2.5 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V1.2.4 automatically changes to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+V1.2.5 automatically changes to AGPL-3.0-only on 2030-07-14. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 

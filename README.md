@@ -2,13 +2,13 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V1.2.4](https://github.com/filwu8/g-llm-client/tree/main)
+当前代码版本：[V1.2.5](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V1.2.4](https://github.com/filwu8/g-llm-client/releases/tag/v1.2.4)，发布于 2026-07-24。
+最近稳定发布：[V1.2.5](https://github.com/filwu8/G-LLM-Client/releases/tag/v1.2.5)，发布于 2026-07-31。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V1.2.4 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V1.2.5 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
-[下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/g-llm-client/releases)
+[下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
 G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持 Windows、macOS 和 Linux。当前产品方向是“助手优先”：用户先选择或创建适合场景的助手，再在同一个桌面客户端里完成模型配置、知识引用、截图提问、文件理解和多轮对话。
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V1.2.5 浏览器授权与窄窗口体验
+
+- G-LLM Web 登录用户可从“聊天”入口安全唤起客户端，并通过 90 秒有效、只能兑换一次的授权码自动配置 API Key。
+- Windows、macOS、Linux 均支持 `gllm://` 冷启动和运行中唤起；客户端保持单实例并恢复、显示、聚焦主窗口。
+- 修复窄窗口下 AI 内容溢出和模型选择弹窗被侧边栏遮挡的问题。
+- 桌面项目与安装产物统一使用 **G-LLM Client** 品牌名称。
 
 ## V1.2.4 悬浮助手与设置体验更新
 
@@ -73,7 +80,7 @@ pnpm install
 pnpm dev
 ```
 
-浏览器或 new-api 集成请遵循 [G-LLM 自定义 URL 协议说明](./docs/browser-deep-link.md)。自动配置 API Key 时，链接只携带 90 秒有效且只能兑换一次的 handoff code，不传递明文凭据。
+浏览器或 G-LLM Web 集成请遵循 [G-LLM 自定义 URL 协议说明](./docs/browser-deep-link.md)。自动配置 API Key 时，链接只携带 90 秒有效且只能兑换一次的 handoff code，不传递明文凭据。
 
 如果本机没有全局 Node.js，可以使用 Codex 工作区自带运行时：
 
@@ -138,11 +145,11 @@ Authorization: Bearer {apiKey}
 
 ## License
 
-G-LLM Desktop Client 由 GPROPHET LIMITED 发布。当前开发版本 V1.2.4 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V1.2.5 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V1.2.4 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V1.2.5 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
