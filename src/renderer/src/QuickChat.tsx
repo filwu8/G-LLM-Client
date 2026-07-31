@@ -327,6 +327,22 @@ export default function QuickChat() {
   }, [])
 
   useEffect(() => {
+    return window.gllm.onProvidersChanged((nextProviders) => {
+      setProviders(nextProviders.length > 0 ? nextProviders : [DEFAULT_PROVIDER])
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.gllm.onDeepLinkHandoffStatus(({ status }) => {
+      if (status !== 'success') return
+      void window.gllm.getState().then((state) => {
+        setSettings(state.settings)
+        setProviders(state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER])
+      })
+    })
+  }, [])
+
+  useEffect(() => {
     return window.gllm.onActiveAssistantChanged((id) => {
       setActiveAssistantId(id)
       setDraftWorkspace(undefined)

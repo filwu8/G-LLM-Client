@@ -947,6 +947,24 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    return window.gllm.onProvidersChanged((nextProviders) => {
+      setProviders(nextProviders.length > 0 ? nextProviders : [DEFAULT_PROVIDER])
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.gllm.onDeepLinkHandoffStatus(({ status }) => {
+      if (status === 'success') {
+        setSettingsOpen(false)
+        void window.gllm.getState().then((state) => applyAppState(state))
+      }
+      showToolNotice(t(status === 'success' ? 'notices.browserKeyImported' : 'notices.browserKeyImportFailed'), 3600, {
+        emphasis: status === 'error'
+      })
+    })
+  }, [t])
+
+  useEffect(() => {
     if (settings) applyDocumentTheme(settings.theme, true)
   }, [settings?.theme])
 

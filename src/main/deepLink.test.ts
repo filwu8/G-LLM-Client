@@ -7,7 +7,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { inspectGllmDeepLinkArguments, parseGllmDeepLink } from './deepLink.ts'
+import {
+  inspectGllmDeepLinkArguments,
+  parseGllmDeepLink,
+  redactGllmDeepLinkArguments
+} from './deepLink.ts'
+
+const handoffCode = 'a'.repeat(64)
 
 test('accepts only the open action and the optional new-api source', () => {
   assert.deepEqual(parseGllmDeepLink('gllm://open'), { action: 'open' })
@@ -19,6 +25,11 @@ test('accepts only the open action and the optional new-api source', () => {
   assert.deepEqual(parseGllmDeepLink('GLLM://OPEN/?source=new-api'), {
     action: 'open',
     source: 'new-api'
+  })
+  assert.deepEqual(parseGllmDeepLink(`gllm://open?source=new-api&handoff=${handoffCode}`), {
+    action: 'open',
+    source: 'new-api',
+    handoffCode
   })
 })
 
@@ -49,12 +60,21 @@ test('rejects unknown, duplicate, sensitive and non-whitelisted parameters', () 
     'gllm://open?source=new%2Dapi',
     'gllm://open?source=new-api&source=new-api',
     'gllm://open?source=new-api&view=chat',
+    'gllm://open?handoff=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    'gllm://open?source=new-api&handoff=short',
+    `gllm://open?source=new-api&handoff=${handoffCode}&api_key=secret`,
     'gllm://open?token=secret',
     'gllm://open?access_token=secret',
     'gllm://open?api_key=secret'
   ]
 
   for (const link of invalidLinks) assert.equal(parseGllmDeepLink(link), null, link)
+})
+
+test('redacts deep-link arguments after parsing', () => {
+  const args = ['/app/G-LLM', `gllm://open?source=new-api&handoff=${handoffCode}`, '--flag']
+  redactGllmDeepLinkArguments(args)
+  assert.deepEqual(args, ['/app/G-LLM', 'gllm://open?source=new-api', '--flag'])
 })
 
 test('finds a link among process arguments and rejects ambiguous candidates', () => {

@@ -27,6 +27,7 @@ import type {
   DataArchiveResult,
   DataLocationChangeResult,
   DataLocationInfo,
+  DeepLinkHandoffStatusEvent,
   FloatingMascotHintEvent,
   FloatingMascotSkin,
   KnowledgeNote,
@@ -44,6 +45,17 @@ import type {
   WorkspaceAgentResult,
   WorkspaceApprovalPrompt
 } from '../shared/types'
+
+let pendingDeepLinkHandoffStatus: DeepLinkHandoffStatusEvent | null = null
+const deepLinkHandoffStatusListeners = new Set<(status: DeepLinkHandoffStatusEvent) => void>()
+
+ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatusEvent) => {
+  if (deepLinkHandoffStatusListeners.size === 0) {
+    pendingDeepLinkHandoffStatus = status
+    return
+  }
+  for (const listener of deepLinkHandoffStatusListeners) listener(status)
+})
 
 const api = {
   platform: process.platform,
@@ -124,6 +136,22 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, settings: AppSettings) => listener(settings)
     ipcRenderer.on('settings:changed', handler)
     return () => ipcRenderer.removeListener('settings:changed', handler)
+  },
+  onProvidersChanged: (listener: (providers: ApiProvider[]) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, providers: ApiProvider[]) => listener(providers)
+    ipcRenderer.on('providers:changed', handler)
+    return () => ipcRenderer.removeListener('providers:changed', handler)
+  },
+  onDeepLinkHandoffStatus: (listener: (status: DeepLinkHandoffStatusEvent) => void): (() => void) => {
+    deepLinkHandoffStatusListeners.add(listener)
+    if (pendingDeepLinkHandoffStatus) {
+      const pending = pendingDeepLinkHandoffStatus
+      pendingDeepLinkHandoffStatus = null
+      queueMicrotask(() => {
+        if (deepLinkHandoffStatusListeners.has(listener)) listener(pending)
+      })
+    }
+    return () => deepLinkHandoffStatusListeners.delete(listener)
   },
   onActiveAssistantChanged: (listener: (id: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id)

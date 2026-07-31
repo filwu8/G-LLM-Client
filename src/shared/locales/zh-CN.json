@@ -295,6 +295,8 @@
     "conversationSearchFailed": "历史会话搜索失败",
     "conversationOpened": "已打开「{{title}}」",
     "conversationOpenFailed": "无法打开该会话",
+    "browserKeyImported": "已安全接收网页授权，并配置 G-LLM API Key",
+    "browserKeyImportFailed": "网页授权已失效或兑换失败，请返回网页重新点击 G-LLM",
     "spaceCreated": "已创建并切换到空间「{{space}}」",
     "spaceRenamed": "空间已重命名为「{{space}}」",
     "attachmentsImageUnreadable": "已添加附件；部分图片过大或读取失败，无法直接识别",

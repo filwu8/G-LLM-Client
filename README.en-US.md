@@ -73,7 +73,7 @@ pnpm install
 pnpm dev
 ```
 
-For browser or new-api integration, follow the [G-LLM custom URL protocol contract](./docs/browser-deep-link.md). Phase one only uses `gllm://open?source=new-api` to open the client and never puts credentials in the URL.
+For browser or new-api integration, follow the [G-LLM custom URL protocol contract](./docs/browser-deep-link.md). Automatic API-key setup puts only a single-use, 90-second handoff code in the URL—never the plaintext credential.
 
 Build:
 

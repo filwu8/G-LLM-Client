@@ -11,6 +11,10 @@ export type AppTheme = 'auto' | 'light' | 'dark' | 'gold'
 export type FloatingMascotSkin = 'blue' | 'gold'
 export type FloatingMascotAppearance = 'auto' | FloatingMascotSkin
 
+export interface DeepLinkHandoffStatusEvent {
+  status: 'success' | 'error'
+}
+
 export interface ChatMessage {
   id: string
   role: Role

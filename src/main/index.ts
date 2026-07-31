@@ -23,11 +23,12 @@ import {
   type Rectangle
 } from 'electron'
 import { appendFileSync, mkdirSync, statSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import type {
+  ApiProvider,
   AppSettings,
   ChatActivityEvent,
   ChatRequest,
@@ -38,7 +39,7 @@ import type {
   LegalDocument,
   WorkspaceApprovalPrompt
 } from '../shared/types'
-import { isOfficialGllmApiProvider } from '../shared/providers'
+import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID, isOfficialGllmApiProvider } from '../shared/providers'
 import { checkForAppUpdate, DOWNLOAD_PAGE_URL } from './appUpdate'
 import { pickAttachments, preparePastedAttachments } from './attachments'
 import { captureScreenshot } from './screenshot'
@@ -46,8 +47,10 @@ import {
   GLLM_DEEP_LINK_SCHEME,
   inspectGllmDeepLinkArguments,
   parseGllmDeepLink,
+  redactGllmDeepLinkArguments,
   type GllmDeepLink
 } from './deepLink'
+import { exchangeGllmHandoff, resolveGllmHandoffExchangeUrl } from './deepLinkHandoff'
 import { mainT } from './i18n'
 import { cancelLocalFileTask, executeLocalFileTask, getLocalTaskOutputDirectory, prepareLocalFileTask } from './localFileTasks'
 import { resolveWorkspaceItem, runWorkspaceAgent } from './workspaceAgent'
@@ -217,9 +220,11 @@ const APP_USER_MODEL_ID = 'com.gllm.wujijie'
 const supportsFloatingMascot = process.platform === 'win32' || process.platform === 'darwin'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const startupDeepLinkResult = inspectGllmDeepLinkArguments(process.argv)
+redactGllmDeepLinkArguments(process.argv)
 let pendingDeepLink: GllmDeepLink | null =
   startupDeepLinkResult.kind === 'valid' ? startupDeepLinkResult.link : null
 let isMainProcessReady = false
+const processedHandoffDigests = new Set<string>()
 const legalDocumentPaths = {
   license: { development: 'LICENSE', packaged: 'LICENSE.txt' },
   'third-party': { development: 'THIRD_PARTY_NOTICES.md', packaged: 'THIRD_PARTY_NOTICES.md' },
@@ -364,6 +369,7 @@ function showMainWindowForDeepLink(link: GllmDeepLink, origin: string): void {
   if (window.isMinimized()) window.restore()
   window.show()
   window.focus()
+  if (link.handoffCode) void importGllmHandoff(link.handoffCode)
 }
 
 function receiveDeepLink(url: string, origin: string): void {
@@ -394,6 +400,44 @@ function registerDevelopmentDeepLinkProtocol(): void {
 
   const registered = app.setAsDefaultProtocolClient(GLLM_DEEP_LINK_SCHEME, process.execPath, [resolve(appEntry)])
   writeMainLog(`Development G-LLM protocol registration ${registered ? 'succeeded' : 'failed'}.`)
+}
+
+async function importGllmHandoff(code: string): Promise<void> {
+  const digest = createHash('sha256').update(code).digest('hex')
+  if (processedHandoffDigests.has(digest)) return
+  processedHandoffDigests.add(digest)
+
+  const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), 10_000)
+  try {
+    const endpoint = resolveGllmHandoffExchangeUrl(is.dev, process.env.GLLM_HANDOFF_EXCHANGE_URL)
+    const { apiKey } = await exchangeGllmHandoff(code, {
+      endpoint,
+      request: (url, init) => net.fetch(url, init),
+      signal: abortController.signal
+    })
+    const currentProvider = getProviders().find((provider) => provider.id === DEFAULT_PROVIDER_ID)
+    const savedProvider = saveProvider({
+      ...DEFAULT_PROVIDER,
+      ...currentProvider,
+      id: DEFAULT_PROVIDER_ID,
+      templateId: 'gllm',
+      name: DEFAULT_PROVIDER.name,
+      apiBaseUrl: DEFAULT_PROVIDER.apiBaseUrl,
+      apiKey,
+      updatedAt: Date.now()
+    })
+    const savedSettings = setSettings({ ...getSettings(), activeProviderId: DEFAULT_PROVIDER_ID })
+    broadcastProvidersChange(getProviders())
+    broadcastSettingsChange(savedSettings)
+    broadcastDeepLinkHandoffStatus('success')
+    writeMainLog(`Imported API key from one-time G-LLM handoff into provider=${savedProvider.id}.`)
+  } catch (error) {
+    broadcastDeepLinkHandoffStatus('error')
+    writeMainLog('Failed to exchange one-time G-LLM handoff.', error)
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function getWindowBackgroundColor(settings: Pick<AppSettings, 'theme'>): string {
@@ -1200,6 +1244,23 @@ function broadcastSettingsChange(settings: AppSettings): void {
   }
 }
 
+function broadcastProvidersChange(providers: ApiProvider[]): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('providers:changed', providers)
+  }
+}
+
+function broadcastDeepLinkHandoffStatus(status: 'success' | 'error'): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    const notify = () => {
+      if (!window.isDestroyed()) window.webContents.send('deep-link:handoff-status', { status })
+    }
+    if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', notify)
+    else notify()
+  }
+}
+
 function broadcastConversationChange(conversationId: string, action: 'saved' | 'deleted'): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -1260,6 +1321,7 @@ function copyImageDataUrlToClipboard(dataUrl: string): void {
 if (gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const result = inspectGllmDeepLinkArguments(argv)
+    redactGllmDeepLinkArguments(argv)
     if (result.kind === 'valid') {
       if (isMainProcessReady) showMainWindowForDeepLink(result.link, 'second-instance arguments')
       else pendingDeepLink = result.link

@@ -295,6 +295,8 @@
     "conversationSearchFailed": "Conversation search failed",
     "conversationOpened": "Opened “{{title}}”",
     "conversationOpenFailed": "Could not open that conversation",
+    "browserKeyImported": "Web authorization received securely and the G-LLM API key is configured",
+    "browserKeyImportFailed": "Web authorization expired or could not be exchanged. Return to the website and open G-LLM again.",
     "spaceCreated": "Created and switched to “{{space}}”",
     "spaceRenamed": "Space renamed to “{{space}}”",
     "attachmentsImageUnreadable": "Attachments added; some images are too large or could not be read",
