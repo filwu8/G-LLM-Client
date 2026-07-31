@@ -276,6 +276,11 @@ Function GLLMDataDirLeave
 FunctionEnd
 
 !macro customInstall
+  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm" "" "URL:G-LLM Protocol"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm" "URL Protocol" ""
+  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\gllm\shell\open\command" "" '$\"$INSTDIR\${APP_EXECUTABLE_FILENAME}$\" $\"%1$\"'
+
   ${If} $GLLMInstallMode == "portable"
     CreateDirectory "$INSTDIR\UserData"
     FileOpen $0 "$INSTDIR\portable.flag" w
@@ -339,6 +344,11 @@ LangString GLLMUninstallDeleteDataHint 2052 "仅在你确认不再需要本地�
 !macroend
 
 !macro customUnInstall
+  ReadRegStr $0 SHELL_CONTEXT "Software\Classes\gllm\shell\open\command" ""
+  ${If} $0 == '$\"$INSTDIR\${APP_EXECUTABLE_FILENAME}$\" $\"%1$\"'
+    DeleteRegKey SHELL_CONTEXT "Software\Classes\gllm"
+  ${EndIf}
+
   ${If} $GLLMUninstallDeleteData == "1"
     ${If} $GLLMUninstallDataRoot != ""
       RMDir /r "$GLLMUninstallDataRoot"

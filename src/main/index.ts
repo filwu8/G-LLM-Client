@@ -24,7 +24,7 @@ import {
 } from 'electron'
 import { appendFileSync, mkdirSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import type {
@@ -42,6 +42,12 @@ import { isOfficialGllmApiProvider } from '../shared/providers'
 import { checkForAppUpdate, DOWNLOAD_PAGE_URL } from './appUpdate'
 import { pickAttachments, preparePastedAttachments } from './attachments'
 import { captureScreenshot } from './screenshot'
+import {
+  GLLM_DEEP_LINK_SCHEME,
+  inspectGllmDeepLinkArguments,
+  parseGllmDeepLink,
+  type GllmDeepLink
+} from './deepLink'
 import { mainT } from './i18n'
 import { cancelLocalFileTask, executeLocalFileTask, getLocalTaskOutputDirectory, prepareLocalFileTask } from './localFileTasks'
 import { resolveWorkspaceItem, runWorkspaceAgent } from './workspaceAgent'
@@ -208,9 +214,12 @@ const FLOATING_HINT_HEIGHT = 98
 const FLOATING_HINT_GAP = 8
 const SCREENSHOT_WINDOW_HIDE_DELAY_MS = 180
 const APP_USER_MODEL_ID = 'com.gllm.wujijie'
-const shouldUseSingleInstanceLock = process.platform === 'win32'
 const supportsFloatingMascot = process.platform === 'win32' || process.platform === 'darwin'
-const gotSingleInstanceLock = !shouldUseSingleInstanceLock || app.requestSingleInstanceLock()
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+const startupDeepLinkResult = inspectGllmDeepLinkArguments(process.argv)
+let pendingDeepLink: GllmDeepLink | null =
+  startupDeepLinkResult.kind === 'valid' ? startupDeepLinkResult.link : null
+let isMainProcessReady = false
 const legalDocumentPaths = {
   license: { development: 'LICENSE', packaged: 'LICENSE.txt' },
   'third-party': { development: 'THIRD_PARTY_NOTICES.md', packaged: 'THIRD_PARTY_NOTICES.md' },
@@ -241,6 +250,11 @@ protocol.registerSchemesAsPrivileged([
 if (!gotSingleInstanceLock) {
   app.quit()
 }
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (gotSingleInstanceLock) receiveDeepLink(url, 'macOS open-url event')
+})
 
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_USER_MODEL_ID)
@@ -338,10 +352,48 @@ function sleep(ms: number): Promise<void> {
 }
 
 function showExistingInstance(): void {
-  if (process.platform !== 'win32') return
-
   writeMainLog('Second instance requested; showing existing main window.')
   createWindow()
+}
+
+function showMainWindowForDeepLink(link: GllmDeepLink, origin: string): void {
+  const source = link.source ? `, source=${link.source}` : ''
+  writeMainLog(`Accepted G-LLM deep link from ${origin}: action=${link.action}${source}.`)
+  const window = createWindow()
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+
+function receiveDeepLink(url: string, origin: string): void {
+  const link = parseGllmDeepLink(url)
+  if (!link) {
+    // Never include the raw rejected URL in logs; it may contain credentials
+    // even though the public contract explicitly forbids them.
+    writeMainLog(`Rejected invalid G-LLM deep link from ${origin}.`)
+    return
+  }
+
+  if (!isMainProcessReady) {
+    pendingDeepLink = link
+    return
+  }
+
+  showMainWindowForDeepLink(link, origin)
+}
+
+function registerDevelopmentDeepLinkProtocol(): void {
+  if (app.isPackaged || process.platform !== 'win32') return
+
+  const appEntry = process.argv[1]
+  if (!process.defaultApp || !appEntry) {
+    writeMainLog('Skipped development G-LLM protocol registration: Electron app entry was not available.')
+    return
+  }
+
+  const registered = app.setAsDefaultProtocolClient(GLLM_DEEP_LINK_SCHEME, process.execPath, [resolve(appEntry)])
+  writeMainLog(`Development G-LLM protocol registration ${registered ? 'succeeded' : 'failed'}.`)
 }
 
 function getWindowBackgroundColor(settings: Pick<AppSettings, 'theme'>): string {
@@ -1205,9 +1257,20 @@ function copyImageDataUrlToClipboard(dataUrl: string): void {
   clipboard.writeImage(image)
 }
 
-if (gotSingleInstanceLock && shouldUseSingleInstanceLock) {
-  app.on('second-instance', () => {
-    showExistingInstance()
+if (gotSingleInstanceLock) {
+  app.on('second-instance', (_event, argv) => {
+    const result = inspectGllmDeepLinkArguments(argv)
+    if (result.kind === 'valid') {
+      if (isMainProcessReady) showMainWindowForDeepLink(result.link, 'second-instance arguments')
+      else pendingDeepLink = result.link
+      return
+    }
+    if (result.kind === 'invalid') {
+      writeMainLog('Rejected invalid G-LLM deep link from second-instance arguments.')
+      return
+    }
+
+    if (isMainProcessReady) showExistingInstance()
   })
 }
 
@@ -1230,6 +1293,11 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_USER_MODEL_ID)
   Menu.setApplicationMenu(null)
   registerDataResourceProtocol()
+  registerDevelopmentDeepLinkProtocol()
+
+  if (startupDeepLinkResult.kind === 'invalid') {
+    writeMainLog('Rejected invalid G-LLM deep link from startup arguments.')
+  }
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -1620,7 +1688,14 @@ app.whenReady().then(() => {
   })
 
   setupTray()
-  createWindow()
+  isMainProcessReady = true
+  if (pendingDeepLink) {
+    const link = pendingDeepLink
+    pendingDeepLink = null
+    showMainWindowForDeepLink(link, 'startup')
+  } else {
+    createWindow()
+  }
   void trackTelemetryEvent('app_started')
 
   screen.on('display-metrics-changed', () => {

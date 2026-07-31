@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm i18n:check && pnpm licenses:generate && tsc --noEmit && electron-vite build",
+    "test:deep-link": "node --test --experimental-strip-types src/main/deepLink.test.ts",
     "i18n:check": "node scripts/check-translations.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "preview": "electron-vite preview",
@@ -62,6 +63,14 @@
   "build": {
     "appId": "com.gllm.wujijie",
     "productName": "G-LLM",
+    "protocols": [
+      {
+        "name": "com.gllm.wujijie",
+        "schemes": [
+          "gllm"
+        ]
+      }
+    ],
     "directories": {
       "buildResources": "build"
     },

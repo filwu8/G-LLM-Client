@@ -5,6 +5,7 @@
     "electron.vite.config.ts"
   ],
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "composite": true,
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",

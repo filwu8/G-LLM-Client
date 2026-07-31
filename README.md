@@ -73,6 +73,8 @@ pnpm install
 pnpm dev
 ```
 
+浏览器或 new-api 集成请遵循 [G-LLM 自定义 URL 协议说明](./docs/browser-deep-link.md)，第一阶段只使用 `gllm://open?source=new-api` 唤起客户端，不在链接中传递任何凭据。
+
 如果本机没有全局 Node.js，可以使用 Codex 工作区自带运行时：
 
 ```powershell

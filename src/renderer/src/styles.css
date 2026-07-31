@@ -1763,6 +1763,7 @@ img.space-logo {
 }
 
 .composer {
+  position: relative;
   display: grid;
   flex: 0 0 auto;
   gap: 8px;
@@ -4396,6 +4397,10 @@ img.space-logo {
   min-width: 0;
 }
 
+.composer .model-picker-dropdown.composer-model-picker {
+  position: static;
+}
+
 .model-dropdown-trigger {
   display: grid;
   width: 100%;
@@ -4479,6 +4484,10 @@ img.space-logo {
 .model-picker-dropdown.placement-top .model-dropdown-popover {
   top: auto;
   bottom: calc(100% + 8px);
+}
+
+.composer-model-picker .model-dropdown-popover {
+  width: min(560px, 100%);
 }
 
 .model-dropdown-popover .model-search-field {
