@@ -39,7 +39,7 @@
   "app": {
     "loading": "正在加载 G-LLM...",
     "newConversation": "新会话",
-    "defaultSpaceName": "无极界",
+    "defaultSpaceName": "G-LLM",
     "defaultSpace": "默认空间",
     "defaultSpaceDescription": "默认空间，用于保存你的通用助手、历史会话和全局资料",
     "unnamedSpace": "未命名空间",
@@ -142,7 +142,7 @@
     "createDescription": "创建后会自动切换到新空间。",
     "defaultLogo": "默认空间 Logo",
     "logo": "空间 Logo",
-    "defaultLogoDescription": "无极界默认空间使用固定 Logo，不支持修改。",
+    "defaultLogoDescription": "G-LLM 默认空间使用固定 Logo，不支持修改。",
     "logoDescription": "建议使用透明背景或简洁方形图片。",
     "optionalLogoDescription": "可选。建议使用透明背景或简洁方形图片。",
     "uploadLogo": "上传 Logo",
@@ -623,9 +623,9 @@
     "confirmRecoverRestart": "{{message}}\n\n现在重启 G-LLM 并载入该数据目录吗？"
   },
   "about": {
-    "productName": "无极界 G-LLM Client",
+    "productName": "G-LLM Client",
     "tagline": "本地优先的 AI 助手客户端",
-    "description": "无极界 G-LLM 面向企业和个人用户，提供多助手、多会话、模型供应商、本地知识库和长期记忆能力。用户数据默认保存在本机，可按需切换数据目录，便于备份、迁移和私有化使用。",
+    "description": "G-LLM Client 面向企业和个人用户，提供多助手、多会话、模型供应商、本地知识库和长期记忆能力。用户数据默认保存在本机，可按需切换数据目录，便于备份、迁移和私有化使用。",
     "version": "版本",
     "checking": "正在检查...",
     "checkUpdates": "检查新版本",
@@ -634,7 +634,7 @@
     "openDownloadPage": "前往官网下载页",
     "updateCheckFailed": "检查更新失败，请稍后重试。",
     "sourceAndCommercial": "源码与商业使用",
-    "licenseSummary": "V1.1.0 起允许个人和企业免费内部使用，当前 V{{version}} 将于 2030-07-14 自动转换为 AGPL-3.0-only。",
+    "licenseSummary": "V1.1.0 起允许个人和企业免费内部使用，当前 V{{version}} 将于 2030-08-01 自动转换为 AGPL-3.0-only。",
     "sourceLicense": "源码许可证",
     "thirdParty": "第三方声明",
     "commercialLicense": "商业授权",
@@ -705,7 +705,7 @@
       "local": "本地模型"
     },
     "templates": {
-      "gllm": { "name": "G-LLM", "description": "无极界默认网关" },
+      "gllm": { "name": "G-LLM", "description": "G-LLM 默认网关" },
       "openai-compatible": { "name": "OpenAI 兼容", "description": "兼容 /chat/completions 的自定义网关" },
       "openai": { "name": "OpenAI", "description": "OpenAI 官方兼容接口" },
       "google-gemini": { "name": "Google Gemini", "description": "Gemini OpenAI 兼容接口" },
@@ -728,7 +728,7 @@
   },
   "agreement": {
     "title": "使用协议",
-    "intro": "欢迎使用无极界 G-LLM。本软件是一个本地 AI 客户端，用于连接你配置的模型服务、管理助手、会话、附件、本地知识库和长期记忆。",
+    "intro": "欢迎使用 G-LLM Client。本软件是一个本地 AI 客户端，用于连接你配置的模型服务、管理助手、会话、附件、本地知识库和长期记忆。",
     "localDataTitle": "本地数据",
     "localData": "你的聊天记录、助手配置、本地知识库、长期记忆和供应商配置默认保存在当前设备本地。请自行做好重要数据备份，并妥善保管 API Key。",
     "recoverHint": "如果你重装过系统、移动过软件目录，或已经有以前备份的 G-LLM 数据目录，可以选择该目录并重启软件恢复数据。",
@@ -790,7 +790,7 @@
       "medicalTone": "谨慎、清晰、负责任",
       "businessTone": "结构化、重判断",
       "defaultTone": "清晰、专业",
-      "fallbackSystemPrompt": "你是无极界 G-LLM 的「{{keyword}}」助手。先澄清场景目标，再给出结论、依据和下一步动作三段式回答。默认使用用户当前语言回答。回答要清晰、可执行、可验证；涉及高风险事项时必须先说明局限，并建议用户咨询专业人士或核实权威信息。必要时主动给出可执行清单和验收标准。",
+      "fallbackSystemPrompt": "你是 G-LLM Client 的「{{keyword}}」助手。先澄清场景目标，再给出结论、依据和下一步动作三段式回答。默认使用用户当前语言回答。回答要清晰、可执行、可验证；涉及高风险事项时必须先说明局限，并建议用户咨询专业人士或核实权威信息。必要时主动给出可执行清单和验收标准。",
       "starterAnalyze": "帮我分析一个{{keyword}}相关问题",
       "starterAdvice": "给我一份{{keyword}}的处理建议",
       "starterPlan": "把下面内容整理成{{keyword}}工作方案"

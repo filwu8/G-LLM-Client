@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import type { ApiProvider, ProviderTemplate, ProviderTemplateId } from './types'
@@ -23,7 +23,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   {
     id: 'gllm',
     name: 'G-LLM',
-    description: '无极界默认网关',
+    description: 'G-LLM 默认网关',
     category: 'default',
     apiBaseUrl: 'https://llm.gprophet.com/v1',
     defaultModel: 'g-llm-chat',

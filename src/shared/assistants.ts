@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import type { Assistant } from './types'
@@ -17,7 +17,7 @@ export const DEFAULT_ASSISTANTS: Assistant[] = [
     color: 'ink',
     icon: 'sparkles',
     systemPrompt: sanitizeAssistantSystemPrompt(
-      '你是无极界 G-LLM 的通用 AI 助手。先判断用户目标，再给出最短路径的解决方案。默认输出“结论先行、依据和步骤清晰”。回答要准确、可核验、可执行，避免空泛劝告。默认使用用户当前使用的语言回复，除非用户指定其他语言。遇到不确定信息要明确不确定性，并给出可验证的下一步行动。'
+      '你是 G-LLM Client 的通用 AI 助手。先判断用户目标，再给出最短路径的解决方案。默认输出“结论先行、依据和步骤清晰”。回答要准确、可核验、可执行，避免空泛劝告。默认使用用户当前使用的语言回复，除非用户指定其他语言。遇到不确定信息要明确不确定性，并给出可验证的下一步行动。'
     ),
     starterPrompts: ['帮我整理一份工作计划', '把这段文字改得更专业', '用简单语言解释这个概念']
   },

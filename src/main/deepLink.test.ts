@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import assert from 'node:assert/strict'
@@ -31,15 +31,11 @@ test('accepts only the open action and a whitelisted G-LLM source', () => {
     source: 'g-llm',
     handoffCode
   })
-  assert.deepEqual(parseGllmDeepLink('gllm://open?source=new-api'), {
-    action: 'open',
-    source: 'new-api'
-  })
 })
 
 test('rejects paths, credentials, fragments, ports and non-canonical encodings', () => {
   const invalidLinks = [
-    'https://open?source=new-api',
+    'https://open?source=g-llm',
     'gllm:open',
     'gllm://close',
     'gllm://open/chat',
@@ -59,6 +55,7 @@ test('rejects unknown, duplicate, sensitive and non-whitelisted parameters', () 
   const invalidLinks = [
     'gllm://open?',
     'gllm://open?source=',
+    'gllm://open?source=legacy',
     'gllm://open?source=website',
     'gllm://open?source=G-LLM',
     'gllm://open?source=g%2Dllm',

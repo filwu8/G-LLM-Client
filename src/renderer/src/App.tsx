@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import {
@@ -289,7 +289,7 @@ function formatTokenUnit(value: number): string {
 
 function getSpaceName(project: Project | null): string {
   if (!project) return rendererI18n.t('app.defaultSpaceName')
-  if (project.id === defaultSpaceId && (!project.name || project.name === '默认项目' || project.name === '无极界')) {
+  if (project.id === defaultSpaceId) {
     return rendererI18n.t('app.defaultSpaceName')
   }
   return project.name || rendererI18n.t('app.unnamedSpace')

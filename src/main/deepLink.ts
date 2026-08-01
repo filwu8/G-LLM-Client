@@ -1,14 +1,14 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 export const GLLM_DEEP_LINK_SCHEME = 'gllm'
 
 export interface GllmDeepLink {
   action: 'open'
-  source?: 'g-llm' | 'new-api'
+  source?: 'g-llm'
   handoffCode?: string
 }
 
@@ -19,7 +19,7 @@ export type GllmDeepLinkArgumentResult =
 
 const MAX_DEEP_LINK_LENGTH = 256
 const ALLOWED_BASE_URLS = new Set(['gllm://open', 'gllm://open/'])
-const ALLOWED_SOURCES = new Set(['g-llm', 'new-api'])
+const ALLOWED_SOURCES = new Set(['g-llm'])
 
 function isPotentialGllmDeepLink(value: string): boolean {
   return value.slice(0, `${GLLM_DEEP_LINK_SCHEME}:`.length).toLowerCase() === `${GLLM_DEEP_LINK_SCHEME}:`
@@ -40,8 +40,8 @@ export function parseGllmDeepLink(value: string): GllmDeepLink | null {
   const rawQuery = queryIndex === -1 ? '' : value.slice(queryIndex + 1)
 
   if (!ALLOWED_BASE_URLS.has(rawBase.toLowerCase())) return null
-  const queryMatch = rawQuery.match(/^source=(g-llm|new-api)$/)
-  const handoffMatch = rawQuery.match(/^source=(g-llm|new-api)&handoff=([A-Za-z0-9]{64})$/)
+  const queryMatch = rawQuery.match(/^source=(g-llm)$/)
+  const handoffMatch = rawQuery.match(/^source=(g-llm)&handoff=([A-Za-z0-9]{64})$/)
   if (queryIndex !== -1 && !queryMatch && !handoffMatch) return null
   const source = (handoffMatch?.[1] ?? queryMatch?.[1]) as GllmDeepLink['source']
   const handoffCode = handoffMatch?.[2]

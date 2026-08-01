@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
@@ -216,7 +216,7 @@ const FLOATING_HINT_WIDTH = 246
 const FLOATING_HINT_HEIGHT = 98
 const FLOATING_HINT_GAP = 8
 const SCREENSHOT_WINDOW_HIDE_DELAY_MS = 180
-const APP_USER_MODEL_ID = 'com.gllm.wujijie'
+const APP_USER_MODEL_ID = 'com.gprophet.gllmclient'
 const supportsFloatingMascot = process.platform === 'win32' || process.platform === 'darwin'
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 const startupDeepLinkResult = inspectGllmDeepLinkArguments(process.argv)

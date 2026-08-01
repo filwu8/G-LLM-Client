@@ -1,7 +1,7 @@
 {
   "name": "g-llm-client",
-  "version": "1.2.5",
-  "description": "WujiJie / G-LLM desktop client",
+  "version": "2.0.0",
+  "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
   "license": "BUSL-1.1",
@@ -61,11 +61,11 @@
     "vite": "^7.0.0"
   },
   "build": {
-    "appId": "com.gllm.wujijie",
+    "appId": "com.gprophet.gllmclient",
     "productName": "G-LLM Client",
     "protocols": [
       {
-        "name": "com.gllm.wujijie",
+        "name": "G-LLM Client",
         "schemes": [
           "gllm"
         ]

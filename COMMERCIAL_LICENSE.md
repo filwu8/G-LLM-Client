@@ -6,7 +6,7 @@ granted only by a separate written agreement signed by GPROPHET LIMITED.
 
 ## Source-Available License
 
-G-LLM Client V1.2.5 is available under the Business Source License
+G-LLM Client V2.0.0 is available under the Business Source License
 1.1 (`BUSL-1.1`) with an Additional Use Grant.
 
 Without charge, individuals and organizations may:
@@ -29,8 +29,8 @@ These uses require a separate commercial license.
 
 ## Automatic Open-Source Conversion
 
-G-LLM Client V1.2.5 will automatically convert to
-`AGPL-3.0-only` on 2030-07-14, or earlier if required by the Business Source
+G-LLM Client V2.0.0 will automatically convert to
+`AGPL-3.0-only` on 2030-08-01, or earlier if required by the Business Source
 License 1.1 terms.
 
 Each later release is licensed separately and must state its own Change Date
@@ -62,7 +62,7 @@ must be agreed in a separate written contract.
 
 No source license automatically grants:
 
-- rights to the G-LLM, WujiJie, or 无极界 names, logos, icons, slogans, or
+- rights to the G-LLM or G-LLM Client names, logos, icons, slogans, or
   visual identity;
 - rights to claim official endorsement or partnership;
 - access to G-LLM hosted services, paid APIs, private datasets, or private
@@ -82,10 +82,10 @@ Website: https://llm.gprophet.com/
 
 ## 中文摘要
 
-G-LLM Client V1.2.5 采用 Business Source License 1.1。个人使用、
+G-LLM Client V2.0.0 采用 Business Source License 1.1。个人使用、
 学习研究、测试评估以及企业内部使用免费；未经书面商业授权，不得用于白标、
 OEM、转售、竞品分发或向第三方提供托管、管理服务，也不得绕过授权校验和
 付费功能控制。
 
-V1.2.5 将于 2030-07-14 自动转换为 AGPL-3.0-only。V1.0.10 及以前
+V2.0.0 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前
 版本继续适用相应历史版本中已经包含的 AGPL-3.0-only，不追溯撤回。

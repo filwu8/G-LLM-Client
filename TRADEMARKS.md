@@ -7,9 +7,7 @@ Current source is available under BUSL-1.1, while V1.0.10 and earlier remain und
 The following names, marks, and assets are reserved by GPROPHET LIMITED:
 
 - G-LLM
-- WujiJie
-- 无极界
-- G-LLM Desktop
+- G-LLM Client
 - G-LLM logos, icons, slogans, product images, and visual identity
 - Global Intelligence · Limitless Possibilities
 
@@ -27,9 +25,9 @@ These uses must not imply official endorsement, partnership, certification, or a
 
 Without written permission, you may not:
 
-- Publish a modified version as "G-LLM", "WujiJie", or "无极界".
+- Publish a modified version as "G-LLM" or "G-LLM Client".
 - Use G-LLM logos or icons in your own product, website, installer, app icon, or marketing materials.
-- Register domain names, social accounts, app store listings, or trademarks that may be confused with G-LLM or 无极界.
+- Register domain names, social accounts, app store listings, or trademarks that may be confused with G-LLM or G-LLM Client.
 - Claim that your fork, service, model gateway, or plugin is official.
 - Use the brand in a way that harms the reputation of the project or misleads users.
 
@@ -56,9 +54,9 @@ Website: https://llm.gprophet.com/
 
 ## 中文说明
 
-当前开发版本源码采用 BUSL-1.1；V1.0.10 及以前版本继续适用相应发布标签中的许可证。任何源码许可证都不等于品牌、商标或 Logo 授权。G-LLM、WujiJie、无极界及相关品牌资产由 GPROPHET LIMITED 保留权利。
+当前开发版本源码采用 BUSL-1.1；V1.0.10 及以前版本继续适用相应发布标签中的许可证。任何源码许可证都不等于品牌、商标或 Logo 授权。G-LLM、G-LLM Client 及相关品牌资产由 GPROPHET LIMITED 保留权利。
 
-未经书面授权，不得使用 "G-LLM"、"WujiJie"、"无极界" 或相关 Logo、图标、宣传语、视觉资产发布修改版、白标版、商业发行版或对外服务。
+未经书面授权，不得使用 "G-LLM"、"G-LLM Client" 或相关 Logo、图标、宣传语、视觉资产发布修改版、白标版、商业发行版或对外服务。
 
 只有在相应源码许可证或商业授权允许分发时，才可以对外发布衍生版本；发布时必须使用自己的产品名称和 Logo，并清楚说明该版本是基于 G-LLM 源码可见项目的衍生版本。
 

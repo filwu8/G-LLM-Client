@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 GPROPHET LIMITED
  * SPDX-License-Identifier: BUSL-1.1
- * Change Date: 2030-07-14
+ * Change Date: 2030-08-01
  */
 
 import { app } from 'electron'
@@ -633,7 +633,7 @@ function storageT(key: string, options?: TOptions): string {
   return mainT(key, sanitizeAppLanguage(settings.language), options)
 }
 
-const defaultProjectName = '无极界'
+const defaultProjectName = 'G-LLM'
 const defaultProjectDescription = '默认空间，用于保存你的通用助手、历史会话和全局资料'
 
 function getDefaultProject(): Project {
@@ -656,7 +656,7 @@ function sanitizeProject(project: Project): Project {
 
   return {
     id,
-    name: isDefaultProject && (!rawName || rawName === '默认项目') ? defaultProjectName : rawName || '未命名空间',
+    name: isDefaultProject ? defaultProjectName : rawName || '未命名空间',
     description:
       isDefaultProject && (!rawDescription || rawDescription === '迁移后的历史数据与全局资料')
         ? defaultProjectDescription

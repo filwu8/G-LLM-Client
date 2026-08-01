@@ -634,7 +634,7 @@
     "openDownloadPage": "Open download page",
     "updateCheckFailed": "Could not check for updates. Try again later.",
     "sourceAndCommercial": "Source and commercial use",
-    "licenseSummary": "Since V1.1.0, individuals and organizations may use G-LLM internally at no cost. V{{version}} converts to AGPL-3.0-only on July 14, 2030.",
+    "licenseSummary": "Since V1.1.0, individuals and organizations may use G-LLM internally at no cost. V{{version}} converts to AGPL-3.0-only on August 1, 2030.",
     "sourceLicense": "Source license",
     "thirdParty": "Third-party notices",
     "commercialLicense": "Commercial licensing",

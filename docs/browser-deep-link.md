@@ -29,7 +29,7 @@ gllm://open?source=g-llm&handoff=<64 位一次性授权码>
 - 协议：`gllm:`
 - host：`open`
 - path：空路径或根路径 `/`
-- 参数：无参数、唯一参数 `source=g-llm`，或严格顺序的 `source=g-llm&handoff=<64 位字母数字授权码>`；旧版 `source=new-api` 仅作为兼容输入保留。
+- 参数：无参数、唯一参数 `source=g-llm`，或严格顺序的 `source=g-llm&handoff=<64 位字母数字授权码>`。
 
 其他 action/path、fragment、端口、用户名密码、未知参数、重复参数、非白名单 `source` 以及任何编码后的替代写法都会被拒绝。协议不会接收或传递 access token、API key、登录态、命令、脚本或文件路径；拒绝日志也不会写入原始 URL。进程参数完成解析后还会立刻把授权码替换为不含凭据的普通唤起链接。
 
