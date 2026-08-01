@@ -7,8 +7,9 @@
 export const GLLM_DEEP_LINK_SCHEME = 'gllm'
 
 export interface GllmDeepLink {
-  action: 'open'
+  action: 'open' | 'import-provider'
   source?: 'g-llm'
+  theme?: 'gold'
   handoffCode?: string
 }
 
@@ -19,6 +20,7 @@ export type GllmDeepLinkArgumentResult =
 
 const MAX_DEEP_LINK_LENGTH = 256
 const ALLOWED_BASE_URLS = new Set(['gllm://open', 'gllm://open/'])
+const PROVIDER_IMPORT_BASE_URL = 'gllm://providers/api-keys'
 const ALLOWED_SOURCES = new Set(['g-llm'])
 
 function isPotentialGllmDeepLink(value: string): boolean {
@@ -38,6 +40,38 @@ export function parseGllmDeepLink(value: string): GllmDeepLink | null {
   const queryIndex = value.indexOf('?')
   const rawBase = queryIndex === -1 ? value : value.slice(0, queryIndex)
   const rawQuery = queryIndex === -1 ? '' : value.slice(queryIndex + 1)
+
+  if (rawBase.toLowerCase() === PROVIDER_IMPORT_BASE_URL) {
+    const providerMatch = rawQuery.match(/^v=1&source=(g-llm)(?:&theme=(gold))?&handoff=([A-Za-z0-9]{64})$/)
+    if (!providerMatch) return null
+
+    try {
+      const url = new URL(value)
+      if (url.protocol.toLowerCase() !== `${GLLM_DEEP_LINK_SCHEME}:`) return null
+      if (url.hostname.toLowerCase() !== 'providers' || url.pathname !== '/api-keys') return null
+      if (url.username || url.password || url.port || url.hash) return null
+
+      const parameters = [...url.searchParams.entries()]
+      const expectedParameters = providerMatch[2]
+        ? [['v', '1'], ['source', providerMatch[1]], ['theme', providerMatch[2]], ['handoff', providerMatch[3]]]
+        : [['v', '1'], ['source', providerMatch[1]], ['handoff', providerMatch[3]]]
+      if (
+        parameters.length !== expectedParameters.length ||
+        parameters.some(([key, parameterValue], index) => (
+          key !== expectedParameters[index][0] || parameterValue !== expectedParameters[index][1]
+        ))
+      ) return null
+
+      return {
+        action: 'import-provider',
+        source: 'g-llm',
+        ...(providerMatch[2] ? { theme: providerMatch[2] as GllmDeepLink['theme'] } : {}),
+        handoffCode: providerMatch[3]
+      }
+    } catch {
+      return null
+    }
+  }
 
   if (!ALLOWED_BASE_URLS.has(rawBase.toLowerCase())) return null
   const queryMatch = rawQuery.match(/^source=(g-llm)$/)

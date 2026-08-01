@@ -336,6 +336,7 @@ export interface ProviderCheckResult {
 export interface ThemeEntitlementResult {
   ok: boolean
   eligible: boolean
+  reviewComplete: boolean
   message: string
   totalRequests: number
   officialRequests: number

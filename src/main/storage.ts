@@ -44,6 +44,10 @@ import type {
   WebSearchActivity,
   WebSearchResult
 } from '../shared/types'
+import {
+  GOLD_THEME_REVIEW_REQUEST_COUNT,
+  evaluateGoldThemeEligibility
+} from '../shared/themeEntitlement'
 import { sanitizeAppLanguage } from '../shared/i18n'
 import { mainT } from './i18n'
 
@@ -1259,25 +1263,28 @@ export function recordThemeRequestUsage(official: boolean): ThemeRequestUsage {
 
 export function getGoldThemeEntitlement(): ThemeEntitlementResult {
   const usage = getThemeRequestUsage()
-  const officialRequestRatio = usage.totalRequests > 0 ? usage.officialRequests / usage.totalRequests : 0
-  const eligible = usage.totalRequests > 0 && officialRequestRatio > 0.5
-  const percentage = (officialRequestRatio * 100).toFixed(1).replace(/\.0$/, '')
+  const eligibility = evaluateGoldThemeEligibility(usage.totalRequests, usage.officialRequests)
+  const percentage = (eligibility.officialRequestRatio * 100).toFixed(1).replace(/\.0$/, '')
   const summary = storageT('main.theme.requestSummary', {
-    official: usage.officialRequests,
-    total: usage.totalRequests,
+    official: eligibility.officialRequests,
+    total: eligibility.totalRequests,
     percentage
   })
 
   return {
     ok: true,
-    eligible,
-    totalRequests: usage.totalRequests,
-    officialRequests: usage.officialRequests,
-    officialRequestRatio,
-    message: eligible
-      ? storageT('main.theme.eligible', { summary })
-      : usage.totalRequests === 0
-        ? storageT('main.theme.noUsage')
+    eligible: eligibility.eligible,
+    reviewComplete: eligibility.reviewComplete,
+    totalRequests: eligibility.totalRequests,
+    officialRequests: eligibility.officialRequests,
+    officialRequestRatio: eligibility.officialRequestRatio,
+    message: !eligibility.reviewComplete
+      ? storageT('main.theme.observationPeriod', {
+          current: eligibility.totalRequests,
+          required: GOLD_THEME_REVIEW_REQUEST_COUNT
+        })
+      : eligibility.eligible
+        ? storageT('main.theme.eligible', { summary })
         : storageT('main.theme.notEligible', { summary })
   }
 }

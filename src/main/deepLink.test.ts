@@ -15,7 +15,7 @@ import {
 
 const handoffCode = 'a'.repeat(64)
 
-test('accepts only the open action and a whitelisted G-LLM source', () => {
+test('accepts the open and versioned provider-import actions', () => {
   assert.deepEqual(parseGllmDeepLink('gllm://open'), { action: 'open' })
   assert.deepEqual(parseGllmDeepLink('gllm://open/'), { action: 'open' })
   assert.deepEqual(parseGllmDeepLink('gllm://open?source=g-llm'), {
@@ -31,6 +31,23 @@ test('accepts only the open action and a whitelisted G-LLM source', () => {
     source: 'g-llm',
     handoffCode
   })
+  assert.deepEqual(
+    parseGllmDeepLink(`gllm://providers/api-keys?v=1&source=g-llm&handoff=${handoffCode}`),
+    {
+      action: 'import-provider',
+      source: 'g-llm',
+      handoffCode
+    }
+  )
+  assert.deepEqual(
+    parseGllmDeepLink(`gllm://providers/api-keys?v=1&source=g-llm&theme=gold&handoff=${handoffCode}`),
+    {
+      action: 'import-provider',
+      source: 'g-llm',
+      theme: 'gold',
+      handoffCode
+    }
+  )
 })
 
 test('rejects paths, credentials, fragments, ports and non-canonical encodings', () => {
@@ -66,7 +83,16 @@ test('rejects unknown, duplicate, sensitive and non-whitelisted parameters', () 
     `gllm://open?source=g-llm&handoff=${handoffCode}&api_key=secret`,
     'gllm://open?token=secret',
     'gllm://open?access_token=secret',
-    'gllm://open?api_key=secret'
+    'gllm://open?api_key=secret',
+    'gllm://providers/api-keys',
+    'gllm://providers/api-keys?v=1&source=g-llm',
+    `gllm://providers/api-keys?source=g-llm&v=1&handoff=${handoffCode}`,
+    `gllm://providers/api-keys?v=2&source=g-llm&handoff=${handoffCode}`,
+    `gllm://providers/api-keys?v=1&source=g-llm&theme=dark&handoff=${handoffCode}`,
+    `gllm://providers/api-keys?v=1&source=g-llm&handoff=${handoffCode}&theme=gold`,
+    `gllm://providers/api-keys?v=1&source=g-llm&theme=gold&theme=gold&handoff=${handoffCode}`,
+    `gllm://providers/api-keys?v=1&source=g-llm&handoff=${handoffCode}&api_key=secret`,
+    `gllm://providers/other?v=1&source=g-llm&handoff=${handoffCode}`
   ]
 
   for (const link of invalidLinks) assert.equal(parseGllmDeepLink(link), null, link)

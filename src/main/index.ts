@@ -22,7 +22,8 @@ import {
   type Point,
   type Rectangle
 } from 'electron'
-import { appendFileSync, mkdirSync, statSync } from 'node:fs'
+import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -256,6 +257,8 @@ if (!gotSingleInstanceLock) {
   app.quit()
 }
 
+if (gotSingleInstanceLock) registerGllmDeepLinkProtocol()
+
 app.on('open-url', (event, url) => {
   event.preventDefault()
   if (gotSingleInstanceLock) receiveDeepLink(url, 'macOS open-url event')
@@ -363,8 +366,16 @@ function showExistingInstance(): void {
 
 function showMainWindowForDeepLink(link: GllmDeepLink, origin: string): void {
   const source = link.source ? `, source=${link.source}` : ''
-  writeMainLog(`Accepted G-LLM deep link from ${origin}: action=${link.action}${source}.`)
+  const requestedTheme = link.theme ? `, theme=${link.theme}` : ''
+  writeMainLog(`Accepted G-LLM deep link from ${origin}: action=${link.action}${source}${requestedTheme}.`)
+
+  let deepLinkSettings: AppSettings | undefined
+  if (link.theme === 'gold') {
+    deepLinkSettings = setSettings({ ...getSettings(), theme: 'gold' })
+  }
+
   const window = createWindow()
+  if (deepLinkSettings) broadcastSettingsChange(deepLinkSettings)
   if (process.platform === 'darwin') app.focus({ steal: true })
   if (window.isMinimized()) window.restore()
   window.show()
@@ -389,17 +400,48 @@ function receiveDeepLink(url: string, origin: string): void {
   showMainWindowForDeepLink(link, origin)
 }
 
-function registerDevelopmentDeepLinkProtocol(): void {
-  if (app.isPackaged || process.platform !== 'win32') return
+function registerGllmDeepLinkProtocol(): void {
+  let registered = false
 
-  const appEntry = process.argv[1]
-  if (!process.defaultApp || !appEntry) {
-    writeMainLog('Skipped development G-LLM protocol registration: Electron app entry was not available.')
-    return
+  if (process.defaultApp) {
+    const appEntry = process.argv[1]
+    if (!appEntry) {
+      writeMainLog('Skipped development G-LLM protocol registration: Electron app entry was not available.')
+      return
+    }
+    registered = app.setAsDefaultProtocolClient(GLLM_DEEP_LINK_SCHEME, process.execPath, [resolve(appEntry)])
+  } else {
+    registered = app.setAsDefaultProtocolClient(GLLM_DEEP_LINK_SCHEME)
   }
 
-  const registered = app.setAsDefaultProtocolClient(GLLM_DEEP_LINK_SCHEME, process.execPath, [resolve(appEntry)])
-  writeMainLog(`Development G-LLM protocol registration ${registered ? 'succeeded' : 'failed'}.`)
+  writeMainLog(`G-LLM protocol registration ${registered ? 'succeeded' : 'failed'}.`)
+}
+
+function setupLinuxAppImageDeepLinkProtocol(): void {
+  if (process.platform !== 'linux' || !process.env.APPIMAGE) return
+
+  try {
+    const applicationsDirectory = join(app.getPath('home'), '.local', 'share', 'applications')
+    const desktopFile = join(applicationsDirectory, 'g-llm-client-url-handler.desktop')
+    const appImagePath = resolve(process.env.APPIMAGE)
+    const escapedAppImagePath = appImagePath
+      .replaceAll('\\', '\\\\')
+      .replaceAll('"', '\\"')
+      .replaceAll('$', '\\$')
+      .replaceAll('`', '\\`')
+
+    mkdirSync(applicationsDirectory, { recursive: true })
+    writeFileSync(
+      desktopFile,
+      `[Desktop Entry]\nName=G-LLM Client\nExec="${escapedAppImagePath}" %U\nTerminal=false\nType=Application\nMimeType=x-scheme-handler/${GLLM_DEEP_LINK_SCHEME};\nNoDisplay=true\n`,
+      { encoding: 'utf8', mode: 0o644 }
+    )
+    execFile('update-desktop-database', [applicationsDirectory], (error) => {
+      if (error) writeMainLog('Failed to refresh Linux desktop protocol database.', error)
+    })
+  } catch (error) {
+    writeMainLog('Failed to install Linux AppImage protocol handler.', error)
+  }
 }
 
 async function importGllmHandoff(code: string): Promise<void> {
@@ -1355,7 +1397,7 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_USER_MODEL_ID)
   Menu.setApplicationMenu(null)
   registerDataResourceProtocol()
-  registerDevelopmentDeepLinkProtocol()
+  setupLinuxAppImageDeepLinkProtocol()
 
   if (startupDeepLinkResult.kind === 'invalid') {
     writeMainLog('Rejected invalid G-LLM deep link from startup arguments.')

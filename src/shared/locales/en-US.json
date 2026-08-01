@@ -569,8 +569,8 @@
       "darkDescription": "Focused and subdued",
       "gold": "Gold",
       "goldDescription": "Premium finish",
-      "eligibilityHint": "Checks the share of usage through the official G-LLM service when selected",
-      "eligibilityRequired": "Official G-LLM usage must exceed 50%",
+      "eligibilityHint": "The first 10 requests are an observation period; official G-LLM usage is checked afterward",
+      "eligibilityRequired": "Official G-LLM usage must exceed 50% after the observation period",
       "checkingEligibility": "Checking official G-LLM usage share..."
       },
       "timeZone": {
@@ -773,8 +773,9 @@
     },
     "theme": {
       "requestSummary": "{{official}}/{{total}} requests ({{percentage}}%)",
+      "observationPeriod": "Gold theme observation period: {{current}}/{{required}} requests recorded. Gold remains available until the official usage check begins",
       "eligible": "Gold theme unlocked: {{summary}} used the official G-LLM service",
-      "noUsage": "Gold theme is not available yet: there is no model usage history, and official G-LLM usage must exceed 50%",
+      "noUsage": "Gold remains available during the observation period; official usage is checked after 10 requests",
       "notEligible": "Gold theme is not available yet: official G-LLM usage is {{summary}} and must exceed 50%"
     },
     "provider": {

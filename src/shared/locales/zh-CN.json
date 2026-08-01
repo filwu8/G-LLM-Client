@@ -569,8 +569,8 @@
       "darkDescription": "沉浸克制",
       "gold": "金色",
       "goldDescription": "专业尊享",
-      "eligibilityHint": "选择时检测官方 G-LLM 调用占比",
-      "eligibilityRequired": "官方调用占比需超过 50%",
+      "eligibilityHint": "前 10 次调用为观察期，之后检测官方 G-LLM 调用占比",
+      "eligibilityRequired": "观察期结束后，官方调用占比需超过 50%",
       "checkingEligibility": "正在统计官方 G-LLM 调用占比..."
       },
       "timeZone": {
@@ -773,8 +773,9 @@
     },
     "theme": {
       "requestSummary": "{{official}}/{{total}} 次（{{percentage}}%）",
+      "observationPeriod": "金色主题观察期：已累计 {{current}}/{{required}} 次调用；观察期内可直接使用，结束后再按官方调用占比判断",
       "eligible": "已满足金色主题条件：官方 G-LLM 调用 {{summary}}",
-      "noUsage": "暂时不能使用金色主题：尚无模型调用记录，官方 G-LLM 调用占比需超过 50%",
+      "noUsage": "金色主题观察期内可直接使用，累计 10 次调用后再按官方调用占比判断",
       "notEligible": "暂时不能使用金色主题：官方 G-LLM 调用 {{summary}}，占比需超过 50%"
     },
     "provider": {
