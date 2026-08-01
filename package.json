@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",

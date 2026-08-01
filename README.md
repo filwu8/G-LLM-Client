@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.1](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.2](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.1](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.1)，发布于 2026-08-01。
+最近稳定发布：[V2.0.2](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.2)，发布于 2026-08-01。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.1 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.2 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,10 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.2 安装器许可信息修正
+
+- 统一安装器、内置许可文件和版本元数据，避免用户协议显示旧版本号。
 
 ## V2.0.1 浏览器唤起与金色模式
 
@@ -152,11 +156,11 @@ Authorization: Bearer {apiKey}
 
 ## License
 
-G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.1 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.2 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V2.0.1 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V2.0.2 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

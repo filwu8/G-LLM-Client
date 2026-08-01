@@ -1,13 +1,13 @@
-G-LLM Desktop Client
+G-LLM Client
 
 Copyright (c) 2026 GPROPHET LIMITED. All rights reserved except for rights
 expressly granted by the applicable source license.
 
-G-LLM Client V2.0.0 is licensed under the Business Source License
+The current G-LLM Client release is licensed under the Business Source License
 1.1 (BUSL-1.1), including the Additional Use Grant in the LICENSE file.
-V2.0.0 changes to AGPL-3.0-only on 2030-08-01.
+This release changes to AGPL-3.0-only on 2030-08-01.
 
-G-LLM Desktop Client V1.0.10 and earlier remain under the license included in
+G-LLM Client V1.0.10 and earlier remain under the license included in
 their corresponding release tags.
 
 Commercial licensing, OEM cooperation, enterprise deployment, hosted or

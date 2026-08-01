@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.1](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.2](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.1](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.1), released on 2026-08-01.
+Latest stable release: [V2.0.2](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.2), released on 2026-08-01.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.1 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.2 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,10 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.2 Installer License Metadata Fix
+
+- Aligned installer agreements, bundled license files, and version metadata so the installer no longer displays a stale version number.
 
 ## V2.0.1 Browser Launch and Gold Theme
 
@@ -145,11 +149,11 @@ Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.
 
 ## License
 
-G-LLM Client is published by GPROPHET LIMITED. The current V2.0.1 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Client is published by GPROPHET LIMITED. The current V2.0.2 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V2.0.1 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+V2.0.2 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 
