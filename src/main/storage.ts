@@ -1009,6 +1009,9 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
     reasoningEffort: sanitizeReasoningEffort(conversation.reasoningEffort),
     workspace,
     projectMemory,
+    pinnedAt: Number.isFinite(conversation.pinnedAt) && Number(conversation.pinnedAt) > 0
+      ? Number(conversation.pinnedAt)
+      : undefined,
     totalTokens,
     totalInputTokens,
     totalOutputTokens,
@@ -1130,6 +1133,9 @@ function sanitizeAssistant(assistant: Assistant, fallbackProjectId = getActivePr
     projectId: sanitizeProjectId(assistant.projectId, fallbackProjectId),
     builtIn: Boolean(assistant.builtIn),
     hidden: Boolean(assistant.hidden),
+    pinnedAt: Number.isFinite(assistant.pinnedAt) && Number(assistant.pinnedAt) > 0
+      ? Number(assistant.pinnedAt)
+      : undefined,
     name: assistant.name.trim() || '未命名助手',
     title: assistant.title.trim() || '自定义助手',
     tone: assistant.tone.trim() || '专属助手',

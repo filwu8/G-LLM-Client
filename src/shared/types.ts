@@ -165,6 +165,7 @@ export interface Assistant {
   modelId?: string
   builtIn?: boolean
   hidden?: boolean
+  pinnedAt?: number
   createdAt?: number
   updatedAt?: number
 }
@@ -180,6 +181,7 @@ export interface Conversation {
   reasoningEffort?: ReasoningEffort
   workspace?: ConversationWorkspace
   projectMemory?: ConversationProjectMemory
+  pinnedAt?: number
   totalTokens?: number
   totalInputTokens?: number
   totalOutputTokens?: number
@@ -527,7 +529,7 @@ export interface FloatingMascotHintEvent {
 }
 
 export interface ConversationChangeEvent {
-  action: 'saved' | 'deleted'
+  action: 'saved' | 'deleted' | 'metadata'
   conversationId: string
   conversations: Conversation[]
 }
@@ -536,10 +538,23 @@ export interface AppUpdateInfo {
   currentVersion: string
   latestVersion?: string
   updateAvailable: boolean
-  status: 'available' | 'latest' | 'unavailable'
+  status:
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'downloading'
+    | 'downloaded'
+    | 'latest'
+    | 'unavailable'
+    | 'unsupported'
+    | 'error'
+  automaticUpdateSupported: boolean
   downloadPageUrl: string
   releaseNotes?: string
   updatedAt?: string
+  downloadProgress?: number
+  transferredBytes?: number
+  totalBytes?: number
   message: string
 }
 

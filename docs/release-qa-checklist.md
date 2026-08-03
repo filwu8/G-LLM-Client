@@ -7,7 +7,7 @@
 - 对照 [多端开发规范](./multi-platform-development-guidelines.md)，确认共享 UI/业务改动没有被做成平台分叉。
 - 确认 `package.json` 版本号与发布版本一致。
 - 执行 `git status -sb`，正式发布包必须来自干净工作区中的已提交 commit。
-- 执行 `pnpm build`，确保 TypeScript 和前端构建通过。
+- 执行 `pnpm test && pnpm build`，确保单元测试、TypeScript 和前端构建通过。
 - 执行 `pnpm licenses:generate`，确认 `THIRD_PARTY_NOTICES.md` 与锁定的生产依赖一致，且没有无法识别的许可证。
 - 确认 `LICENSE` 中的 Licensed Work 版本、Change Date 和 Change License 与本次发布一致；不得沿用上一版本参数而不复核。
 - 确认 `README.md`、`README.en-US.md`、`NOTICE`、安装协议和应用“关于本系统”中的许可说明一致。
@@ -20,6 +20,8 @@
 - macOS 执行 `pnpm package:mac`，确认生成 macOS 产物。
 - Linux 执行 `pnpm package:linux`，确认生成 AppImage 和 deb 产物。
 - 发布前记录 Windows 安装包 SHA256，便于排查不同机器下载到的是否是同一个文件。
+- 确认 Release 同时包含 `latest.yml`、`latest-mac.yml`、对应安装包/ZIP 和 `SHA256SUMS-*.txt`，并通过 `gh attestation verify`。
+- 取得平台证书并启用自动更新后，确认 GitHub 已启用 Release immutability，`production-release` Environment 需要他人审批且禁止自审。
 
 ## Windows 验收
 
@@ -42,6 +44,8 @@
 - 截图或图片附件右键可以复制图片，并能粘贴到微信、浏览器输入框或其他程序。
 - 自己发送过的历史消息可以选择、复制和引用。
 - 固定任务栏后再次启动可以复用已有进程，不闪退。
+- 启用签名自动更新后，从上一签名版本检查更新，可以发现本次版本；确认后正常显示下载进度，下载完成后“重启并安装”和“退出时安装”均可升级且保留用户数据。
+- 启用签名自动更新后，篡改下载文件、签名无效或发布者不匹配时，客户端拒绝安装。
 - 如果用户反馈闪退，先收集 `%APPDATA%/G-LLM/logs/main.log`。
 
 ## macOS 验收
@@ -52,7 +56,8 @@
 - 关闭窗口、Dock 图标和菜单栏行为符合 macOS 常规习惯。
 - 从浏览器打开 `gllm://open?source=g-llm`，冷启动和已运行状态都能显示并聚焦主窗口。
 - 非白名单 `gllm` 链接不会触发深链接动作。
-- 未配置 Apple Developer 签名和公证时，记录 Gatekeeper 提示，不把它误判为代码功能问题。
+- 启用平台签名后，`codesign --verify --deep --strict`、Gatekeeper 和 notarization 验证全部通过。
+- 启用签名自动更新后，从上一签名版本检查更新、下载并重启安装成功，用户数据保持不变。
 
 ## Linux 验收
 
@@ -66,8 +71,8 @@
 
 ## 分发状态记录
 
-- Windows 未签名构建：可能被 Smart App Control 或杀毒软件拦截。
-- Windows 签名构建：需要记录证书主体、签名时间戳、安装包 SHA256。
+- Windows 未签名构建：过渡期可作为手动下载包发布，必须明确系统可能警告或拦截，并保持自动安装禁用。
+- Windows 签名构建：发布者必须为 `GPROPHET LIMITED`，并记录证书主体、签名时间戳和安装包 SHA256。
 - Microsoft Store/MSIX：账号、包名、发布状态单独记录。
-- macOS 正式发布：需要 Apple Developer ID 签名和 notarization。
+- macOS 未签名构建：过渡期可作为手动下载包发布，必须明确 Gatekeeper 风险，并保持自动安装禁用；取得证书后启用 Developer ID 签名和 notarization。
 - Linux 正式发布：至少保留 AppImage 和 deb 两种产物，后续可补 apt 仓库。

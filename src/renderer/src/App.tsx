@@ -36,6 +36,7 @@ import {
   Paperclip,
   Pencil,
   Pin,
+  PinOff,
   Plug,
   Plus,
   Power,
@@ -60,7 +61,6 @@ import {
 import {
   type ChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
-  type DragEvent as ReactDragEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -101,6 +101,7 @@ import { WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceO
 import { getModelDisplayLabel, getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp, getTimeZoneOptionLabel, resolveTimeZone, TIME_ZONE_OPTIONS } from './timeZone'
+import { sortAssistantsForSidebar, sortConversationsForSidebar } from '@shared/sidebarOrdering'
 import {
   ASSISTANT_PRESET_CATEGORIES,
   type AssistantPreset
@@ -204,6 +205,12 @@ interface AssistantContextMenu {
   x: number
   y: number
   assistantId: string
+}
+
+interface ConversationContextMenu {
+  x: number
+  y: number
+  conversationId: string
 }
 
 type SettingsTab = 'providers' | 'personalization' | 'storage' | 'about'
@@ -487,6 +494,19 @@ function createConversation(assistant: Assistant, provider: ApiProvider, project
   }
 }
 
+function formatSidebarConversationTime(timestamp: number, locale: string): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const sameDay = date.toDateString() === now.toDateString()
+  if (sameDay) {
+    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date)
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat(locale, { month: '2-digit', day: '2-digit' }).format(date)
+  }
+  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+
 function getKnowledgeReferenceText(knowledgeRefs: KnowledgeReference[] = []): string {
   return knowledgeRefs.map((reference) => `${reference.title}\n${reference.content}`).join('\n\n')
 }
@@ -719,9 +739,6 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [activeProjectId, setActiveProjectId] = useState('')
   const [assistants, setAssistants] = useState<Assistant[]>(DEFAULT_ASSISTANTS)
-  const [draggedAssistantId, setDraggedAssistantId] = useState<string | null>(null)
-  const [assistantDropTarget, setAssistantDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
-  const draggedAssistantIdRef = useRef<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [notes, setNotes] = useState<KnowledgeNote[]>([])
   const [memories, setMemories] = useState<AssistantMemory[]>([])
@@ -744,6 +761,7 @@ export default function App() {
   const [workspaceActivities, setWorkspaceActivities] = useState<WorkspaceToolActivity[]>([])
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false)
   const [assistantSettingsOpen, setAssistantSettingsOpen] = useState(false)
   const [conversationModelOpen, setConversationModelOpen] = useState(false)
@@ -765,11 +783,13 @@ export default function App() {
     emphasis: boolean
     requiresConfirmation: boolean
     conversationId?: string
+    settingsTab?: SettingsTab
   } | null>(null)
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
   const [imageAttachmentMenu, setImageAttachmentMenu] = useState<ImageAttachmentContextMenu | null>(null)
   const [workspaceArtifactMenu, setWorkspaceArtifactMenu] = useState<WorkspaceArtifactContextMenu | null>(null)
   const [assistantContextMenu, setAssistantContextMenu] = useState<AssistantContextMenu | null>(null)
+  const [conversationContextMenu, setConversationContextMenu] = useState<ConversationContextMenu | null>(null)
   const [hiddenAssistantsOpen, setHiddenAssistantsOpen] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
   const [pendingQuoteRefs, setPendingQuoteRefs] = useState<KnowledgeReference[]>([])
@@ -808,7 +828,9 @@ export default function App() {
     [activeAssistant, activeProvider, providers]
   )
   const activeAssistantConversations = useMemo(
-    () => conversations.filter((conversation) => conversation.assistantId === activeAssistantId),
+    () => sortConversationsForSidebar(
+      conversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+    ),
     [activeAssistantId, conversations]
   )
   const activeConversation =
@@ -864,7 +886,10 @@ export default function App() {
     () => activeAssistantMemories.filter((memory) => memory.enabled),
     [activeAssistantMemories]
   )
-  const visibleAssistants = useMemo(() => assistants.filter((assistant) => !assistant.hidden), [assistants])
+  const visibleAssistants = useMemo(
+    () => sortAssistantsForSidebar(assistants.filter((assistant) => !assistant.hidden), conversations),
+    [assistants, conversations]
+  )
   const hiddenAssistants = useMemo(() => assistants.filter((assistant) => assistant.hidden), [assistants])
   const filteredAssistants = useMemo(() => {
     const keyword = assistantSearchQuery.trim().toLocaleLowerCase()
@@ -893,8 +918,12 @@ export default function App() {
     const nextProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
     const nextAssistants = state.assistants.length > 0 ? state.assistants : DEFAULT_ASSISTANTS
     const nextVisibleAssistants = nextAssistants.filter((assistant) => !assistant.hidden)
-    const visibleAssistantIds = new Set(nextVisibleAssistants.map((assistant) => assistant.id))
-    const firstConversation = state.conversations.find((conversation) => visibleAssistantIds.has(conversation.assistantId)) ?? null
+    const firstAssistant = sortAssistantsForSidebar(nextVisibleAssistants, state.conversations)[0] ?? null
+    const firstConversation = firstAssistant
+      ? sortConversationsForSidebar(
+          state.conversations.filter((conversation) => conversation.assistantId === firstAssistant.id)
+        )[0] ?? null
+      : null
 
     setAppVersion(state.appVersion || '1.0.0')
     setAppBuildCode(state.appBuildCode || '')
@@ -911,7 +940,7 @@ export default function App() {
 
     if (options.selectFirstConversation) {
       setActiveConversationId(firstConversation?.id ?? null)
-      setActiveAssistantId(firstConversation?.assistantId ?? nextVisibleAssistants[0]?.id ?? DEFAULT_ASSISTANTS[0].id)
+      setActiveAssistantId(firstAssistant?.id ?? DEFAULT_ASSISTANTS[0].id)
     }
   }
 
@@ -949,6 +978,13 @@ export default function App() {
   useEffect(() => {
     return window.gllm.onProvidersChanged((nextProviders) => {
       setProviders(nextProviders.length > 0 ? nextProviders : [DEFAULT_PROVIDER])
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.gllm.onAppUpdateStatus((status) => {
+      if (status.status !== 'available') return
+      showToolNotice(status.message, 10_000, { settingsTab: 'about' })
     })
   }, [])
 
@@ -1034,11 +1070,15 @@ export default function App() {
         setActiveConversationId((current) => {
           if (current !== change.conversationId) return current
 
-          const next = change.conversations.find((conversation) => conversation.assistantId === activeAssistantId)
+          const next = sortConversationsForSidebar(
+            change.conversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+          )[0]
           return next?.id ?? null
         })
         return
       }
+
+      if (change.action === 'metadata') return
 
       const changedConversation = change.conversations.find((conversation) => conversation.id === change.conversationId)
       if (changedConversation) {
@@ -1049,13 +1089,14 @@ export default function App() {
   }, [activeAssistantId])
 
   useEffect(() => {
-    if (!selectionMenu && !imageAttachmentMenu && !workspaceArtifactMenu && !assistantContextMenu) return
+    if (!selectionMenu && !imageAttachmentMenu && !workspaceArtifactMenu && !assistantContextMenu && !conversationContextMenu) return
 
     const closeMenu = () => {
       setSelectionMenu(null)
       setImageAttachmentMenu(null)
       setWorkspaceArtifactMenu(null)
       setAssistantContextMenu(null)
+      setConversationContextMenu(null)
     }
     const closeMenuOnPointerDown = (event: PointerEvent) => {
       const target = event.target
@@ -1074,7 +1115,7 @@ export default function App() {
       window.removeEventListener('resize', closeMenu)
       window.removeEventListener('keydown', closeMenuOnEscape)
     }
-  }, [selectionMenu, imageAttachmentMenu, workspaceArtifactMenu, assistantContextMenu])
+  }, [selectionMenu, imageAttachmentMenu, workspaceArtifactMenu, assistantContextMenu, conversationContextMenu])
 
   useEffect(() => window.gllm.onLocalTaskProgress(setLocalTaskProgress), [])
 
@@ -1130,13 +1171,19 @@ export default function App() {
   function showToolNotice(
     message: string,
     duration = 2600,
-    options: { emphasis?: boolean; requiresConfirmation?: boolean; conversationId?: string } = {}
+    options: {
+      emphasis?: boolean
+      requiresConfirmation?: boolean
+      conversationId?: string
+      settingsTab?: SettingsTab
+    } = {}
   ) {
     setToolNotice({
       message,
       emphasis: Boolean(options.emphasis),
       requiresConfirmation: Boolean(options.requiresConfirmation),
-      conversationId: options.conversationId
+      conversationId: options.conversationId,
+      settingsTab: options.settingsTab
     })
     if (toolNoticeTimerRef.current) window.clearTimeout(toolNoticeTimerRef.current)
     toolNoticeTimerRef.current = null
@@ -1149,6 +1196,12 @@ export default function App() {
     if (toolNoticeTimerRef.current) window.clearTimeout(toolNoticeTimerRef.current)
     toolNoticeTimerRef.current = null
     setToolNotice(null)
+  }
+
+  function openToolNoticeSettings(tab: SettingsTab) {
+    dismissToolNotice()
+    setSettingsInitialTab(tab)
+    setSettingsOpen(true)
   }
 
   function openToolNoticeConversation(conversationId: string) {
@@ -1491,7 +1544,9 @@ export default function App() {
     setActiveAssistantId(assistant.id)
     setPendingQuoteRefs([])
     setPendingKnowledgeRefs([])
-    const existing = conversations.find((conversation) => conversation.assistantId === assistant.id)
+    const existing = sortConversationsForSidebar(
+      conversations.filter((conversation) => conversation.assistantId === assistant.id)
+    )[0]
     setActiveConversationId(existing?.id ?? null)
   }
 
@@ -1504,6 +1559,23 @@ export default function App() {
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
       assistantId: assistant.id
     })
+  }
+
+  function openConversationContextMenu(event: ReactMouseEvent, conversation: Conversation) {
+    event.preventDefault()
+    event.stopPropagation()
+    const menuHeight = 86
+    setConversationContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 190),
+      y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+      conversationId: conversation.id
+    })
+  }
+
+  async function toggleConversationPin(conversation: Conversation) {
+    setConversationContextMenu(null)
+    const saved = await window.gllm.setConversationPinned(conversation.id, !conversation.pinnedAt)
+    setConversations((current) => current.map((item) => (item.id === saved.id ? saved : item)))
   }
 
   async function setAssistantHidden(assistant: Assistant, hidden: boolean) {
@@ -1519,7 +1591,10 @@ export default function App() {
     if (!hidden && nextAssistants.every((item) => !item.hidden)) setHiddenAssistantsOpen(false)
 
     if (hidden && activeAssistantId === saved.id) {
-      const replacement = nextAssistants.find((item) => !item.hidden)
+      const replacement = sortAssistantsForSidebar(
+        nextAssistants.filter((item) => !item.hidden),
+        conversations
+      )[0]
       if (replacement) openAssistant(replacement)
     }
   }
@@ -1543,10 +1618,15 @@ export default function App() {
     applyAppState(state)
 
     if (wasActive) {
-      const replacement = state.assistants.find((item) => !item.hidden)
+      const replacement = sortAssistantsForSidebar(
+        state.assistants.filter((item) => !item.hidden),
+        state.conversations
+      )[0]
       if (replacement) {
         setActiveAssistantId(replacement.id)
-        const nextConversation = state.conversations.find((conversation) => conversation.assistantId === replacement.id)
+        const nextConversation = sortConversationsForSidebar(
+          state.conversations.filter((conversation) => conversation.assistantId === replacement.id)
+        )[0]
         setActiveConversationId(nextConversation?.id ?? null)
       }
     }
@@ -1576,10 +1656,13 @@ export default function App() {
   }
 
   async function removeConversation(id: string) {
+    setConversationContextMenu(null)
     const nextConversations = conversations.filter((conversation) => conversation.id !== id)
     setConversations(nextConversations)
     if (activeConversationId === id) {
-      const next = nextConversations.find((conversation) => conversation.assistantId === activeAssistantId)
+      const next = sortConversationsForSidebar(
+        nextConversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+      )[0]
       setActiveConversationId(next?.id ?? null)
     }
     await window.gllm.deleteConversation(id)
@@ -2271,37 +2354,13 @@ export default function App() {
     return saved
   }
 
-  function getAssistantDropPosition(event: ReactDragEvent<HTMLButtonElement>): 'before' | 'after' {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    return event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
-  }
-
-  async function reorderAssistant(sourceId: string, targetId: string, position: 'before' | 'after') {
-    if (sourceId === targetId) return
-    const previous = assistants
-    const source = previous.find((assistant) => assistant.id === sourceId)
-    const remaining = previous.filter((assistant) => assistant.id !== sourceId)
-    const targetIndex = remaining.findIndex((assistant) => assistant.id === targetId)
-    if (!source || targetIndex < 0) return
-
-    const insertionIndex = targetIndex + (position === 'after' ? 1 : 0)
-    const next = [...remaining]
-    next.splice(insertionIndex, 0, source)
-    setAssistants(next)
-
-    try {
-      const saved = await window.gllm.reorderAssistants(next.map((assistant) => assistant.id))
-      setAssistants(saved)
-    } catch {
-      setAssistants(previous)
-    }
-  }
-
-  async function pinAssistant(assistant: Assistant) {
+  async function toggleAssistantPin(assistant: Assistant) {
     setAssistantContextMenu(null)
-    const firstVisibleAssistant = assistants.find((item) => !item.hidden)
-    if (!firstVisibleAssistant || firstVisibleAssistant.id === assistant.id) return
-    await reorderAssistant(assistant.id, firstVisibleAssistant.id, 'before')
+    const saved = await window.gllm.saveAssistant({
+      ...assistant,
+      pinnedAt: assistant.pinnedAt ? undefined : Date.now()
+    })
+    setAssistants((current) => current.map((item) => (item.id === saved.id ? saved : item)))
   }
 
   async function suggestAssistant(keyword: string, provider: ApiProvider): Promise<AssistantSuggestion> {
@@ -2380,43 +2439,18 @@ export default function App() {
               return (
                 <button
                   key={assistant.id}
-                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistantSearchQuery.trim() ? 'reorder-disabled' : ''} ${draggedAssistantId === assistant.id ? 'dragging' : ''} ${assistantDropTarget?.id === assistant.id ? `drop-${assistantDropTarget.position}` : ''}`}
-                  draggable={!assistantSearchQuery.trim()}
+                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''}`}
                   onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
-                  onDragStart={(event) => {
-                    draggedAssistantIdRef.current = assistant.id
-                    setDraggedAssistantId(assistant.id)
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', assistant.id)
-                  }}
-                  onDragOver={(event) => {
-                    const sourceId = draggedAssistantIdRef.current
-                    if (!sourceId || sourceId === assistant.id) return
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                    setAssistantDropTarget({ id: assistant.id, position: getAssistantDropPosition(event) })
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    const sourceId = draggedAssistantIdRef.current || event.dataTransfer.getData('text/plain')
-                    const position = getAssistantDropPosition(event)
-                    draggedAssistantIdRef.current = null
-                    setDraggedAssistantId(null)
-                    setAssistantDropTarget(null)
-                    if (sourceId) void reorderAssistant(sourceId, assistant.id, position)
-                  }}
-                  onDragEnd={() => {
-                    draggedAssistantIdRef.current = null
-                    setDraggedAssistantId(null)
-                    setAssistantDropTarget(null)
-                  }}
                   title={displayAssistant.name}
                   type="button"
                 >
                   <AssistantAvatar assistant={assistant} />
-                  <span>
-                    <strong>{displayAssistant.name}</strong>
+                  <span className="assistant-card-copy">
+                    <span className="assistant-card-heading">
+                      <strong>{displayAssistant.name}</strong>
+                      {assistant.pinnedAt && <Pin className="assistant-pin-badge" size={12} aria-label={t('assistantActions.pinned')} />}
+                    </span>
                     <small>{displayAssistant.title}</small>
                   </span>
                 </button>
@@ -2463,12 +2497,11 @@ export default function App() {
             onMouseDown={(event) => event.preventDefault()}
           >
             <button
-              disabled={visibleAssistants[0]?.id === assistant.id}
               type="button"
-              onClick={() => void pinAssistant(assistant)}
+              onClick={() => void toggleAssistantPin(assistant)}
             >
-              <Pin size={15} />
-              {t('assistantActions.pin')}
+              {assistant.pinnedAt ? <PinOff size={15} /> : <Pin size={15} />}
+              {t(assistant.pinnedAt ? 'assistantActions.unpin' : 'assistantActions.pin')}
             </button>
             <button type="button" onClick={() => void setAssistantHidden(assistant, true)}>
               <EyeOff size={15} />
@@ -2477,6 +2510,28 @@ export default function App() {
             <button className="danger" type="button" onClick={() => void deleteAssistantWithConfirmation(assistant)}>
               <Trash2 size={15} />
               {t('assistantActions.delete')}
+            </button>
+          </div>
+        )
+      })()}
+
+      {conversationContextMenu && (() => {
+        const conversation = conversations.find((item) => item.id === conversationContextMenu.conversationId)
+        if (!conversation) return null
+        return (
+          <div
+            className="selection-context-menu conversation-context-menu"
+            style={{ left: conversationContextMenu.x, top: conversationContextMenu.y }}
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <button type="button" onClick={() => void toggleConversationPin(conversation)}>
+              {conversation.pinnedAt ? <PinOff size={15} /> : <Pin size={15} />}
+              {t(conversation.pinnedAt ? 'conversationActions.unpin' : 'conversationActions.pin')}
+            </button>
+            <button className="danger" type="button" onClick={() => void removeConversation(conversation.id)}>
+              <Trash2 size={15} />
+              {t('conversationActions.delete')}
             </button>
           </div>
         )
@@ -2867,11 +2922,16 @@ export default function App() {
                 role={toolNotice.emphasis ? 'alert' : 'status'}
               >
                 <span>{toolNotice.message}</span>
-                {(toolNotice.conversationId || toolNotice.requiresConfirmation) && (
+                {(toolNotice.conversationId || toolNotice.settingsTab || toolNotice.requiresConfirmation) && (
                   <div className="composer-notice-actions">
                     {toolNotice.conversationId && (
                       <button type="button" onClick={() => openToolNoticeConversation(toolNotice.conversationId!)}>
                         {t('app.goToConversation')}
+                      </button>
+                    )}
+                    {toolNotice.settingsTab && (
+                      <button type="button" onClick={() => openToolNoticeSettings(toolNotice.settingsTab!)}>
+                        {toolNotice.settingsTab === 'about' ? t('about.viewUpdate') : t('app.settings')}
                       </button>
                     )}
                     {toolNotice.requiresConfirmation && (
@@ -3014,31 +3074,61 @@ export default function App() {
           <div className="history-list">
             {activeAssistantConversations.length === 0 && <div className="history-empty">{t('app.noConversations')}</div>}
             {activeAssistantConversations.map((conversation) => (
-              <button
+              <div
                 key={conversation.id}
-                className={`history-item ${conversation.id === activeConversationId ? 'active' : ''}`}
+                className={`history-item ${conversation.id === activeConversationId ? 'active' : ''} ${conversation.pinnedAt ? 'pinned' : ''}`}
                 onClick={() => {
                   setActiveConversationId(conversation.id)
                 }}
+                onContextMenu={(event) => openConversationContextMenu(event, conversation)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  setActiveConversationId(conversation.id)
+                }}
+                role="button"
+                tabIndex={0}
               >
-                <span className="history-item-title">
-                  <span>{conversation.title}</span>
-                  {conversation.workspace && (
-                    <FolderOpen
-                      className="history-workspace-badge"
-                      size={13}
-                      aria-label={t('app.workspaceAuthorized')}
-                    />
-                  )}
+                <span className="history-item-main">
+                  <span className="history-item-title">
+                    <span>{conversation.title}</span>
+                    {conversation.workspace && (
+                      <FolderOpen
+                        className="history-workspace-badge"
+                        size={13}
+                        aria-label={t('app.workspaceAuthorized')}
+                      />
+                    )}
+                  </span>
+                  <small>
+                    <time>{formatSidebarConversationTime(conversation.updatedAt, i18n.resolvedLanguage ?? 'zh-CN')}</time>
+                    {conversation.pinnedAt && <span>{t('conversationActions.pinned')}</span>}
+                  </small>
                 </span>
-                <Trash2
-                  size={15}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void removeConversation(conversation.id)
-                  }}
-                />
-              </button>
+                <span className="history-item-actions">
+                  <button
+                    className={conversation.pinnedAt ? 'active' : ''}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void toggleConversationPin(conversation)
+                    }}
+                    title={t(conversation.pinnedAt ? 'conversationActions.unpin' : 'conversationActions.pin')}
+                    type="button"
+                  >
+                    <Pin size={14} fill={conversation.pinnedAt ? 'currentColor' : 'none'} />
+                  </button>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void removeConversation(conversation.id)
+                    }}
+                    title={t('conversationActions.delete')}
+                    type="button"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </span>
+              </div>
             ))}
           </div>
         </aside>
@@ -3148,12 +3238,16 @@ export default function App() {
         <SettingsPanel
           appVersion={appVersion}
           appBuildCode={appBuildCode}
+          initialTab={settingsInitialTab}
           dataLocation={dataLocation}
           settings={settings}
           providers={providers}
           goldThemeEntitled={goldThemeEntitled}
           goldThemeEntitlementChecked={goldThemeEntitlementChecked}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false)
+            setSettingsInitialTab('providers')
+          }}
           onSaveSettings={saveSettings}
           onSaveProvider={saveProvider}
           onCheckProvider={checkProvider}
@@ -4992,6 +5086,7 @@ function AddProviderDialog({
 function SettingsPanel({
   appVersion,
   appBuildCode,
+  initialTab,
   dataLocation,
   settings,
   providers,
@@ -5008,6 +5103,7 @@ function SettingsPanel({
 }: {
   appVersion: string
   appBuildCode: string
+  initialTab: SettingsTab
   dataLocation: DataLocationInfo | null
   settings: AppSettings
   providers: ApiProvider[]
@@ -5040,7 +5136,7 @@ function SettingsPanel({
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null)
   const [dataArchiveNeedsRestart, setDataArchiveNeedsRestart] = useState(false)
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('providers')
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>(initialTab)
   const providerNeedsKey = providerDraft.requiresApiKey && !providerDraft.apiKey.trim()
   const modelOptions = getModelOptions(providerDraft)
   const providerSaved = providers.some((provider) => provider.id === providerDraft.id)
@@ -5057,6 +5153,24 @@ function SettingsPanel({
   useEffect(() => {
     if (dataLocation) setDataLocationInfo(dataLocation)
   }, [dataLocation])
+
+  useEffect(() => {
+    let mounted = true
+    void window.gllm.getAppUpdateState().then((status) => {
+      if (!mounted) return
+      setUpdateInfo(status)
+      setIsCheckingUpdate(status.status === 'checking')
+    })
+    const unsubscribe = window.gllm.onAppUpdateStatus((status) => {
+      if (!mounted) return
+      setUpdateInfo(status)
+      setIsCheckingUpdate(status.status === 'checking')
+    })
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     setSettingsDraft((current) =>
@@ -5308,12 +5422,33 @@ function SettingsPanel({
         currentVersion: appVersion,
         updateAvailable: false,
         status: 'unavailable',
+        automaticUpdateSupported: false,
         downloadPageUrl: 'https://llm.gprophet.com/download',
         message: error instanceof Error ? error.message : t('about.updateCheckFailed')
       })
     } finally {
       setIsCheckingUpdate(false)
     }
+  }
+
+  async function downloadUpdate() {
+    try {
+      setUpdateInfo(await window.gllm.downloadAppUpdate())
+    } catch (error) {
+      setUpdateInfo({
+        currentVersion: appVersion,
+        updateAvailable: true,
+        status: 'error',
+        automaticUpdateSupported: true,
+        downloadPageUrl: 'https://llm.gprophet.com/download',
+        message: error instanceof Error ? error.message : t('about.updateCheckFailed')
+      })
+    }
+  }
+
+  async function installUpdate() {
+    const installing = await window.gllm.installAppUpdate()
+    if (!installing) setUpdateInfo(await window.gllm.getAppUpdateState())
   }
 
   async function openDownloadPage() {
@@ -5918,9 +6053,36 @@ function SettingsPanel({
               {updateInfo && (
                 <div className={`about-update-result ${updateInfo.status}`} role="status">
                   <strong>{updateInfo.message}</strong>
+                  <small>
+                    {updateInfo.automaticUpdateSupported ? t('about.automaticUpdates') : t('about.manualUpdateOnly')}
+                  </small>
                   {updateInfo.updatedAt && <small>{t('about.releaseDate', { date: updateInfo.updatedAt })}</small>}
                   {updateInfo.releaseNotes && <p>{updateInfo.releaseNotes}</p>}
-                  {(updateInfo.updateAvailable || updateInfo.status === 'unavailable') && (
+                  {updateInfo.status === 'downloading' && (
+                    <progress max={100} value={updateInfo.downloadProgress ?? 0} />
+                  )}
+                  {updateInfo.status === 'available' && updateInfo.automaticUpdateSupported && (
+                    <button onClick={() => void downloadUpdate()} type="button">
+                      {t('about.downloadUpdate')}
+                    </button>
+                  )}
+                  {updateInfo.status === 'downloading' && (
+                    <button disabled type="button">
+                      {t('about.downloadingUpdate', { progress: updateInfo.downloadProgress ?? 0 })}
+                    </button>
+                  )}
+                  {updateInfo.status === 'downloaded' && (
+                    <>
+                      <small>{t('about.installOnQuit')}</small>
+                      <button onClick={() => void installUpdate()} type="button">
+                        {t('about.restartToInstall')}
+                      </button>
+                    </>
+                  )}
+                  {((updateInfo.updateAvailable && !updateInfo.automaticUpdateSupported) ||
+                    updateInfo.status === 'unavailable' ||
+                    updateInfo.status === 'unsupported' ||
+                    updateInfo.status === 'error') && (
                     <button onClick={() => void openDownloadPage()} type="button">
                       {t('about.openDownloadPage')}
                       <ExternalLink size={14} />

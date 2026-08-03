@@ -25,7 +25,9 @@
     "enUS": "English"
   },
   "assistantActions": {
-    "pin": "Move to top",
+    "pin": "Pin assistant",
+    "unpin": "Unpin assistant",
+    "pinned": "Pinned assistant",
     "hide": "Hide assistant",
     "delete": "Delete assistant",
     "restore": "Show again",
@@ -35,6 +37,12 @@
     "manageHidden": "Manage hidden assistants ({{count}})",
     "deleteConfirm": "Delete “{{name}}”? This permanently removes its {{count}} conversation(s) and related data and cannot be undone.",
     "keepOneVisible": "At least one assistant must remain visible. Show another assistant before continuing."
+  },
+  "conversationActions": {
+    "pin": "Pin conversation",
+    "unpin": "Unpin conversation",
+    "pinned": "Pinned",
+    "delete": "Delete conversation"
   },
   "app": {
     "loading": "Loading G-LLM...",
@@ -629,10 +637,17 @@
     "version": "Version",
     "checking": "Checking...",
     "checkUpdates": "Check for updates",
+    "viewUpdate": "View update",
     "downloadAndChangelog": "Downloads and changelog",
     "releaseDate": "Released: {{date}}",
     "openDownloadPage": "Open download page",
     "updateCheckFailed": "Could not check for updates. Try again later.",
+    "automaticUpdates": "Signed installers support secure updates. You choose when to download a new version, then install it immediately or automatically when the app quits.",
+    "manualUpdateOnly": "This environment can check versions only. Download and install the update manually from the website.",
+    "downloadUpdate": "Download update",
+    "downloadingUpdate": "Downloading {{progress}}%",
+    "restartToInstall": "Restart and install",
+    "installOnQuit": "The update has been verified and downloaded. If you do not restart now, it will install when the app quits.",
     "sourceAndCommercial": "Source and commercial use",
     "licenseSummary": "Since V1.1.0, individuals and organizations may use G-LLM internally at no cost. V{{version}} converts to AGPL-3.0-only on August 1, 2030.",
     "sourceLicense": "Source license",
@@ -797,9 +812,16 @@
       "starterPlan": "Turn the following into an actionable {{keyword}} plan"
     },
     "update": {
+      "ready": "Secure automatic updates are enabled",
+      "manualOnly": "Only manual updates are supported in this environment",
+      "checking": "Checking GitHub Releases for updates...",
       "unavailable": "The latest version information is temporarily unavailable. Check the download page manually.",
       "available": "Version {{version}} is available",
       "latest": "You are using the latest version, V{{version}}",
+      "downloading": "Downloading update: {{progress}}%",
+      "downloaded": "V{{version}} has been downloaded and verified. Restart to install it.",
+      "downloadCancelled": "The update download was cancelled. You can try again later.",
+      "error": "Automatic updates are temporarily unavailable. Try again later or use the download page.",
       "localizedNotesUnavailable": "English release notes are not available for this version yet. Open the download page to view the original changelog."
     },
     "chat": {

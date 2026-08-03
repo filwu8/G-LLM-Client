@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.2](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.3](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.2](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.2), released on 2026-08-01.
+Latest stable release: [V2.0.3](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.3), released on 2026-08-03.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.2 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.3 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,13 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.3 Sidebar Organization and Update Readiness
+
+- Windows and macOS remain manual-download releases. The automatic-update implementation is ready but will not download or execute packages until platform signing and macOS notarization are configured.
+- Assistants and conversations can be pinned; unpinned items follow recent activity, and conversation rows now expose timestamps and quick actions.
+- Releases now use three-platform packaging, SHA-256 manifests, and GitHub provenance verification; platform signing and macOS notarization will be enabled after certificates are configured.
+- Improved drawer positioning below the Windows native title bar so top controls remain interactive.
 
 ## V2.0.2 Installer License Metadata Fix
 
@@ -66,6 +73,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
 - Privacy-friendly anonymous telemetry. The client only sends anonymous metadata and does not collect chat content, API keys, file content, screenshot content, knowledge base content, or memory content. Users can disable telemetry in settings.
+- Update readiness. This version checks GitHub Releases and directs users to a manual download. Automatic installation on Windows and macOS will be enabled in a later release after platform signing and notarization are configured.
 
 ## Desktop Resident Behavior
 
@@ -82,7 +90,7 @@ The client includes the following resident desktop behavior:
 - Single-instance protection is enabled. Launching the shortcut again brings the existing app to the front instead of starting another process.
 - Main-process logs are written to `%APPDATA%/G-LLM/logs/main.log` for startup and crash diagnostics.
 
-> Note: public Windows builds without a code-signing certificate may still be warned or blocked by Smart App Control or antivirus software. Trusted signing and Microsoft Store/MSIX distribution are handled as a separate release-compliance track.
+> Current public packages do not yet use Windows or macOS platform signing, so operating systems may display security warnings. The client never automatically downloads or executes these unsigned packages.
 
 ## Development
 
@@ -102,7 +110,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-Build artifacts are written to `dist/`. GitHub Actions builds Windows, macOS, and Linux artifacts on their corresponding runners.
+Build artifacts are written to `dist/`. During the current transition, GitHub Actions builds manual-download packages for Windows, macOS, and Linux with updater metadata, SHA-256 manifests, and provenance. Platform signing, notarization, and automatic installation will be enabled after certificates are available. See [Secure automatic updates and releases](./docs/secure-auto-update.md) for the planned controls.
 
 ## API Contract
 
@@ -145,15 +153,15 @@ The client supports standard OpenAI `/models` responses and simple string-array 
 
 ## Release QA
 
-Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) to verify the Windows tray, floating logo, screenshot flow, single-instance behavior, logs, and basic macOS/Linux packaging.
+Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) for cross-platform QA. After certificates are available, configure the Environment, Rulesets, immutable Releases, and platform signing described in [Secure automatic updates and releases](./docs/secure-auto-update.md).
 
 ## License
 
-G-LLM Client is published by GPROPHET LIMITED. The current V2.0.2 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Client is published by GPROPHET LIMITED. The current V2.0.3 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V2.0.2 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+V2.0.3 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 

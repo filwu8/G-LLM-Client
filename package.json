@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -13,9 +13,18 @@
   "desktopName": "G-LLM Client",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.29.1",
+  "pnpm": {
+    "overrides": {
+      "dompurify": "3.4.12",
+      "fast-uri": "3.1.4",
+      "js-yaml": "4.3.0"
+    }
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm i18n:check && pnpm licenses:generate && tsc --noEmit && electron-vite build",
+    "test": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/updatePolicy.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts",
     "test:deep-link": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/shared/themeEntitlement.test.ts",
     "i18n:check": "node scripts/check-translations.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
@@ -29,6 +38,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@napi-rs/canvas": "0.1.80",
     "electron-store": "^10.1.0",
+    "electron-updater": "^6.8.9",
     "i18next": "^26.3.6",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
@@ -69,6 +79,14 @@
         "schemes": [
           "gllm"
         ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "filwu8",
+        "repo": "G-LLM-Client",
+        "releaseType": "release"
       }
     ],
     "directories": {
@@ -127,6 +145,7 @@
     "win": {
       "icon": "build/icon.ico",
       "executableName": "G-LLM-Client",
+      "forceCodeSigning": false,
       "target": [
         "nsis"
       ]
@@ -151,6 +170,12 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "identity": "-",
+      "forceCodeSigning": false,
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "notarize": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },

@@ -1,0 +1,11 @@
+# Release, dependency and updater changes require explicit owner review.
+/.github/ @filwu8
+/package.json @filwu8
+/pnpm-lock.yaml @filwu8
+/pnpm-workspace.yaml @filwu8
+/scripts/collect-release-assets.mjs @filwu8
+/src/main/appUpdate.ts @filwu8
+/src/main/autoUpdateManager.ts @filwu8
+/src/main/updatePolicy.ts @filwu8
+/src/preload/index.ts @filwu8
+/src/shared/types.ts @filwu8

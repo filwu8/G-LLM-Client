@@ -412,6 +412,11 @@ export default function QuickChat() {
     return window.gllm.onConversationChanged((change) => {
       setConversations(change.conversations)
       setConversation((current) => {
+        if (change.action === 'metadata') {
+          return current
+            ? change.conversations.find((item) => item.id === current.id) ?? current
+            : current
+        }
         if (change.action === 'deleted' && current?.id === change.conversationId) {
           return getLatestAssistantConversation(change.conversations, assistant.id)
         }

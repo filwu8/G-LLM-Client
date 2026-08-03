@@ -31,6 +31,7 @@ import { pathToFileURL } from 'node:url'
 import type {
   ApiProvider,
   AppSettings,
+  AppUpdateInfo,
   ChatActivityEvent,
   ChatRequest,
   Conversation,
@@ -41,7 +42,8 @@ import type {
   WorkspaceApprovalPrompt
 } from '../shared/types'
 import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID, isOfficialGllmApiProvider } from '../shared/providers'
-import { checkForAppUpdate, DOWNLOAD_PAGE_URL } from './appUpdate'
+import { DOWNLOAD_PAGE_URL } from './appUpdate'
+import { AutoUpdateManager } from './autoUpdateManager'
 import { pickAttachments, preparePastedAttachments } from './attachments'
 import { captureScreenshot } from './screenshot'
 import {
@@ -134,6 +136,7 @@ let floatingLogoWindow: BrowserWindow | null = null
 let floatingMascotHintWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+let autoUpdateManager: AutoUpdateManager | null = null
 let activeAssistantId = 'general'
 let mainHiddenMode: 'none' | 'tray' | 'floating' = 'none'
 const conversationMemoryUpdates = new Set<string>()
@@ -1303,7 +1306,13 @@ function broadcastDeepLinkHandoffStatus(status: 'success' | 'error'): void {
   }
 }
 
-function broadcastConversationChange(conversationId: string, action: 'saved' | 'deleted'): void {
+function broadcastAppUpdateStatus(status: AppUpdateInfo): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('app:update-status', status)
+  }
+}
+
+function broadcastConversationChange(conversationId: string, action: 'saved' | 'deleted' | 'metadata'): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send('conversation:changed', {
@@ -1415,8 +1424,21 @@ app.whenReady().then(() => {
     writeMainLog(`Child process gone: type=${details.type}, reason=${details.reason}, exitCode=${details.exitCode}`)
   })
 
+  autoUpdateManager = new AutoUpdateManager({
+    getLanguage: () => getSettings().language,
+    onStatus: broadcastAppUpdateStatus,
+    beforeInstall: () => {
+      isQuitting = true
+      mainHiddenMode = 'none'
+    },
+    log: writeMainLog
+  })
+
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
-  ipcMain.handle('app:check-for-updates', () => checkForAppUpdate(app.getVersion(), getSettings().language))
+  ipcMain.handle('app:get-update-state', () => autoUpdateManager?.getState())
+  ipcMain.handle('app:check-for-updates', () => autoUpdateManager?.checkForUpdates())
+  ipcMain.handle('app:download-update', () => autoUpdateManager?.downloadUpdate())
+  ipcMain.handle('app:install-update', () => autoUpdateManager?.installUpdate() ?? false)
   ipcMain.handle('app:open-download-page', async () => {
     await shell.openExternal(DOWNLOAD_PAGE_URL)
   })
@@ -1630,6 +1652,16 @@ app.whenReady().then(() => {
     void maybeUpdateProjectMemory(saved)
     return saved
   })
+  ipcMain.handle('conversation:set-pinned', (_, id: string, pinned: boolean) => {
+    const conversation = getConversations().find((item) => item.id === id)
+    if (!conversation) throw new Error('Conversation not found')
+    const saved = saveConversation({
+      ...conversation,
+      pinnedAt: pinned ? Date.now() : undefined
+    })
+    broadcastConversationChange(saved.id, 'metadata')
+    return saved
+  })
   ipcMain.handle('conversation:delete', (_, id: string) => {
     deleteConversation(id)
     broadcastConversationChange(id, 'deleted')
@@ -1801,6 +1833,7 @@ app.whenReady().then(() => {
     createWindow()
   }
   void trackTelemetryEvent('app_started')
+  autoUpdateManager.scheduleAutomaticChecks()
 
   screen.on('display-metrics-changed', () => {
     if (floatingLogoWindow?.isVisible()) {

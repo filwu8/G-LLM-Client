@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.2](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.3](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.2](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.2)，发布于 2026-08-01。
+最近稳定发布：[V2.0.3](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.3)，发布于 2026-08-03。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.2 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.3 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.3 侧边栏整理与更新能力准备
+
+- Windows 和 macOS 继续采用用户手动下载安装；客户端已完成自动更新能力准备，但在平台签名和 macOS notarization 配置完成前不会自动下载或执行安装包。
+- 助手和会话支持置顶；未置顶内容按最近使用时间排列，会话列表补充清晰的更新时间和快捷操作。
+- 发布流程增加三平台构建、SHA-256 校验与 GitHub provenance 验证；平台签名和 macOS notarization 待证书配置后启用。
+- 优化 Windows 原生标题栏下方的抽屉布局，避免顶部控件落入不可交互区域。
 
 ## V2.0.2 安装器许可信息修正
 
@@ -66,6 +73,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 三套主题：默认自动跟随系统亮色/暗色，也可手动选择；使用有效的官方 G-LLM API Key 时开放金色主题。
 - 弹窗体验：全屏弹窗统一使用毛玻璃背景和渐进式入场动画，并支持系统“减少动态效果”偏好。
 - 隐私友好的匿名统计：默认只上报匿名元数据，不采集聊天内容、API Key、文件内容、截图内容、知识库内容或记忆内容，用户可在设置中关闭。
+- 更新机制：当前版本检查 GitHub Releases 并引导用户手动下载；Windows 和 macOS 自动下载安装会在平台签名与 notarization 配置完成后的版本中启用。
 
 ## 桌面常驻体验
 
@@ -82,7 +90,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 应用启用单进程保护；重复双击快捷方式会唤起已有窗口，不再启动多个进程。
 - 主进程日志写入 `%APPDATA%/G-LLM/logs/main.log`，便于定位用户机器上的闪退或启动问题。
 
-> 说明：当前公开构建如果未配置 Windows 代码签名证书，可能被 Smart App Control 或杀毒软件提示风险。可信签名、Microsoft Store/MSIX 分发属于发布合规工作，正在单独推进。
+> 当前公开安装包尚未配置 Windows 与 macOS 平台签名，系统可能显示安全警告；客户端不会自动下载或执行这些未签名安装包。
 
 ## Development
 
@@ -109,7 +117,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-构建产物输出到 `dist/`。GitHub Actions 会分别在 Windows、macOS、Linux runner 上构建对应平台产物。
+构建产物输出到 `dist/`。当前过渡版本由 GitHub Actions 分别构建 Windows、macOS、Linux 手动下载安装包，并生成更新元数据、SHA-256 和来源证明；取得证书后再启用平台签名、notarization 和自动安装。完整规划见[安全自动更新与发布](./docs/secure-auto-update.md)。
 
 ## API Contract
 
@@ -152,15 +160,15 @@ Authorization: Bearer {apiKey}
 
 ## Release QA
 
-发布前请参考 [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) 完成三端基础验证，尤其是 Windows 托盘、悬浮 logo、截图、单进程保护和启动日志。
+发布前请参考 [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) 完成三端基础验证；取得证书后，再按[安全自动更新与发布](./docs/secure-auto-update.md)配置 Environment、Ruleset、不可变 Release 和平台签名。
 
 ## License
 
-G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.2 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.3 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V2.0.2 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V2.0.3 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

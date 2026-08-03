@@ -60,7 +60,10 @@ ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatu
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
+  getAppUpdateState: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:get-update-state'),
   checkForUpdates: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:check-for-updates'),
+  downloadAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:download-update'),
+  installAppUpdate: (): Promise<boolean> => ipcRenderer.invoke('app:install-update'),
   openDownloadPage: (): Promise<void> => ipcRenderer.invoke('app:open-download-page'),
   openLegalDocument: (document: LegalDocument): Promise<void> =>
     ipcRenderer.invoke('app:open-legal-document', document),
@@ -90,6 +93,8 @@ const api = {
     ipcRenderer.invoke('assistant:suggest', request),
   saveConversation: (conversation: Conversation): Promise<Conversation> =>
     ipcRenderer.invoke('conversation:save', conversation),
+  setConversationPinned: (id: string, pinned: boolean): Promise<Conversation> =>
+    ipcRenderer.invoke('conversation:set-pinned', id, pinned),
   searchConversations: (request: ConversationSearchRequest): Promise<ConversationSearchResponse> =>
     ipcRenderer.invoke('conversation:search', request),
   deleteConversation: (id: string): Promise<void> => ipcRenderer.invoke('conversation:delete', id),
@@ -136,6 +141,11 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, settings: AppSettings) => listener(settings)
     ipcRenderer.on('settings:changed', handler)
     return () => ipcRenderer.removeListener('settings:changed', handler)
+  },
+  onAppUpdateStatus: (listener: (status: AppUpdateInfo) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateInfo) => listener(status)
+    ipcRenderer.on('app:update-status', handler)
+    return () => ipcRenderer.removeListener('app:update-status', handler)
   },
   onProvidersChanged: (listener: (providers: ApiProvider[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, providers: ApiProvider[]) => listener(providers)

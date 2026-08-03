@@ -12,6 +12,7 @@ import { mainT } from './i18n'
 
 const DOWNLOAD_PAGE_URL = 'https://llm.gprophet.com/download'
 const UPDATE_ENDPOINTS = [
+  'https://api.github.com/repos/filwu8/G-LLM-Client/releases/latest',
   'https://llm.gprophet.com/api/client/download',
   'https://llm.gprophet.com/api/download/config',
   'https://llm.gprophet.com/api/client-download-config',
@@ -66,6 +67,20 @@ function parseConfig(value: unknown, depth = 0): DownloadConfig | null {
   const record = asRecord(value)
   if (!record) return null
 
+  const githubVersion = normalizeVersion(record.tag_name)
+  if (
+    githubVersion &&
+    Array.isArray(record.assets) &&
+    record.draft !== true &&
+    record.prerelease !== true
+  ) {
+    return {
+      version: githubVersion,
+      releaseNotes: typeof record.body === 'string' ? record.body.trim() : undefined,
+      updatedAt: typeof record.published_at === 'string' ? record.published_at.trim() : undefined
+    }
+  }
+
   const version = normalizeVersion(record.version ?? record.latestVersion ?? record.latest_version)
   const hasClientFields =
     'windows_url' in record || 'macos_url' in record || 'release_notes' in record || 'latestVersion' in record
@@ -109,7 +124,10 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   const timeout = setTimeout(() => controller.abort(), 8_000)
   try {
     return await net.fetch(url, {
-      headers: { Accept: 'application/json, text/html;q=0.9' },
+      headers: {
+        Accept: 'application/vnd.github+json, application/json, text/html;q=0.9',
+        'User-Agent': 'G-LLM-Client-Update-Check'
+      },
       signal: controller.signal
     })
   } finally {
@@ -181,6 +199,7 @@ export async function checkForAppUpdate(currentVersion: string, language: AppLan
       currentVersion,
       updateAvailable: false,
       status: 'unavailable',
+      automaticUpdateSupported: false,
       downloadPageUrl: DOWNLOAD_PAGE_URL,
       message: mainT('main.update.unavailable', language)
     }
@@ -192,6 +211,7 @@ export async function checkForAppUpdate(currentVersion: string, language: AppLan
     latestVersion: config.version,
     updateAvailable,
     status: updateAvailable ? 'available' : 'latest',
+    automaticUpdateSupported: false,
     downloadPageUrl: DOWNLOAD_PAGE_URL,
     releaseNotes: getLocalizedReleaseNotes(config, language),
     updatedAt: config.updatedAt,

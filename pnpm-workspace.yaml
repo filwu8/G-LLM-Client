@@ -2,3 +2,17 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - x64
+    - arm64
+
+# Slow down newly published packages long enough for common registry incidents to
+# be detected, reject transitive git/tarball sources, and prevent provenance
+# downgrades during dependency updates.
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+blockExoticSubdeps: true

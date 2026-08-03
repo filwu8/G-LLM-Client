@@ -1,0 +1,269 @@
+name: Client Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New immutable release tag, for example v2.0.3
+        required: true
+        type: string
+      confirmation:
+        description: Type RELEASE to authorize a production build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-client-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+
+    steps:
+      - name: Require protected main branch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Production releases must be dispatched from main." >&2
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != "RELEASE" ]]; then
+            echo "Release confirmation must exactly equal RELEASE." >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Checkout immutable commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate version, commit and unused tag
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          remote_main="$(git rev-parse origin/main)"
+          if [[ "$GITHUB_SHA" != "$remote_main" ]]; then
+            echo "The selected commit is not the current origin/main head." >&2
+            exit 1
+          fi
+
+          package_version="$(node -p "require('./package.json').version")"
+          if [[ "v$package_version" != "$RELEASE_TAG" ]]; then
+            echo "package.json version $package_version does not match $RELEASE_TAG." >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists and will not be replaced." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists and will not be replaced." >&2
+            exit 1
+          fi
+
+          echo "commit_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - id: windows
+            name: Windows x64
+            os: windows-latest
+            package_script: package:win
+          - id: macos
+            name: macOS x64 and arm64
+            os: macos-latest
+            package_script: package:mac
+          - id: linux
+            name: Linux x64
+            os: ubuntu-latest
+            package_script: package:linux
+
+    steps:
+      - name: Checkout approved commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.29.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.13.0
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test approved source
+        run: pnpm test
+
+      - name: Reject high-severity production dependency advisories
+        run: pnpm audit --prod --audit-level high
+
+      - name: Package application
+        run: pnpm ${{ matrix.package_script }}
+        env:
+          GLLM_BUILD_CODE: ${{ github.run_id }}.${{ github.run_attempt }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Verify packaged native dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.id }}" == "macos" ]]; then
+            x64_canvas="dist/mac/G-LLM Client.app/Contents/Resources/app.asar.unpacked/node_modules/@napi-rs/canvas-darwin-x64/skia.darwin-x64.node"
+            arm64_canvas="dist/mac-arm64/G-LLM Client.app/Contents/Resources/app.asar.unpacked/node_modules/@napi-rs/canvas-darwin-arm64/skia.darwin-arm64.node"
+            test -f "$x64_canvas"
+            test -f "$arm64_canvas"
+            file "$x64_canvas" | grep -Eq 'x86_64|x86-64'
+            file "$arm64_canvas" | grep -Eq 'arm64|aarch64'
+          elif [[ "${{ matrix.id }}" == "windows" ]]; then
+            test -f "dist/win-unpacked/resources/app.asar.unpacked/node_modules/@napi-rs/canvas-win32-x64-msvc/skia.win32-x64-msvc.node"
+          else
+            test -f "dist/linux-unpacked/resources/app.asar.unpacked/node_modules/@napi-rs/canvas-linux-x64-gnu/skia.linux-x64-gnu.node"
+          fi
+
+      - name: Verify packaged updater source
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_file=""
+          if [[ "${{ matrix.id }}" == "macos" ]]; then
+            config_file="$(find dist -path '*/G-LLM Client.app/Contents/Resources/app-update.yml' -print -quit)"
+          elif [[ "${{ matrix.id }}" == "windows" ]]; then
+            config_file="dist/win-unpacked/resources/app-update.yml"
+          else
+            config_file="$(find dist -path '*/resources/app-update.yml' -print -quit)"
+          fi
+          if [[ -z "$config_file" || ! -f "$config_file" ]]; then
+            echo "Packaged updater configuration is missing." >&2
+            exit 1
+          fi
+          grep -Fx 'provider: github' "$config_file"
+          grep -Fx 'owner: filwu8' "$config_file"
+          grep -Fx 'repo: G-LLM-Client' "$config_file"
+
+      - name: Collect whitelisted release assets
+        run: node scripts/collect-release-assets.mjs ${{ matrix.id }} dist release-assets
+
+      - name: Attest release assets
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-path: release-assets/*
+
+      - name: Upload short-lived release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: client-release-${{ matrix.id }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      attestations: read
+
+    steps:
+      - name: Download attested release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: client-release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify checksums and attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for sums in release-assets/SHA256SUMS-*.txt; do
+            (cd release-assets && sha256sum --check "$(basename "$sums")")
+          done
+          while IFS= read -r -d '' asset; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY"
+          done < <(find release-assets -maxdepth 1 -type f -print0)
+
+      - name: Create, upload and publish release once
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists and cannot be overwritten." >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists and cannot be moved." >&2
+            exit 1
+          fi
+
+          created_draft="false"
+          cleanup_failed_draft() {
+            if [[ "$created_draft" == "true" ]]; then
+              echo "Release publication failed; removing the incomplete draft and its new tag." >&2
+              gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+            fi
+          }
+          trap cleanup_failed_draft ERR
+
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$COMMIT_SHA" \
+            --title "G-LLM Client $RELEASE_TAG" \
+            --generate-notes \
+            --draft
+          created_draft="true"
+          gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY"
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          trap - ERR

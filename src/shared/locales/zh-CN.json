@@ -26,6 +26,8 @@
   },
   "assistantActions": {
     "pin": "置顶助手",
+    "unpin": "取消置顶",
+    "pinned": "已置顶助手",
     "hide": "隐藏助手",
     "delete": "删除助手",
     "restore": "恢复显示",
@@ -35,6 +37,12 @@
     "manageHidden": "管理已隐藏的助手（{{count}}）",
     "deleteConfirm": "确定删除“{{name}}”吗？这会同时永久清理该助手下的 {{count}} 条会话记录及关联资料，且无法恢复。",
     "keepOneVisible": "至少需要保留一个可见助手。请先恢复其他助手，再执行此操作。"
+  },
+  "conversationActions": {
+    "pin": "置顶会话",
+    "unpin": "取消置顶",
+    "pinned": "已置顶",
+    "delete": "删除会话"
   },
   "app": {
     "loading": "正在加载 G-LLM...",
@@ -629,10 +637,17 @@
     "version": "版本",
     "checking": "正在检查...",
     "checkUpdates": "检查新版本",
+    "viewUpdate": "查看更新",
     "downloadAndChangelog": "下载与更新日志",
     "releaseDate": "发布日期：{{date}}",
     "openDownloadPage": "前往官网下载页",
     "updateCheckFailed": "检查更新失败，请稍后重试。",
+    "automaticUpdates": "签名安装包支持自动更新；发现新版本后由你确认下载，下载完成后可立即重启安装，也可在退出时自动安装。",
+    "manualUpdateOnly": "当前环境仅支持检查版本，请前往官网下载并手动安装。",
+    "downloadUpdate": "下载更新",
+    "downloadingUpdate": "正在下载 {{progress}}%",
+    "restartToInstall": "重启并安装",
+    "installOnQuit": "更新已验证并下载完成；如果暂不重启，将在退出应用时安装。",
     "sourceAndCommercial": "源码与商业使用",
     "licenseSummary": "V1.1.0 起允许个人和企业免费内部使用，当前 V{{version}} 将于 2030-08-01 自动转换为 AGPL-3.0-only。",
     "sourceLicense": "源码许可证",
@@ -797,9 +812,16 @@
       "starterPlan": "把下面内容整理成{{keyword}}工作方案"
     },
     "update": {
+      "ready": "已启用安全自动更新",
+      "manualOnly": "当前环境仅支持手动更新",
+      "checking": "正在检查 GitHub Releases 中的新版本...",
       "unavailable": "暂时无法读取官网版本信息，可前往下载页手动查看。",
       "available": "发现新版本 V{{version}}",
       "latest": "当前已是最新版本 V{{version}}",
+      "downloading": "正在下载更新 {{progress}}%",
+      "downloaded": "V{{version}} 已下载并验证，可以重启安装",
+      "downloadCancelled": "更新下载已取消，可稍后重试。",
+      "error": "自动更新暂时不可用，请稍后重试或前往官网下载。",
       "localizedNotesUnavailable": "此版本暂未提供当前界面的发布说明，请前往下载页查看原始更新日志。"
     },
     "chat": {
