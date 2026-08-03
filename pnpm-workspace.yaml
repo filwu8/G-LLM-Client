@@ -5,7 +5,9 @@ allowBuilds:
 
 supportedArchitectures:
   os:
-    - current
+    - darwin
+    - linux
+    - win32
   cpu:
     - x64
     - arm64

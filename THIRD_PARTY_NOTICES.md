@@ -24,6 +24,8 @@ This file is generated from the locked production dependency graph by
 | @mermaid-js/parser@1.2.0 | MIT | [link](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) |
 | @napi-rs/canvas-darwin-arm64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
 | @napi-rs/canvas-darwin-x64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas-linux-x64-gnu@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas-win32-x64-msvc@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
 | @napi-rs/canvas@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas#readme) |
 | @pdf-lib/standard-fonts@1.0.0 | MIT | [link](https://github.com/Hopding/standard-fonts) |
 | @pdf-lib/upng@1.0.1 | MIT | [link](https://github.com/Hopding/upng#readme) |
@@ -5816,6 +5818,8 @@ ship a root-level license or notice file in the installed package:
 - @electron-internal/extract-zip@1.0.3: BSD-2-Clause
 - @napi-rs/canvas-darwin-arm64@0.1.80: MIT
 - @napi-rs/canvas-darwin-x64@0.1.80: MIT
+- @napi-rs/canvas-linux-x64-gnu@0.1.80: MIT
+- @napi-rs/canvas-win32-x64-msvc@0.1.80: MIT
 - dingbat-to-unicode@1.0.1: BSD-2-Clause
 - html-parse-stringify@3.0.1: MIT
 - isarray@1.0.0: MIT
