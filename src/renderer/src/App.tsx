@@ -61,6 +61,7 @@ import {
 import {
   type ChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type CSSProperties,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -608,11 +609,23 @@ function getUrlHost(url: string): string {
   }
 }
 
+function formatSearchResultDate(timestamp?: number): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return ''
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function WebSearchActivityCard({ activity }: { activity: WebSearchActivity }) {
   const { t } = useTranslation()
   const isPlanning = activity.status === 'planning'
   const isSearching = activity.status === 'searching'
   const isFailed = activity.status === 'failed'
+  const audit = activity.audit
+  const rejectedCount = audit
+    ? audit.duplicateCount + audit.outdatedCount + audit.notApplicableCount + audit.lowRelevanceCount
+    : 0
+  const activeQueries = new Set(activity.activeQueries ?? [])
+  const completedQueries = new Set(activity.completedQueries ?? [])
   const title = isPlanning
     ? t('webActivity.planning')
     : isSearching
@@ -639,18 +652,73 @@ function WebSearchActivityCard({ activity }: { activity: WebSearchActivity }) {
       {activity.queries && activity.queries.length > 0 && (
         <div className="web-search-query-list">
           {activity.queries.map((query) => (
-            <span key={query}>{query}</span>
+            <span
+              key={query}
+              className={completedQueries.has(query) ? 'completed' : activeQueries.has(query) ? 'active' : 'pending'}
+            >
+              {query}
+            </span>
           ))}
         </div>
+      )}
+      {audit && !isPlanning && (
+        <div className="web-research-audit" aria-label={t('webActivity.auditLabel')}>
+          <span>{t(`webActivity.depth.${audit.depth}`)}</span>
+          {activity.status === 'completed' && (
+            <>
+              <span>{t('webActivity.evidence', { accepted: audit.acceptedCount, candidates: audit.candidateCount })}</span>
+              <span>{t('webActivity.coverage', { covered: audit.coveredQuestionCount, total: audit.totalQuestionCount })}</span>
+              {audit.contextCharacterBudget && (
+                <span>{t('webActivity.contextBudget', { count: Math.round(audit.contextCharacterBudget / 100) / 10 })}</span>
+              )}
+              {audit.searchEngines && audit.searchEngines.length > 0 && (
+                <span>{t('webActivity.engines', { engines: audit.searchEngines.join(' · ') })}</span>
+              )}
+              {audit.unavailableSearchEngines && audit.unavailableSearchEngines.length > 0 && (
+                <span className="conflict">{t('webActivity.enginesUnavailable', { engines: audit.unavailableSearchEngines.join(' · ') })}</span>
+              )}
+              {rejectedCount > 0 && <span>{t('webActivity.rejected', { count: rejectedCount })}</span>}
+              {audit.conflictCount > 0 && <span className="conflict">{t('webActivity.conflicts', { count: audit.conflictCount })}</span>}
+            </>
+          )}
+          {isSearching && (
+            <>
+              <span>{t('webActivity.liveProgress', { completed: completedQueries.size, total: activity.queries?.length ?? 0, candidates: audit.candidateCount })}</span>
+              {audit.searchEngines && audit.searchEngines.length > 0 && (
+                <span>{t('webActivity.engines', { engines: audit.searchEngines.join(' · ') })}</span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {audit?.plannerMode === 'fallback' && (
+        <p className="web-search-warning" title={audit.plannerError}>
+          {t('webActivity.plannerFallback')}
+        </p>
       )}
       {isFailed && activity.error && <p className="web-search-error">{activity.error}</p>}
       {activity.results.length > 0 && (
         <div className="web-search-results">
           {activity.results.map((result, index) => (
-            <a key={`${result.url}-${index}`} href={result.url} target="_blank" rel="noreferrer" title={result.url}>
+            <a
+              key={`${result.url}-${index}`}
+              href={result.url}
+              target="_blank"
+              rel="noreferrer"
+              title={result.url}
+              style={{ '--web-result-index': index } as CSSProperties}
+            >
               <span>{index + 1}</span>
-              <strong>{result.title}</strong>
-              <small>{getUrlHost(result.url)}</small>
+              <div className="web-search-result-content">
+                <strong>{result.title}</strong>
+                <small>
+                  {result.sourceRole ? `${t(`webActivity.sourceRole.${result.sourceRole}`)} · ` : ''}
+                  {result.source || result.sourceDomain || getUrlHost(result.url)}
+                  {result.publishedAt ? ` · ${formatSearchResultDate(result.publishedAt)}` : ''}
+                </small>
+                {result.snippet && <p>{result.snippet.slice(0, 120)}</p>}
+                <small>{result.url}</small>
+              </div>
             </a>
           ))}
         </div>

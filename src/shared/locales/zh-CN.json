@@ -357,7 +357,30 @@
     "planning": "正在理解搜索意图",
     "searching": "正在搜索网页",
     "failed": "联网搜索失败",
-    "complete": "已搜索网页 · 查看 {{count}} 个来源"
+    "complete": "联网研究完成 · 采用 {{count}} 个来源",
+    "auditLabel": "证据审计",
+    "depth": {
+      "quick": "快速检索",
+      "balanced": "平衡检索",
+      "deep": "深度检索"
+    },
+    "evidence": "采用 {{accepted}} / {{candidates}}",
+    "coverage": "问题覆盖 {{covered}} / {{total}}",
+    "contextBudget": "证据上下文 {{count}}k 字符",
+    "liveProgress": "已完成 {{completed}} / {{total}} · 候选 {{candidates}}",
+    "engines": "引擎 {{engines}}",
+    "enginesUnavailable": "不可用 {{engines}}",
+    "rejected": "过滤 {{count}}",
+    "conflicts": "冲突 {{count}}",
+    "plannerFallback": "语义规划不可用，已使用本地保底策略",
+    "sourceRole": {
+      "specified": "指定对象",
+      "primary": "原始来源",
+      "independent": "独立来源",
+      "community": "社区经验",
+      "aggregator": "二手聚合",
+      "unknown": "来源待确认"
+    }
   },
   "workspaceErrors": {
     "status429": "模型服务当前请求较多（429），自动重试后仍未恢复。",
@@ -758,7 +781,7 @@
   },
   "errors": {
     "modelTimeout": "暂时无法连接大模型，服务响应超时。",
-    "modelBusy": "大模型服务当前请求较多，请稍后再试。",
+    "modelBusy": "当前大模型服务当前请求较多，请稍后再试，或者更换模型再试。重新发送。",
     "modelUnavailable": "暂时无法连接大模型。",
     "modelAbnormal": "大模型服务返回异常，请稍后再试。",
     "requestFailed": "请求失败，请稍后再试。",

@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -17,14 +17,15 @@
   "pnpm": {
     "overrides": {
       "dompurify": "3.4.12",
-      "fast-uri": "3.1.4",
-      "js-yaml": "4.3.0"
+      "fast-uri": "3.1.5",
+      "js-yaml": "4.3.1",
+      "undici": "7.29.0"
     }
   },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm i18n:check && pnpm licenses:generate && tsc --noEmit && electron-vite build",
-    "test": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/updatePolicy.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts",
+    "test": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/updatePolicy.test.ts src/main/webSearchPolicy.test.ts src/main/webSearchParser.test.ts src/main/webResearch.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts",
     "test:deep-link": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/shared/themeEntitlement.test.ts",
     "i18n:check": "node scripts/check-translations.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
@@ -64,7 +65,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "electron": "^41.0.0",
+    "electron": "^41.10.3",
     "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "typescript": "^5.8.0",

@@ -149,14 +149,14 @@ This file is generated from the locked production dependency graph by
 | duck@0.1.12 | BSD | [link](https://github.com/mwilliamson/duck.js#readme) |
 | electron-store@10.1.0 | MIT | [link](https://github.com/sindresorhus/electron-store#readme) |
 | electron-updater@6.8.9 | MIT | [link](https://github.com/electron-userland/electron-builder) |
-| electron@41.8.0 | MIT | [link](https://github.com/electron/electron#readme) |
+| electron@41.10.6 | MIT | [link](https://github.com/electron/electron#readme) |
 | env-paths@3.0.0 | MIT | [link](https://github.com/sindresorhus/env-paths#readme) |
 | es-toolkit@1.49.0 | MIT | [link](https://es-toolkit.dev) |
 | escape-string-regexp@5.0.0 | MIT | [link](https://github.com/sindresorhus/escape-string-regexp#readme) |
 | estree-util-is-identifier-name@3.0.0 | MIT | [link](https://github.com/syntax-tree/estree-util-is-identifier-name#readme) |
 | extend@3.0.2 | MIT | [link](https://github.com/justmoon/node-extend#readme) |
 | fast-deep-equal@3.1.3 | MIT | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
-| fast-uri@3.1.4 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
+| fast-uri@3.1.5 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
 | fs-extra@10.1.0 | MIT | [link](https://github.com/jprichardson/node-fs-extra) |
 | graceful-fs@4.2.11 | ISC | [link](https://github.com/isaacs/node-graceful-fs#readme) |
 | hachure-fill@0.5.2 | MIT | [link](https://github.com/pshihn/hachure-fill#readme) |
@@ -178,7 +178,7 @@ This file is generated from the locked production dependency graph by
 | is-hexadecimal@2.0.1 | MIT | [link](https://github.com/wooorm/is-hexadecimal#readme) |
 | is-plain-obj@4.1.0 | MIT | [link](https://github.com/sindresorhus/is-plain-obj#readme) |
 | isarray@1.0.0 | MIT | [link](https://github.com/juliangruber/isarray) |
-| js-yaml@4.3.0 | MIT | [link](https://github.com/nodeca/js-yaml#readme) |
+| js-yaml@4.3.1 | MIT | [link](https://github.com/nodeca/js-yaml#readme) |
 | json-schema-traverse@1.0.0 | MIT | [link](https://github.com/epoberezkin/json-schema-traverse#readme) |
 | json-schema-typed@8.0.2 | BSD-2-Clause | [link](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) |
 | jsonfile@6.2.1 | MIT | [link](https://github.com/jprichardson/node-jsonfile#readme) |
@@ -299,7 +299,7 @@ This file is generated from the locked production dependency graph by
 | uint8array-extras@1.5.0 | MIT | [link](https://github.com/sindresorhus/uint8array-extras#readme) |
 | underscore@1.13.8 | MIT | [link](https://underscorejs.org) |
 | undici-types@7.18.2 | MIT | [link](https://undici.nodejs.org) |
-| undici@7.28.0 | MIT | [link](https://undici.nodejs.org) |
+| undici@7.29.0 | MIT | [link](https://undici.nodejs.org) |
 | unified@11.0.5 | MIT | [link](https://unifiedjs.com) |
 | unist-util-is@6.0.1 | MIT | [link](https://github.com/syntax-tree/unist-util-is#readme) |
 | unist-util-position@5.0.0 | MIT | [link](https://github.com/syntax-tree/unist-util-position#readme) |
@@ -2596,7 +2596,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### electron@41.8.0
+### electron@41.10.6
 
 ````text
 Copyright (c) Electron contributors
@@ -2728,7 +2728,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### fast-uri@3.1.4
+### fast-uri@3.1.5
 
 ````text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -3062,7 +3062,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### js-yaml@4.3.0
+### js-yaml@4.3.1
 
 ````text
 (The MIT License)
@@ -5610,7 +5610,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### undici-types@7.18.2, undici@7.28.0
+### undici-types@7.18.2, undici@7.29.0
 
 ````text
 MIT License

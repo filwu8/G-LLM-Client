@@ -357,7 +357,30 @@
     "planning": "Understanding the search intent",
     "searching": "Searching the web",
     "failed": "Web search failed",
-    "complete": "Web search complete · {{count}} sources"
+    "complete": "Web research complete · {{count}} sources adopted",
+    "auditLabel": "Evidence audit",
+    "depth": {
+      "quick": "Quick search",
+      "balanced": "Balanced search",
+      "deep": "Deep search"
+    },
+    "evidence": "Adopted {{accepted}} / {{candidates}}",
+    "coverage": "Coverage {{covered}} / {{total}}",
+    "contextBudget": "Evidence context {{count}}k chars",
+    "liveProgress": "Completed {{completed}} / {{total}} · {{candidates}} candidates",
+    "engines": "Engines {{engines}}",
+    "enginesUnavailable": "Unavailable {{engines}}",
+    "rejected": "Filtered {{count}}",
+    "conflicts": "Conflicts {{count}}",
+    "plannerFallback": "Semantic planning was unavailable; local fallback was used",
+    "sourceRole": {
+      "specified": "Specified source",
+      "primary": "Primary source",
+      "independent": "Independent source",
+      "community": "Community experience",
+      "aggregator": "Secondary aggregator",
+      "unknown": "Unverified source type"
+    }
   },
   "workspaceErrors": {
     "status429": "The model service is busy (429) and did not recover after retrying.",
@@ -758,7 +781,7 @@
   },
   "errors": {
     "modelTimeout": "The model service timed out. Please try again.",
-    "modelBusy": "The model service is busy. Please try again shortly.",
+    "modelBusy": "The model service is currently busy. Please try again later, or switch models and try again. Resend.",
     "modelUnavailable": "The model service is temporarily unavailable.",
     "modelAbnormal": "The model service returned an unexpected response. Please try again.",
     "requestFailed": "Request failed. Please try again.",

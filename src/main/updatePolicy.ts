@@ -5,7 +5,7 @@
  */
 
 const MAX_RELEASE_NOTES_LENGTH = 8_000
-// V2.0.3 is distributed without platform signing. Keep automatic installation
+// V2.0.4 is distributed without platform signing. Keep automatic installation
 // disabled until Windows Authenticode and macOS Developer ID/notarization are configured.
 const SIGNED_AUTOMATIC_UPDATE_ENABLED = false
 

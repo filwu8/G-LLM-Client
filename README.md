@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.3](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.4](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.3](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.3)，发布于 2026-08-03。
+最近稳定发布：[V2.0.4](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.4)，发布于 2026-08-20。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.3 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.4 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.4 联网研究与对话界面修复
+
+- 联网检索支持 Google、Bing 和 DuckDuckGo 多引擎并发，时效性问题可补充 Google News；Google 被防火墙、验证码或同意页阻断时会自动熔断降级。
+- 新增查询规划、来源去重、时效性与适用性评估、冲突证据保留和证据审计，减少重复、过时、断章取义或与用户用途不符的结果。
+- 搜索进度、查询标签和来源卡片现在渐进展示，模型最终回答恢复流式输出。
+- 修复金色模式下的主聊天区域配色异常、LLM 引用卡片溢出及异常安全标记被当作回答显示的问题。
 
 ## V2.0.3 侧边栏整理与更新能力准备
 
@@ -69,7 +76,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 附件与视觉输入：支持文件、图片、剪贴板粘贴、系统截图，并可将截图复制到系统剪贴板。
 - 本地文件任务：可将本机图片或 PDF 压缩到指定字节限制，执行前展示计划与 PDF 有损重建提示，默认不覆盖源文件，并逐个验证输出结果。
 - 会话工作区：可为单个会话授权本地目录，让当前模型在受控路径内查看、搜索、创建和修改文件，并显示工具执行时间线。
-- 联网与工具：支持 Bing Search RSS 与 Google News RSS 联网检索、中文查询规划和来源去重，让搜索资料进入提问上下文。
+- 联网与工具：支持 Google、Bing、DuckDuckGo 与 Google News 的多引擎渐进检索，并通过查询规划、来源去重、证据评估和审计将高相关资料组织进对话上下文。
 - 三套主题：默认自动跟随系统亮色/暗色，也可手动选择；使用有效的官方 G-LLM API Key 时开放金色主题。
 - 弹窗体验：全屏弹窗统一使用毛玻璃背景和渐进式入场动画，并支持系统“减少动态效果”偏好。
 - 隐私友好的匿名统计：默认只上报匿名元数据，不采集聊天内容、API Key、文件内容、截图内容、知识库内容或记忆内容，用户可在设置中关闭。
@@ -164,11 +171,11 @@ Authorization: Bearer {apiKey}
 
 ## License
 
-G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.3 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.4 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V2.0.3 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V2.0.4 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

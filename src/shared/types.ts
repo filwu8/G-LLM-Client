@@ -123,8 +123,45 @@ export interface KnowledgeReference {
 export interface WebSearchResult {
   title: string
   url: string
+  source?: string
+  sourceDomain?: string
   snippet?: string
   excerpt?: string
+  publishedAt?: number
+  sourceRole?: 'specified' | 'primary' | 'independent' | 'community' | 'aggregator' | 'unknown'
+  relevanceScore?: number
+  clusterId?: string
+}
+
+export type WebResearchTaskType = 'lookup' | 'current' | 'compare' | 'evaluate' | 'verify' | 'explore'
+export type WebResearchDepth = 'quick' | 'balanced' | 'deep'
+
+export interface WebResearchConflict {
+  topic: string
+  summary: string
+  sourceUrls: string[]
+}
+
+export interface WebResearchAudit {
+  taskType: WebResearchTaskType
+  depth: WebResearchDepth
+  plannerMode: 'model' | 'fallback'
+  plannerError?: string
+  questions?: string[]
+  candidateCount: number
+  acceptedCount: number
+  duplicateCount: number
+  outdatedCount: number
+  notApplicableCount: number
+  lowRelevanceCount: number
+  conflictCount: number
+  coveredQuestionCount: number
+  totalQuestionCount: number
+  searchRounds: number
+  contextCharacterBudget?: number
+  searchEngines?: string[]
+  unavailableSearchEngines?: string[]
+  conflicts?: WebResearchConflict[]
 }
 
 export interface WebSearchActivity {
@@ -132,7 +169,10 @@ export interface WebSearchActivity {
   query: string
   intent?: string
   queries?: string[]
+  activeQueries?: string[]
+  completedQueries?: string[]
   results: WebSearchResult[]
+  audit?: WebResearchAudit
   error?: string
   searchedAt?: number
 }

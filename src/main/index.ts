@@ -528,6 +528,7 @@ function createWindow(): BrowserWindow {
   mainHiddenMode = 'none'
 
   if (mainWindow && !mainWindow.isDestroyed()) {
+    if (process.platform === 'darwin') app.focus({ steal: true })
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
@@ -597,6 +598,7 @@ function createWindow(): BrowserWindow {
   registerExternalLinkHandler(mainWindow)
   loadRenderer(mainWindow)
   lastMainWindowBounds = mainWindow.getBounds()
+  if (process.platform === 'darwin') app.focus({ steal: true })
   showFloatingLogo()
   return mainWindow
 }
@@ -1843,7 +1845,11 @@ app.whenReady().then(() => {
   })
 
   app.on('activate', () => {
-    createWindow()
+    const window = createWindow()
+    if (process.platform === 'darwin') app.focus({ steal: true })
+    window.restore()
+    window.show()
+    window.focus()
   })
 })
 

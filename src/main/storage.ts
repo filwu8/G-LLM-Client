@@ -41,6 +41,7 @@ import type {
   ToolConfigType,
   ThemeEntitlementResult,
   ThemeRequestUsage,
+  WebResearchAudit,
   WebSearchActivity,
   WebSearchResult
 } from '../shared/types'
@@ -833,11 +834,80 @@ function sanitizeWebSearchResult(result: WebSearchResult): WebSearchResult | nul
   const url = String(result.url ?? '').trim()
   if (!title || !/^https?:\/\//i.test(url)) return null
 
+  const source = result.source ? String(result.source).trim() : undefined
+  const sourceDomain = result.sourceDomain
+    ? String(result.sourceDomain)
+      .trim()
+      .toLocaleLowerCase()
+      .replace(/^www\./, '')
+    : undefined
+  const normalizedSourceDomain = sourceDomain || (() => {
+    try {
+      return new URL(url).hostname.toLocaleLowerCase().replace(/^www\./, '')
+    } catch {
+      return undefined
+    }
+  })()
+  const sourceRoleOptions: Array<NonNullable<WebSearchResult['sourceRole']>> = [
+    'specified', 'primary', 'independent', 'community', 'aggregator', 'unknown'
+  ]
+  const sourceRole = sourceRoleOptions.includes(result.sourceRole ?? 'unknown') ? result.sourceRole : undefined
+
   return {
     title: title.slice(0, 160),
     url: url.slice(0, 1000),
+    source: source ? source.slice(0, 120) : undefined,
+    sourceDomain: normalizedSourceDomain ? normalizedSourceDomain.slice(0, 120) : undefined,
     snippet: result.snippet ? String(result.snippet).trim().slice(0, 500) : undefined,
-    excerpt: result.excerpt ? String(result.excerpt).trim().slice(0, 1000) : undefined
+    excerpt: result.excerpt ? String(result.excerpt).trim().slice(0, 1000) : undefined,
+    publishedAt: Number.isFinite(result.publishedAt) ? Number(result.publishedAt) : undefined,
+    sourceRole,
+    relevanceScore: Number.isFinite(result.relevanceScore) ? Number(result.relevanceScore) : undefined,
+    clusterId: result.clusterId ? String(result.clusterId).trim().slice(0, 80) : undefined
+  }
+}
+
+function sanitizeWebResearchAudit(audit?: WebResearchAudit): WebResearchAudit | undefined {
+  if (!audit) return undefined
+  const taskTypeOptions: WebResearchAudit['taskType'][] = ['lookup', 'current', 'compare', 'evaluate', 'verify', 'explore']
+  const depthOptions: WebResearchAudit['depth'][] = ['quick', 'balanced', 'deep']
+  const count = (value: unknown): number => Number.isFinite(value) ? Math.max(0, Math.round(Number(value))) : 0
+  const conflicts = Array.isArray(audit.conflicts)
+    ? audit.conflicts.map((conflict) => ({
+      topic: String(conflict.topic ?? '').trim().slice(0, 160),
+      summary: String(conflict.summary ?? '').trim().slice(0, 500),
+      sourceUrls: Array.isArray(conflict.sourceUrls)
+        ? conflict.sourceUrls.map(String).filter((url) => /^https?:\/\//i.test(url)).slice(0, 4)
+        : []
+    })).filter((conflict) => conflict.topic && conflict.summary).slice(0, 5)
+    : undefined
+
+  return {
+    taskType: taskTypeOptions.includes(audit.taskType) ? audit.taskType : 'lookup',
+    depth: depthOptions.includes(audit.depth) ? audit.depth : 'quick',
+    plannerMode: audit.plannerMode === 'model' ? 'model' : 'fallback',
+    plannerError: audit.plannerError ? String(audit.plannerError).trim().slice(0, 240) : undefined,
+    questions: Array.isArray(audit.questions)
+      ? audit.questions.map(String).map((question) => question.trim().slice(0, 240)).filter(Boolean).slice(0, 8)
+      : undefined,
+    candidateCount: count(audit.candidateCount),
+    acceptedCount: count(audit.acceptedCount),
+    duplicateCount: count(audit.duplicateCount),
+    outdatedCount: count(audit.outdatedCount),
+    notApplicableCount: count(audit.notApplicableCount),
+    lowRelevanceCount: count(audit.lowRelevanceCount),
+    conflictCount: count(audit.conflictCount),
+    coveredQuestionCount: count(audit.coveredQuestionCount),
+    totalQuestionCount: count(audit.totalQuestionCount),
+    searchRounds: count(audit.searchRounds),
+    contextCharacterBudget: audit.contextCharacterBudget === undefined ? undefined : count(audit.contextCharacterBudget),
+    searchEngines: Array.isArray(audit.searchEngines)
+      ? audit.searchEngines.map(String).map((engine) => engine.trim().slice(0, 40)).filter(Boolean).slice(0, 6)
+      : undefined,
+    unavailableSearchEngines: Array.isArray(audit.unavailableSearchEngines)
+      ? audit.unavailableSearchEngines.map(String).map((engine) => engine.trim().slice(0, 40)).filter(Boolean).slice(0, 6)
+      : undefined,
+    conflicts
   }
 }
 
@@ -852,9 +922,12 @@ function sanitizeWebSearchActivity(activity?: WebSearchActivity): WebSearchActiv
   const results = (activity.results ?? [])
     .map(sanitizeWebSearchResult)
     .filter((result): result is WebSearchResult => Boolean(result))
-    .slice(0, 8)
+    .slice(0, 10)
   const queries = Array.isArray(activity.queries)
-    ? activity.queries.map((query) => String(query).trim().slice(0, 120)).filter(Boolean).slice(0, 4)
+    ? activity.queries.map((query) => String(query).trim().slice(0, 120)).filter(Boolean).slice(0, 8)
+    : undefined
+  const sanitizeQueries = (value: unknown): string[] | undefined => Array.isArray(value)
+    ? value.map(String).map((query) => query.trim().slice(0, 120)).filter(Boolean).slice(0, 8)
     : undefined
 
   return {
@@ -862,7 +935,10 @@ function sanitizeWebSearchActivity(activity?: WebSearchActivity): WebSearchActiv
     query: query.slice(0, 300),
     intent: activity.intent ? String(activity.intent).trim().slice(0, 180) : undefined,
     queries,
+    activeQueries: sanitizeQueries(activity.activeQueries),
+    completedQueries: sanitizeQueries(activity.completedQueries),
     results,
+    audit: sanitizeWebResearchAudit(activity.audit),
     error: activity.error ? String(activity.error).trim().slice(0, 300) : undefined,
     searchedAt: Number.isFinite(activity.searchedAt) ? Number(activity.searchedAt) : undefined
   }
