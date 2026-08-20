@@ -211,6 +211,12 @@ jobs:
       attestations: read
 
     steps:
+      - name: Checkout approved release notes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          persist-credentials: false
+
       - name: Download attested release assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -248,6 +254,16 @@ jobs:
             exit 1
           fi
 
+          release_notes="docs/releases/$RELEASE_TAG.md"
+          if [[ ! -s "$release_notes" ]]; then
+            echo "User-facing release notes are required at $release_notes." >&2
+            exit 1
+          fi
+          if ! grep -Fq "## English Summary" "$release_notes"; then
+            echo "Release notes must include an English Summary section." >&2
+            exit 1
+          fi
+
           created_draft="false"
           cleanup_failed_draft() {
             if [[ "$created_draft" == "true" ]]; then
@@ -261,7 +277,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$COMMIT_SHA" \
             --title "G-LLM Client $RELEASE_TAG" \
-            --generate-notes \
+            --notes-file "$release_notes" \
             --draft
           created_draft="true"
           gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY"

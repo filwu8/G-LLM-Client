@@ -4,6 +4,7 @@
 /pnpm-lock.yaml @filwu8
 /pnpm-workspace.yaml @filwu8
 /scripts/collect-release-assets.mjs @filwu8
+/docs/releases/ @filwu8
 /src/main/appUpdate.ts @filwu8
 /src/main/autoUpdateManager.ts @filwu8
 /src/main/updatePolicy.ts @filwu8
