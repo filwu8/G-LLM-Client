@@ -107,12 +107,15 @@ jobs:
           - id: windows
             name: Windows x64
             os: windows-latest
+            package_script: package:win
           - id: macos
             name: macOS x64 and arm64
             os: macos-latest
+            package_script: package:mac
           - id: linux
             name: Linux x64
             os: ubuntu-latest
+            package_script: package:linux
 
     steps:
       - name: Checkout approved commit
@@ -140,131 +143,11 @@ jobs:
       - name: Reject high-severity production dependency advisories
         run: pnpm audit --prod --audit-level high
 
-      - name: Require Windows signing credentials
-        if: matrix.id == 'windows'
-        shell: bash
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          missing=()
-          for secret_name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
-            if [[ -z "${!secret_name:-}" ]]; then
-              missing+=("$secret_name")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            echo "Missing production-release secret(s): ${missing[*]}" >&2
-            exit 1
-          fi
-
-      - name: Require macOS signing and notarization credentials
-        if: matrix.id == 'macos'
-        shell: bash
-        env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          set -euo pipefail
-          missing=()
-          for secret_name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER; do
-            if [[ -z "${!secret_name:-}" ]]; then
-              missing+=("$secret_name")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            echo "Missing production-release secret(s): ${missing[*]}" >&2
-            exit 1
-          fi
-
-      - name: Prepare App Store Connect API key
-        if: matrix.id == 'macos'
-        shell: bash
-        env:
-          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-        run: |
-          set -euo pipefail
-          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
-          API_KEY_PATH="$api_key_path" node -e "require('node:fs').writeFileSync(process.env.API_KEY_PATH, Buffer.from(process.env.APPLE_API_KEY_BASE64, 'base64'))"
-          chmod 600 "$api_key_path"
-          if ! grep -Fq -- '-----BEGIN PRIVATE KEY-----' "$api_key_path"; then
-            echo "APPLE_API_KEY_BASE64 did not decode to an App Store Connect API key." >&2
-            exit 1
-          fi
-          echo "APPLE_API_KEY=$api_key_path" >> "$GITHUB_ENV"
-
-      - name: Package signed Windows application
-        if: matrix.id == 'windows'
-        run: pnpm package:win
+      - name: Package application
+        run: pnpm ${{ matrix.package_script }}
         env:
           GLLM_BUILD_CODE: ${{ github.run_id }}.${{ github.run_attempt }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      - name: Package signed and notarized macOS application
-        if: matrix.id == 'macos'
-        run: pnpm package:mac
-        env:
-          GLLM_BUILD_CODE: ${{ github.run_id }}.${{ github.run_attempt }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-
-      - name: Package Linux application
-        if: matrix.id == 'linux'
-        run: pnpm package:linux
-        env:
-          GLLM_BUILD_CODE: ${{ github.run_id }}.${{ github.run_attempt }}
-
-      - name: Verify Windows Authenticode signatures
-        if: matrix.id == 'windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $targets = @(
-            Get-ChildItem -LiteralPath dist -File -Filter 'G-LLM-Client-Setup-*.exe'
-            Get-Item -LiteralPath 'dist/win-unpacked/G-LLM-Client.exe'
-          )
-          if ($targets.Count -lt 2) {
-            throw 'Expected the signed installer and packaged application executable.'
-          }
-          foreach ($target in $targets) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $target.FullName
-            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-              throw "Invalid Authenticode signature for $($target.Name): $($signature.Status)"
-            }
-            $subject = $signature.SignerCertificate.Subject
-            if ($subject -notmatch '(?i)(?:^|,\s*)(?:CN|O)=GPROPHET LIMITED(?:,|$)') {
-              throw "Unexpected Authenticode publisher for $($target.Name): $subject"
-            }
-            if (-not $signature.TimeStamperCertificate) {
-              throw "Missing trusted timestamp for $($target.Name)."
-            }
-          }
-
-      - name: Verify macOS Developer ID and notarization
-        if: matrix.id == 'macos'
-        shell: bash
-        run: |
-          set -euo pipefail
-          apps=(
-            "dist/mac/G-LLM Client.app"
-            "dist/mac-arm64/G-LLM Client.app"
-          )
-          for app_path in "${apps[@]}"; do
-            test -d "$app_path"
-            codesign --verify --deep --strict --verbose=2 "$app_path"
-            signature_details="$(codesign --display --verbose=4 "$app_path" 2>&1)"
-            grep -Fq 'Authority=Developer ID Application: GPROPHET LIMITED' <<< "$signature_details"
-            xcrun stapler validate "$app_path"
-            spctl --assess --type execute --verbose=4 "$app_path"
-          done
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Verify packaged native dependencies
         shell: bash
@@ -319,15 +202,6 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
-
-      - name: Remove temporary App Store Connect API key
-        if: always() && matrix.id == 'macos'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${APPLE_API_KEY:-}" && "$APPLE_API_KEY" == "$RUNNER_TEMP/"* ]]; then
-            rm -f -- "$APPLE_API_KEY"
-          fi
 
   publish:
     name: Publish GitHub Release

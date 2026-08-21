@@ -24,10 +24,11 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.6 安全自动更新与推理模型兼容
+## V2.0.6 Windows 自动更新与推理模型兼容
 
-- Windows 安装包启用 Authenticode 签名，macOS 安装包启用 Developer ID 签名与 notarization；正式发布缺少凭据或签名验证失败时会直接终止。
-- V2.0.6 作为首个签名桥接版本仍需手动安装一次；此后 Windows 和 macOS 会自动检查并后台下载新版本，用户可重启安装或在退出时安装。
+- V2.0.6 延续此前的无证书发布方式；Windows 与 macOS 可能显示未知发布者或安全警告。
+- V2.0.6 作为自动更新桥接版本仍需手动安装一次；此后 Windows 会自动检查并后台下载新版本，用户可重启安装或在退出时安装。
+- macOS 无签名应用无法使用 Electron 自动安装更新，因此当前继续检查版本并引导用户手动下载；取得 Developer ID 证书后再启用自动安装。
 - 兼容将推理过程放在 `reasoning_content` 中的 OpenAI-compatible 流式响应，修复 `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` 一直等待却不显示内容的问题。
 - 修复回复中暂停并切换模型后，会话提示与输入框右下角模型名称不同步的问题。
 
@@ -94,7 +95,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 三套主题：默认自动跟随系统亮色/暗色，也可手动选择；使用有效的官方 G-LLM API Key 时开放金色主题。
 - 弹窗体验：全屏弹窗统一使用毛玻璃背景和渐进式入场动画，并支持系统“减少动态效果”偏好。
 - 隐私友好的匿名统计：默认只上报匿名元数据，不采集聊天内容、API Key、文件内容、截图内容、知识库内容或记忆内容，用户可在设置中关闭。
-- 更新机制：Windows 和 macOS 会从 GitHub Releases 检查并后台下载已签名更新，下载完成后可立即重启安装，也可在退出时安装；Linux 保留版本检查与手动下载。
+- 更新机制：Windows 会从 GitHub Releases 检查并后台下载更新，下载完成后可立即重启安装，也可在退出时安装；macOS 与 Linux 保留版本检查和手动下载。
 
 ## 桌面常驻体验
 
@@ -111,7 +112,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 应用启用单进程保护；重复双击快捷方式会唤起已有窗口，不再启动多个进程。
 - 主进程日志写入 `%APPDATA%/G-LLM/logs/main.log`，便于定位用户机器上的闪退或启动问题。
 
-> V2.0.6 是首个签名桥接版本，需要从官网下载并手动安装一次；从该版本开始，后续已签名版本可在客户端内自动更新。
+> V2.0.6 是首个 Windows 自动更新桥接版本，需要从官网下载并手动安装一次；从该版本开始，后续 Windows 版本可在客户端内更新。当前三平台安装包仍未配置商业代码签名证书。
 
 ## Development
 
@@ -138,7 +139,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-构建产物输出到 `dist/`。正式 Release 由 GitHub Actions 分别构建 Windows、macOS、Linux 安装包，并生成更新元数据、SHA-256 和来源证明；Windows/macOS 构建强制要求平台签名，macOS 同时强制 notarization。完整控制见[安全自动更新与发布](./docs/secure-auto-update.md)。
+构建产物输出到 `dist/`。正式 Release 由 GitHub Actions 分别构建 Windows、macOS、Linux 安装包，并生成更新元数据、SHA-256 和来源证明。当前过渡版本未配置商业代码签名；Windows 启用客户端内更新，macOS/Linux 保持手动更新。完整控制见[自动更新与发布](./docs/secure-auto-update.md)。
 
 ## API Contract
 
@@ -181,7 +182,7 @@ Authorization: Bearer {apiKey}
 
 ## Release QA
 
-发布前请参考 [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) 完成三端基础验证，并按[安全自动更新与发布](./docs/secure-auto-update.md)检查 Environment、Ruleset、不可变 Release、平台签名与 notarization。
+发布前请参考 [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) 完成三端基础验证，并按[自动更新与发布](./docs/secure-auto-update.md)检查 Environment、Ruleset、不可变 Release、校验摘要与来源证明。
 
 ## License
 

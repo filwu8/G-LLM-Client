@@ -1,103 +1,78 @@
-# 安全自动更新与发布
+# 自动更新与发布
 
-G-LLM Client 使用公开的 GitHub Releases 作为更新源。Windows 和 macOS 正式安装包会在启动后延迟检查更新，并在发现新版本后自动后台下载；下载完成后可立即重启安装，也可在正常退出时安装。
+G-LLM Client 使用公开的 GitHub Releases 作为版本与更新源。V2.0.6 延续此前无商业代码签名证书的发布方式，并作为 Windows 自动更新的桥接版本：用户需手动安装 V2.0.6 一次，此后 Windows 客户端会在后台下载更高版本，并在重启或正常退出时安装。
 
-开发环境、未打包应用和 Linux 构建不会自动执行安装包，只保留版本检查和手动下载入口。这样可以避免在缺少 Windows Authenticode 或 macOS Developer ID 平台签名保护时自动执行远程制品。
+macOS 无签名安装包可以继续手动下载安装使用，但 Electron 的 Squirrel.Mac 要求应用必须签名才能自动更新，因此 macOS 当前只检查版本并打开手动下载入口。Linux 同样保留版本检查和手动下载。
 
-## 信任边界
+## 当前平台行为
+
+- Windows 正式安装包使用 NSIS。客户端启动 30 秒后检查更新，之后每 12 小时检查一次；发现稳定版后自动后台下载。
+- macOS 生成 DMG 与 ZIP，保留 `latest-mac.yml`，但在取得 Developer ID Application 证书前不会自动下载或执行更新。
+- Linux 生成 AppImage 与 deb，只提供版本检查和手动下载。
+- 开发环境与未打包应用不会自动执行安装包。
+
+## 当前信任边界
 
 - 更新源由打包时生成的 `app-update.yml` 固定为 `filwu8/G-LLM-Client`，渲染进程不能修改 feed URL。
-- 稳定客户端拒绝预发布版本和版本降级，并禁用缺少完整签名校验保障的 Web Installer。
-- `electron-updater` 校验 `latest*.yml` 中的文件摘要；Windows 还校验发布者签名，macOS 依赖 Developer ID、Gatekeeper 和 notarization。
-- Release 发布后不得替换附件或移动标签。发现问题必须提高版本号发布修复版本，禁止覆盖原安装包。
-- GitHub provenance 证明制品由指定仓库和工作流生成，但它不能判断已获批准的源代码是否存在恶意逻辑，因此仍必须执行代码审核和发布审批。
+- 稳定客户端拒绝预发布版本和版本降级，并禁用 Web Installer。
+- `electron-updater` 按 `latest*.yml` 中的摘要验证下载内容；发布工作流同时生成 SHA-256 清单与 GitHub artifact attestation。
+- 工作流只允许从当前 `origin/main` HEAD 创建与 `package.json` 一致的新标签，不会覆盖已有标签或 Release。
+- 公开附件使用白名单收集，平台原生模块在打包后验证目标架构。
+- Release 发布后不得替换附件或移动标签；发现问题必须提高版本号发布修复版本。
 
-## 依赖供应链
+无证书发布不具备操作系统级发布者身份验证。Windows 可能显示未知发布者警告，macOS 可能触发 Gatekeeper 提示；如果 GitHub 仓库、发布工作流或维护者账号被攻破，仅靠摘要和 provenance 不能替代 Authenticode 或 Developer ID 信任链。取得证书后应按本文后续章节恢复平台签名。
 
-- CI 只使用锁定的 pnpm 版本和 `--frozen-lockfile`，GitHub Actions 也固定到完整 commit SHA。
-- `pnpm-workspace.yaml` 延迟安装发布不足 24 小时的新依赖、拒绝传递依赖使用 git/任意 tarball，并阻止包发布可信度降级。
-- Windows、Linux、macOS x64 和 macOS arm64 的原生 Canvas 模块在正式打包后逐项检查；架构错误会直接阻止 Release。
-- `supportedArchitectures` 同时安装 macOS x64/arm64 可选依赖，避免 Apple Silicon 构建机交叉打出的 Intel 包携带错误原生模块。
-- 每次 CI 和正式发布都执行生产依赖高危漏洞门禁。Dependabot 只负责提出更新，仍需通过 Code Owner 审核和完整检查。
+## 发布流程
 
-## 首次启用
+1. 合并并确认 `main` 的 `Client CI` 全部通过，工作区不得混入未提交改动。
+2. 更新 `package.json` 版本、许可证版本、README 和中英文发布说明。
+3. 在 Actions 中从 `main` 手动运行 `Client Release`。
+4. 输入与 `package.json` 完全一致的新标签，例如 `v2.0.6`，并输入 `RELEASE`。
+5. Windows、macOS、Linux 分别执行测试、生产依赖审计和正式打包。
+6. 工作流验证原生模块架构与打包后的 GitHub 更新源，收集白名单附件并生成 SHA-256 与 artifact attestation。
+7. 最终任务再次验证全部摘要与来源证明，然后创建草稿、一次性上传附件并发布。
 
-V2.0.6 是第一个启用安全自动更新的签名桥接版本。V2.0.5 及更早版本没有启用自动安装，因此用户仍需手动下载安装 V2.0.6；从 V2.0.6 开始，后续已签名版本可由客户端自动后台下载并在重启或退出时安装。
+工作流拒绝以下情况：
 
-发布 V2.0.6 前必须完成以下 GitHub 设置。这些设置不保存在仓库文件中，克隆代码不会自动获得它们。正式工作流缺少任何签名或 notarization Secret 时都会立即失败，不会降级生成未签名安装包。
+- 不是从当前 `origin/main` HEAD 发起。
+- 标签格式或 `package.json` 版本不一致。
+- 标签或 Release 已存在。
+- 安装包中的平台原生模块与目标架构不匹配。
+- 更新元数据、安装包、DMG/ZIP/AppImage/deb 缺失。
+- SHA-256 或 provenance 验证失败。
 
-### 1. `production-release` Environment
+## GitHub 发布保护
 
-在 Repository Settings → Environments 创建 `production-release`：
+建议为 `production-release` Environment、`main` 和 `v*` 标签配置以下保护：
 
-1. 添加至少一名 Required reviewer。
-2. 开启 Prevent self-review。
-3. 仅允许受保护的 `main` 分支部署。
-4. 禁止管理员绕过保护规则。
-5. 把签名与 notarization 凭据保存为 Environment secrets，不要保存为普通仓库变量。
+- 发布环境需要他人审核并禁止自审。
+- `main` 只能通过 Pull Request 合并，要求 Code Owner 审核和 `Test and build` 状态检查。
+- 禁止强推、删除、移动发布标签和覆盖 Release 附件。
+- 开启 Release immutability；Actions 默认只读，只有最终发布任务临时申请 `contents: write`。
+- 维护者账号启用强 MFA，定期审计 Actions、Environment 与 Release 操作记录。
 
-### 2. `main` Ruleset
-
-建议启用：
-
-- 合并前必须通过 Pull Request。
-- 至少两名审核人，驳回过期批准，并要求最后一次推送由其他人批准。
-- Require review from Code Owners。
-- 必须通过 `Test and build` 状态检查。
-- 禁止强推、删除和直接绕过；管理员也不例外。
-- 对 `.github/**`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、更新器和签名代码重点审核。
-
-仓库包含 `.github/CODEOWNERS`，但只有在 Ruleset 中开启 Code Owner 审核后才会强制生效。
-
-### 3. 标签与 Release
-
-- 为 `v*` 建立标签 Ruleset，禁止普通成员创建、移动或删除标签；只允许正式 Release 工作流创建。
-- 在 Repository Settings → General → Releases 开启 Release immutability。
-- Actions 默认 `GITHUB_TOKEN` 权限设为 Read repository contents；发布工作流只在最终上传任务临时申请 `contents: write`。
-- 禁止 Actions 自动批准 Pull Request；Fork Pull Request 不得访问 Secrets。
-
-## 必需的 Environment secrets
+## 取得证书后的升级
 
 ### Windows
+
+在 `production-release` Environment 配置：
 
 - `WIN_CSC_LINK`
 - `WIN_CSC_KEY_PASSWORD`
 
-优先使用 Azure Artifact Signing 或其他 HSM/云签名服务，避免可导出的长期 PFX 私钥进入 CI。若暂时使用 PFX，必须定期轮换，并确保只在受审批的发布环境中可用。
-
-证书 Common Name 必须与 `package.json` 中的 `GPROPHET LIMITED` 完全一致；不一致时，构建或更新签名验证会失败。
+证书发布者应与 `GPROPHET LIMITED` 一致。恢复 `forceCodeSigning` 后，工作流必须验证 Authenticode、受信任时间戳和更新安装包发布者。
 
 ### macOS
 
-- `MAC_CSC_LINK`：Developer ID Application `.p12` 的 base64 内容
+在 `production-release` Environment 配置：
+
+- `MAC_CSC_LINK`
 - `MAC_CSC_KEY_PASSWORD`
-- `APPLE_API_KEY_BASE64`：App Store Connect API `.p8` 文件的 base64 内容；工作流只在临时 runner 中解码并在构建结束后删除
+- `APPLE_API_KEY_BASE64`
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
 
-发布任务强制执行 Windows Authenticode 签名、macOS Developer ID 签名与 notarization，并验证签名发布者、受信任时间戳、`codesign`、stapled ticket 和 Gatekeeper；任何一步失败都不会创建 Release。
-
-## 签名发布流程
-
-1. 合并并确认 `main` 全部检查通过，工作区中不得混入未提交改动。
-2. 更新 `package.json` 版本及对应许可、README 和更新说明。
-3. 在 Actions 中从 `main` 手动运行 `Client Release`。
-4. 输入与 `package.json` 完全一致的新标签，例如 `v2.0.6`，并输入 `RELEASE`。
-5. 审核人检查目标 commit 后批准 `production-release`。
-6. 三个平台分别构建；Windows/macOS 必须签名，所有公开附件生成 SHA-256 与 GitHub artifact attestation。
-7. 最终任务再次验证摘要和来源证明，然后创建草稿、一次性上传全部附件并发布。
-8. 启用 Release immutability 后，发布瞬间锁定标签和附件。
-
-工作流必须拒绝以下情况：
-
-- 不是从当前 `origin/main` HEAD 发起。
-- 标签格式、`package.json` 版本不一致。
-- 标签或 Release 已存在。
-- 缺少签名或 notarization 凭据。
-- Windows 发布者不是 `GPROPHET LIMITED`。
-- 安装包中的平台原生模块与目标架构不匹配。
-- 更新元数据、安装包、DMG/ZIP/AppImage/deb 缺失。
-- SHA-256 或 provenance 验证失败。
+取得 Developer ID Application 证书后，恢复强制签名、hardened runtime 和 notarization，并在发布工作流中验证 `codesign`、stapled ticket 与 Gatekeeper。只有完成这些验证后才能为 macOS 启用自动安装更新。
 
 ## 验证公开附件
 
@@ -109,12 +84,11 @@ gh release verify v2.0.6 -R filwu8/G-LLM-Client
 gh release verify-asset v2.0.6 G-LLM-Client-Setup-2.0.6-x64.exe -R filwu8/G-LLM-Client
 ```
 
-同时使用 Release 中的 `SHA256SUMS-*.txt` 核对下载文件。启用签名后，Windows 还应检查 Authenticode 发布者，macOS 应检查 Developer ID、notarization 和 Gatekeeper 结果。
+同时使用 Release 中的 `SHA256SUMS-*.txt` 核对文件。取得证书后，还应在 Windows 检查 Authenticode 发布者，在 macOS 检查 Developer ID、notarization 和 Gatekeeper。
 
-## 凭据泄露或错误发布
+## 错误发布或凭据泄露
 
-1. 立即撤销相关签名、Apple、GitHub 或云服务凭据。
-2. 暂停 `production-release` Environment，并移除可疑维护者权限。
-3. 不替换旧 Release；发布更高版本的修复包并在客户端侧拒绝降级。
-4. 审计 GitHub Actions 运行日志、Environment 审批记录、Release attestation 和签名时间戳。
-5. 如果签名私钥可能泄露，联系证书颁发机构吊销证书并轮换客户端信任配置。
+1. 暂停 `production-release` Environment，并撤销相关 GitHub、Apple、签名或云服务凭据。
+2. 不替换旧 Release；发布更高版本的修复包并保持客户端拒绝降级。
+3. 审计 GitHub Actions 运行日志、Release attestation、Environment 和维护者账号登录记录。
+4. 如果签名私钥可能泄露，联系证书颁发机构吊销证书并轮换客户端信任配置。

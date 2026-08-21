@@ -670,8 +670,8 @@
     "releaseDate": "Released: {{date}}",
     "openDownloadPage": "Open download page",
     "updateCheckFailed": "Could not check for updates. Try again later.",
-    "automaticUpdates": "Signed installers support secure automatic updates. New versions download in the background, then install when you restart or quit the app.",
-    "manualUpdateOnly": "This environment can check versions only. Download and install the update manually from the website.",
+    "automaticUpdates": "Windows downloads new versions in the background, then installs them when you restart or quit the app. The current installer is unsigned, so Windows may show a security warning.",
+    "manualUpdateOnly": "macOS, Linux, or this environment can check versions only. Download and install the update manually from the website.",
     "downloadUpdate": "Download update",
     "downloadingUpdate": "Downloading {{progress}}%",
     "restartToInstall": "Restart and install",
@@ -841,7 +841,7 @@
       "starterPlan": "Turn the following into an actionable {{keyword}} plan"
     },
     "update": {
-      "ready": "Secure automatic updates are enabled",
+      "ready": "Windows automatic updates are enabled",
       "manualOnly": "Only manual updates are supported in this environment",
       "checking": "Checking GitHub Releases for updates...",
       "unavailable": "The latest version information is temporarily unavailable. Check the download page manually.",

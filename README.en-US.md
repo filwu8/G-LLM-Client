@@ -24,10 +24,11 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.6 Secure Automatic Updates and Reasoning-Model Compatibility
+## V2.0.6 Windows Automatic Updates and Reasoning-Model Compatibility
 
-- Windows packages now require Authenticode signing, while macOS packages require Developer ID signing and notarization. The production release stops if credentials are missing or verification fails.
-- V2.0.6 is the first signed bridge release and must still be installed manually once. Later Windows and macOS releases are checked and downloaded in the background, then installed on restart or app exit.
+- V2.0.6 continues the existing certificate-free distribution model, so Windows and macOS may show unknown-publisher or security warnings.
+- V2.0.6 is the automatic-update bridge release and must still be installed manually once. Later Windows releases are checked and downloaded in the background, then installed on restart or app exit.
+- Electron requires a signed macOS app for automatic installation, so macOS continues to check versions and direct users to a manual download until a Developer ID certificate is available.
 - OpenAI-compatible streams that place reasoning output in `reasoning_content` are now supported, fixing the indefinite waiting state with `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
 - Fixed the model label becoming inconsistent after stopping a response and switching models.
 
@@ -94,7 +95,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
 - Privacy-friendly anonymous telemetry. The client only sends anonymous metadata and does not collect chat content, API keys, file content, screenshot content, knowledge base content, or memory content. Users can disable telemetry in settings.
-- Secure updates. Windows and macOS check GitHub Releases and download signed updates in the background, then install on restart or app exit. Linux keeps version checking with manual downloads.
+- Updates. Windows checks GitHub Releases and downloads updates in the background, then installs on restart or app exit. macOS and Linux keep version checking with manual downloads.
 
 ## Desktop Resident Behavior
 
@@ -111,7 +112,7 @@ The client includes the following resident desktop behavior:
 - Single-instance protection is enabled. Launching the shortcut again brings the existing app to the front instead of starting another process.
 - Main-process logs are written to `%APPDATA%/G-LLM/logs/main.log` for startup and crash diagnostics.
 
-> V2.0.6 is the first signed bridge release and must be downloaded and installed manually once. Later signed releases can update from inside the client.
+> V2.0.6 is the first Windows automatic-update bridge release and must be installed manually once. Later Windows releases can update inside the client. Current packages still do not use commercial platform-signing certificates.
 
 ## Development
 
@@ -131,7 +132,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-Build artifacts are written to `dist/`. GitHub Actions creates Windows, macOS, and Linux packages with updater metadata, SHA-256 manifests, and provenance. Production Windows/macOS builds require platform signing, and macOS additionally requires notarization. See [Secure automatic updates and releases](./docs/secure-auto-update.md) for the enforced controls.
+Build artifacts are written to `dist/`. GitHub Actions creates Windows, macOS, and Linux packages with updater metadata, SHA-256 manifests, and provenance. The current transition release has no commercial code-signing certificates: Windows supports in-app updates, while macOS and Linux remain manual. See [Automatic updates and releases](./docs/secure-auto-update.md) for the enforced controls.
 
 ## API Contract
 
@@ -174,7 +175,7 @@ The client supports standard OpenAI `/models` responses and simple string-array 
 
 ## Release QA
 
-Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) for cross-platform QA, then verify the Environment, Rulesets, immutable Releases, signing, and notarization controls described in [Secure automatic updates and releases](./docs/secure-auto-update.md).
+Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) for cross-platform QA, then verify the Environment, Rulesets, immutable Releases, checksums, and provenance controls described in [Automatic updates and releases](./docs/secure-auto-update.md).
 
 ## License
 

@@ -5,12 +5,12 @@
  */
 
 const MAX_RELEASE_NOTES_LENGTH = 8_000
-// V2.0.6 is the first signed bridge release. Users install it manually once;
-// subsequent signed releases can update automatically on Windows and macOS.
-const SIGNED_AUTOMATIC_UPDATE_ENABLED = true
+// V2.0.6 is an unsigned bridge release. The NSIS updater can run on Windows,
+// while macOS stays manual because Squirrel.Mac requires a signed application.
+const WINDOWS_AUTOMATIC_UPDATE_ENABLED = true
 
 export function supportsAutomaticUpdate(isPackaged: boolean, platform: NodeJS.Platform): boolean {
-  return SIGNED_AUTOMATIC_UPDATE_ENABLED && isPackaged && (platform === 'win32' || platform === 'darwin')
+  return WINDOWS_AUTOMATIC_UPDATE_ENABLED && isPackaged && platform === 'win32'
 }
 
 export function normalizeReleaseNotes(value: unknown): string | undefined {

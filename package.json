@@ -146,12 +146,7 @@
     "win": {
       "icon": "build/icon.ico",
       "executableName": "G-LLM-Client",
-      "forceCodeSigning": true,
-      "signtoolOptions": {
-        "publisherName": [
-          "GPROPHET LIMITED"
-        ]
-      },
+      "forceCodeSigning": false,
       "target": [
         "nsis"
       ]
@@ -175,13 +170,13 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
-      "forceCodeSigning": true,
-      "hardenedRuntime": true,
+      "identity": "-",
+      "forceCodeSigning": false,
       "target": [
         "dmg",
         "zip"
       ],
-      "notarize": true,
+      "notarize": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },

@@ -21,7 +21,7 @@
 - Linux 执行 `pnpm package:linux`，确认生成 AppImage 和 deb 产物。
 - 发布前记录 Windows 安装包 SHA256，便于排查不同机器下载到的是否是同一个文件。
 - 确认 Release 同时包含 `latest.yml`、`latest-mac.yml`、对应安装包/ZIP 和 `SHA256SUMS-*.txt`，并通过 `gh attestation verify`。
-- 确认 Windows Authenticode、macOS Developer ID 与 notarization 凭据已配置，GitHub 已启用 Release immutability，`production-release` Environment 需要他人审批且禁止自审。
+- 确认 GitHub 已启用 Release immutability，`production-release` Environment 需要他人审批且禁止自审；无证书过渡发布必须在更新说明中明确平台警告与能力限制。
 
 ## Windows 验收
 
@@ -44,8 +44,8 @@
 - 截图或图片附件右键可以复制图片，并能粘贴到微信、浏览器输入框或其他程序。
 - 自己发送过的历史消息可以选择、复制和引用。
 - 固定任务栏后再次启动可以复用已有进程，不闪退。
-- 从上一签名版本检查更新，可以发现本次版本并自动后台下载；下载完成后“重启并安装”和“退出时安装”均可升级且保留用户数据。
-- 篡改下载文件、签名无效或发布者不匹配时，客户端拒绝安装。
+- 从上一自动更新版本检查更新，可以发现本次版本并自动后台下载；下载完成后“重启并安装”和“退出时安装”均可升级且保留用户数据。
+- 篡改下载文件或使其与 `latest.yml` 摘要不匹配时，客户端拒绝安装。
 - 如果用户反馈闪退，先收集 `%APPDATA%/G-LLM/logs/main.log`。
 
 ## macOS 验收
@@ -56,8 +56,8 @@
 - 关闭窗口、Dock 图标和菜单栏行为符合 macOS 常规习惯。
 - 从浏览器打开 `gllm://open?source=g-llm`，冷启动和已运行状态都能显示并聚焦主窗口。
 - 非白名单 `gllm` 链接不会触发深链接动作。
-- `codesign --verify --deep --strict`、Gatekeeper、notarization 和 stapled ticket 验证全部通过。
-- 从上一签名版本检查更新、后台下载并重启安装成功，用户数据保持不变。
+- 无证书过渡版确认系统安全提示与发布说明一致，并验证手动覆盖安装后用户数据保持不变。
+- “关于本系统”显示 macOS 仅支持检查版本和手动下载，不尝试自动执行未签名更新。
 
 ## Linux 验收
 
@@ -71,8 +71,8 @@
 
 ## 分发状态记录
 
-- Windows 未签名构建：不得由正式 Release 工作流发布。
+- Windows 未签名构建：过渡期允许发布，必须明确未知发布者风险，并记录安装包 SHA256 与 provenance。
 - Windows 签名构建：发布者必须为 `GPROPHET LIMITED`，并记录证书主体、签名时间戳和安装包 SHA256。
 - Microsoft Store/MSIX：账号、包名、发布状态单独记录。
-- macOS 未签名或未 notarize 构建：不得由正式 Release 工作流发布。
+- macOS 未签名或未 notarize 构建：过渡期允许手动下载发布，必须保持自动安装禁用并明确 Gatekeeper 风险。
 - Linux 正式发布：至少保留 AppImage 和 deb 两种产物，后续可补 apt 仓库。

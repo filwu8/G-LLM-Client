@@ -9,9 +9,9 @@ import test from 'node:test'
 
 import { normalizeDownloadProgress, normalizeReleaseNotes, supportsAutomaticUpdate } from './updatePolicy.ts'
 
-test('automatic installation is enabled only for packaged Windows and macOS builds', () => {
+test('unsigned automatic installation is enabled only for packaged Windows builds', () => {
   assert.equal(supportsAutomaticUpdate(true, 'win32'), true)
-  assert.equal(supportsAutomaticUpdate(true, 'darwin'), true)
+  assert.equal(supportsAutomaticUpdate(true, 'darwin'), false)
   assert.equal(supportsAutomaticUpdate(true, 'linux'), false)
   assert.equal(supportsAutomaticUpdate(false, 'win32'), false)
   assert.equal(supportsAutomaticUpdate(false, 'darwin'), false)
