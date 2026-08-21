@@ -17,6 +17,7 @@ import {
   normalizeModelCapabilities
 } from '@shared/modelCapabilities'
 import { supportsReasoningEffort } from '@shared/featureFlags'
+import { resolveProviderModelId } from '@shared/providers'
 import type { ApiProvider, ProviderModel, ReasoningEffort } from '@shared/types'
 
 const reasoningEffortOptions: Array<{ value: ReasoningEffort; labelKey: string; titleKey: string }> = [
@@ -52,14 +53,15 @@ const modelFamilyPriority = [
 ]
 
 export function getModelOptions(provider: ApiProvider, selectedModel = provider.defaultModel): ProviderModel[] {
-  const models = provider.models.some((model) => model.id === selectedModel)
+  const resolvedModel = resolveProviderModelId(provider, selectedModel)
+  const models = provider.models.some((model) => model.id === resolvedModel)
     ? provider.models
     : [
         {
-          id: selectedModel,
-          name: selectedModel,
-          capabilities: inferModelCapabilities(selectedModel),
-          type: inferModelType(selectedModel)
+          id: resolvedModel,
+          name: resolvedModel,
+          capabilities: inferModelCapabilities(resolvedModel),
+          type: inferModelType(resolvedModel)
         },
         ...provider.models
       ]

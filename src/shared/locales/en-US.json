@@ -42,6 +42,9 @@
     "pin": "Pin conversation",
     "unpin": "Unpin conversation",
     "pinned": "Pinned",
+    "responding": "Responding",
+    "responseReady": "Response ready",
+    "responseFailed": "Response failed",
     "delete": "Delete conversation"
   },
   "app": {
@@ -820,7 +823,8 @@
       "apiKeyRequired": "Add an API key for “{{provider}}” first",
       "modelsRequestFailed": "{{provider}} model list request failed: {{status}} {{detail}}",
       "noModels": "{{provider}} returned no available models",
-      "connected": "Connected successfully; found {{count}} model(s)"
+      "connected": "Connected successfully; found {{count}} model(s)",
+      "modelUnavailableFallback": "Model {{model}} is no longer available. The catalog was refreshed and the conversation switched to {{fallback}}."
     },
     "assistant": {
       "outputLanguage": "English",

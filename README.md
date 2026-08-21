@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.4](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.5](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.4](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.4)，发布于 2026-08-20。
+最近稳定发布：[V2.0.5](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.5)，发布于 2026-08-21。
 
-> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.4 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
+> V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；当前 V2.0.5 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.5 模型可用性与后台对话
+
+- 官方 G-LLM 模型目录会自动刷新；已下架或没有可用渠道的旧模型不再继续显示或发送请求。
+- 请求遇到模型无可用渠道时，客户端会立即刷新模型目录、切换到当前可用模型并安全重试一次，同时向用户说明切换结果。
+- 支持在一个会话回复期间切换到其他会话继续工作；助手和会话列表会显示回复中、回复完成或回复失败状态。
+- 草稿、附件、引用、联网搜索开关和工作区活动按会话独立保存，避免切换会话时相互覆盖。
 
 ## V2.0.4 联网研究与对话界面修复
 
@@ -171,11 +178,11 @@ Authorization: Bearer {apiKey}
 
 ## License
 
-G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.4 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
+G-LLM Client 由 GPROPHET LIMITED 发布。当前版本 V2.0.5 采用 [Business Source License 1.1](./LICENSE)，并附带额外使用授权。
 
 个人使用、学习研究、测试评估和企业内部业务使用免费。未经 GPROPHET LIMITED 书面商业授权，不得白标或 OEM、转售或出租、作为竞品发布或分发，也不得向第三方提供托管、代运营、外包或应用服务。
 
-V2.0.4 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
+V2.0.5 将于 2030-08-01 自动转换为 AGPL-3.0-only。V1.0.10 及以前版本不受本次变更影响，继续适用各自发布标签中已经附带的许可证。
 
 完整许可边界见 [LICENSE](./LICENSE) 和 [LICENSE_POLICY.md](./LICENSE_POLICY.md)，商业授权说明见 [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)，贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 

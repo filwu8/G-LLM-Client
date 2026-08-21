@@ -4,10 +4,11 @@
  * Change Date: 2030-08-01
  */
 
-import type { ApiProvider, ProviderTemplate, ProviderTemplateId } from './types'
-import { inferModelCapabilities, inferModelType } from './modelCapabilities'
+import type { ApiProvider, ProviderModel, ProviderTemplate, ProviderTemplateId } from './types'
+import { inferModelCapabilities, inferModelType } from './modelCapabilities.ts'
 
 export const DEFAULT_PROVIDER_ID = 'provider_gllm'
+export const PROVIDER_MODEL_CATALOG_TTL_MS = 6 * 60 * 60 * 1000
 
 export function isOfficialGllmApiProvider(provider: ApiProvider): boolean {
   try {
@@ -17,6 +18,40 @@ export function isOfficialGllmApiProvider(provider: ApiProvider): boolean {
   } catch {
     return false
   }
+}
+
+export function resolveProviderModelId(provider: ApiProvider, requestedModel?: string): string {
+  const requested = requestedModel?.trim() ?? ''
+  const configuredDefault = provider.defaultModel.trim()
+
+  // Custom OpenAI-compatible providers may support models that their catalog
+  // endpoint does not enumerate, so preserve manually entered model IDs there.
+  if (!isOfficialGllmApiProvider(provider)) {
+    return requested || configuredDefault || provider.models[0]?.id || ''
+  }
+
+  const available = new Set(provider.models.map((model) => model.id))
+  if (requested && available.has(requested)) return requested
+  if (configuredDefault && available.has(configuredDefault)) return configuredDefault
+  return provider.models[0]?.id || configuredDefault || requested
+}
+
+export function applyFetchedProviderModels(
+  provider: ApiProvider,
+  models: ProviderModel[],
+  modelsUpdatedAt = Date.now()
+): ApiProvider {
+  const next = { ...provider, models, modelsUpdatedAt }
+  return {
+    ...next,
+    defaultModel: resolveProviderModelId(next, provider.defaultModel)
+  }
+}
+
+export function shouldRefreshProviderModels(provider: ApiProvider, now = Date.now()): boolean {
+  if (!isOfficialGllmApiProvider(provider) || !provider.apiKey.trim()) return false
+  if (!provider.modelsUpdatedAt) return true
+  return now - provider.modelsUpdatedAt >= PROVIDER_MODEL_CATALOG_TTL_MS
 }
 
 export const PROVIDER_TEMPLATES: ProviderTemplate[] = [

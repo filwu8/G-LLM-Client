@@ -109,6 +109,7 @@ export default function FloatingLogo() {
   const { t } = useTranslation()
   const dragState = useRef<DragState | null>(null)
   const activityResetTimer = useRef<number | null>(null)
+  const activeConversationIds = useRef(new Set<string>())
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [activity, setActivity] = useState<MascotActivity>('idle')
@@ -137,6 +138,13 @@ export default function FloatingLogo() {
       activityResetTimer.current = null
 
       if (event.active) {
+        activeConversationIds.current.add(event.conversationId)
+        setActivity('thinking')
+        return
+      }
+
+      activeConversationIds.current.delete(event.conversationId)
+      if (activeConversationIds.current.size > 0) {
         setActivity('thinking')
         return
       }
@@ -150,6 +158,7 @@ export default function FloatingLogo() {
 
     return () => {
       unsubscribe()
+      activeConversationIds.current.clear()
       if (activityResetTimer.current !== null) window.clearTimeout(activityResetTimer.current)
     }
   }, [])

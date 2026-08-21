@@ -10,6 +10,7 @@ import {
   BookOpen,
   Briefcase,
   CircleCheck,
+  CircleAlert,
   Code2,
   Copy,
   Crown,
@@ -77,6 +78,14 @@ import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
 import {
+  acknowledgeConversationRun,
+  finishConversationRun,
+  isConversationRunning,
+  removeConversationRun,
+  startConversationRun,
+  type ConversationRunStates
+} from './conversationRuntime'
+import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
   writeRichTextToClipboard,
@@ -113,7 +122,8 @@ import {
   DEFAULT_PROVIDER_ID,
   PROVIDER_TEMPLATES,
   createProviderFromTemplate,
-  getProviderById
+  getProviderById,
+  resolveProviderModelId
 } from '@shared/providers'
 import {
   getModelCapabilities,
@@ -177,6 +187,21 @@ const maxPastedAttachmentBytes = 12 * 1024 * 1024
 const quoteReferencePrefix = 'quote_'
 const defaultSpaceId = 'project_default'
 const providerTemplateCategoryOrder: ProviderTemplateCategory[] = ['default', 'global', 'china', 'aggregator', 'local']
+
+type SessionStateUpdate<T> = T | ((current: T) => T)
+
+function resolveSessionStateUpdate<T>(update: SessionStateUpdate<T>, current: T): T {
+  return typeof update === 'function' ? (update as (value: T) => T)(current) : update
+}
+
+function getComposerSessionKey(conversationId: string | null, projectId: string, assistantId: string): string {
+  return conversationId ? `conversation:${conversationId}` : `new:${projectId || 'loading'}:${assistantId}`
+}
+
+function getComposerDraftStorageKey(sessionKey: string): string {
+  return `${MAIN_COMPOSER_DRAFT_KEY}:${encodeURIComponent(sessionKey)}`
+}
+
 interface TokenUsage {
   total: number
   input: number
@@ -789,10 +814,12 @@ function getEffectiveProvider(
 
   if (!modelId) return provider
 
+  const resolvedModelId = resolveProviderModelId(provider, modelId)
+
   return {
     ...provider,
-    defaultModel: modelId,
-    models: getModelOptions(provider, modelId)
+    defaultModel: resolvedModelId,
+    models: getModelOptions(provider, resolvedModelId)
   }
 }
 
@@ -816,8 +843,12 @@ export default function App() {
   const [dataLocation, setDataLocation] = useState<DataLocationInfo | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
-  const [draft, setDraft] = useState(() => readComposerDraft(MAIN_COMPOSER_DRAFT_KEY))
-  const [isStreaming, setIsStreaming] = useState(false)
+  const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({})
+  const [composerAttachments, setComposerAttachments] = useState<Record<string, PreparedAttachment[]>>({})
+  const [composerQuoteRefs, setComposerQuoteRefs] = useState<Record<string, KnowledgeReference[]>>({})
+  const [composerKnowledgeRefs, setComposerKnowledgeRefs] = useState<Record<string, KnowledgeReference[]>>({})
+  const [composerWebSearch, setComposerWebSearch] = useState<Record<string, boolean>>({})
+  const [conversationRunStates, setConversationRunStates] = useState<ConversationRunStates>({})
   const [isPickingAttachment, setIsPickingAttachment] = useState(false)
   const [localTaskPlan, setLocalTaskPlan] = useState<LocalTaskPlan | null>(null)
   const [localTaskProgress, setLocalTaskProgress] = useState<LocalTaskProgress | null>(null)
@@ -825,9 +856,8 @@ export default function App() {
   const [localTaskRunning, setLocalTaskRunning] = useState(false)
   const [draftWorkspace, setDraftWorkspace] = useState<ConversationWorkspace | undefined>()
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
-  const [workspaceApprovalPrompt, setWorkspaceApprovalPrompt] = useState<WorkspaceApprovalPrompt | null>(null)
-  const [workspaceActivities, setWorkspaceActivities] = useState<WorkspaceToolActivity[]>([])
-  const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
+  const [workspaceApprovalPrompts, setWorkspaceApprovalPrompts] = useState<WorkspaceApprovalPrompt[]>([])
+  const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false)
@@ -845,7 +875,6 @@ export default function App() {
   const [conversationSearchResponse, setConversationSearchResponse] = useState<ConversationSearchResponse | null>(null)
   const [conversationSearchLoading, setConversationSearchLoading] = useState(false)
   const [conversationSearchError, setConversationSearchError] = useState('')
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [toolNotice, setToolNotice] = useState<{
     message: string
     emphasis: boolean
@@ -859,9 +888,6 @@ export default function App() {
   const [assistantContextMenu, setAssistantContextMenu] = useState<AssistantContextMenu | null>(null)
   const [conversationContextMenu, setConversationContextMenu] = useState<ConversationContextMenu | null>(null)
   const [hiddenAssistantsOpen, setHiddenAssistantsOpen] = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
-  const [pendingQuoteRefs, setPendingQuoteRefs] = useState<KnowledgeReference[]>([])
-  const [pendingKnowledgeRefs, setPendingKnowledgeRefs] = useState<KnowledgeReference[]>([])
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([])
   const [autoFollowMessages, setAutoFollowMessages] = useState(true)
   const [isNearMessageBottom, setIsNearMessageBottom] = useState(true)
@@ -872,7 +898,123 @@ export default function App() {
   const autoFollowMessagesRef = useRef(true)
   const toolNoticeTimerRef = useRef<number | null>(null)
   const streamingConversationDraftsRef = useRef<Record<string, Conversation>>({})
+  const conversationRunStatesRef = useRef<ConversationRunStates>({})
+  const activeConversationIdRef = useRef<string | null>(null)
+  const activeProjectIdRef = useRef('')
+  const workspaceActivitiesRef = useRef<Record<string, WorkspaceToolActivity[]>>({})
   const conversationSearchRequestRef = useRef(0)
+
+  const composerSessionKey = getComposerSessionKey(activeConversationId, activeProjectId, activeAssistantId)
+  const draft = composerDrafts[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
+  const pendingAttachments = composerAttachments[composerSessionKey] ?? []
+  const pendingQuoteRefs = composerQuoteRefs[composerSessionKey] ?? []
+  const pendingKnowledgeRefs = composerKnowledgeRefs[composerSessionKey] ?? []
+  const webSearchEnabled = composerWebSearch[composerSessionKey] ?? false
+  const workspaceActivities = activeConversationId
+    ? workspaceActivitiesByConversation[activeConversationId] ?? []
+    : []
+  const workspaceApprovalPrompt = workspaceApprovalPrompts[0] ?? null
+  const isStreaming = isConversationRunning(conversationRunStates, activeConversationId)
+
+  function setDraft(update: SessionStateUpdate<string>) {
+    setComposerDrafts((current) => ({
+      ...current,
+      [composerSessionKey]: resolveSessionStateUpdate(
+        update,
+        current[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
+      )
+    }))
+  }
+
+  function setPendingAttachments(update: SessionStateUpdate<PreparedAttachment[]>) {
+    setComposerAttachments((current) => ({
+      ...current,
+      [composerSessionKey]: resolveSessionStateUpdate(update, current[composerSessionKey] ?? [])
+    }))
+  }
+
+  function setPendingQuoteRefs(update: SessionStateUpdate<KnowledgeReference[]>) {
+    setComposerQuoteRefs((current) => ({
+      ...current,
+      [composerSessionKey]: resolveSessionStateUpdate(update, current[composerSessionKey] ?? [])
+    }))
+  }
+
+  function setPendingKnowledgeRefs(update: SessionStateUpdate<KnowledgeReference[]>) {
+    setComposerKnowledgeRefs((current) => ({
+      ...current,
+      [composerSessionKey]: resolveSessionStateUpdate(update, current[composerSessionKey] ?? [])
+    }))
+  }
+
+  function setWebSearchEnabled(update: SessionStateUpdate<boolean>) {
+    setComposerWebSearch((current) => ({
+      ...current,
+      [composerSessionKey]: resolveSessionStateUpdate(update, current[composerSessionKey] ?? false)
+    }))
+  }
+
+  function moveComposerSessionToConversation(conversationId: string, clearContent = false) {
+    const sourceKey = composerSessionKey
+    const targetKey = getComposerSessionKey(conversationId, activeProjectId, activeAssistantId)
+    if (sourceKey === targetKey) return
+
+    const sourceDraft = composerDrafts[sourceKey] ?? readComposerDraft(getComposerDraftStorageKey(sourceKey))
+    const sourceAttachments = composerAttachments[sourceKey] ?? []
+    const sourceQuoteRefs = composerQuoteRefs[sourceKey] ?? []
+    const sourceKnowledgeRefs = composerKnowledgeRefs[sourceKey] ?? []
+    const sourceWebSearch = composerWebSearch[sourceKey] ?? false
+    const moveValue = <T,>(current: Record<string, T>, value: T, cleared: T) => {
+      const next = { ...current, [targetKey]: clearContent ? cleared : value }
+      delete next[sourceKey]
+      return next
+    }
+
+    setComposerDrafts((current) => moveValue(current, sourceDraft, ''))
+    setComposerAttachments((current) => moveValue(current, sourceAttachments, []))
+    setComposerQuoteRefs((current) => moveValue(current, sourceQuoteRefs, []))
+    setComposerKnowledgeRefs((current) => moveValue(current, sourceKnowledgeRefs, []))
+    setComposerWebSearch((current) => moveValue(current, sourceWebSearch, sourceWebSearch))
+    persistComposerDraft(getComposerDraftStorageKey(sourceKey), '')
+    persistComposerDraft(getComposerDraftStorageKey(targetKey), clearContent ? '' : sourceDraft)
+  }
+
+  function replaceConversationRunStates(next: ConversationRunStates) {
+    conversationRunStatesRef.current = next
+    setConversationRunStates(next)
+  }
+
+  function beginConversationRun(conversationId: string) {
+    replaceConversationRunStates(startConversationRun(conversationRunStatesRef.current, conversationId))
+  }
+
+  function completeConversationRun(conversationId: string, outcome: 'completed' | 'error') {
+    replaceConversationRunStates(
+      finishConversationRun(
+        conversationRunStatesRef.current,
+        conversationId,
+        activeConversationIdRef.current,
+        outcome
+      )
+    )
+  }
+
+  function discardConversationRun(conversationId: string) {
+    replaceConversationRunStates(removeConversationRun(conversationRunStatesRef.current, conversationId))
+  }
+
+  function selectConversation(conversationId: string | null) {
+    activeConversationIdRef.current = conversationId
+    setActiveConversationId(conversationId)
+    if (!conversationId) return
+    replaceConversationRunStates(acknowledgeConversationRun(conversationRunStatesRef.current, conversationId))
+  }
+
+  function clearWorkspaceActivities(conversationId: string | null = activeConversationId) {
+    if (!conversationId) return
+    workspaceActivitiesRef.current[conversationId] = []
+    setWorkspaceActivitiesByConversation((current) => ({ ...current, [conversationId]: [] }))
+  }
 
   const activeSpace = useMemo(
     () => projects.find((project) => project.id === activeProjectId) ?? projects[0] ?? null,
@@ -996,6 +1138,7 @@ export default function App() {
     setAppVersion(state.appVersion || '1.0.0')
     setAppBuildCode(state.appBuildCode || '')
     setDataLocation(state.dataLocation)
+    activeProjectIdRef.current = state.activeProjectId
     setActiveProjectId(state.activeProjectId)
     setProjects(state.projects)
     setSettings(state.settings)
@@ -1007,7 +1150,7 @@ export default function App() {
     setTools(state.tools ?? [])
 
     if (options.selectFirstConversation) {
-      setActiveConversationId(firstConversation?.id ?? null)
+      selectConversation(firstConversation?.id ?? null)
       setActiveAssistantId(firstAssistant?.id ?? DEFAULT_ASSISTANTS[0].id)
     }
   }
@@ -1081,8 +1224,27 @@ export default function App() {
   }, [activeAssistantId])
 
   useEffect(() => {
-    persistComposerDraft(MAIN_COMPOSER_DRAFT_KEY, draft)
-  }, [draft])
+    activeConversationIdRef.current = activeConversationId
+  }, [activeConversationId])
+
+  useEffect(() => {
+    activeProjectIdRef.current = activeProjectId
+  }, [activeProjectId])
+
+  useEffect(() => {
+    const legacyDraft = readComposerDraft(MAIN_COMPOSER_DRAFT_KEY)
+    if (!activeProjectId || !legacyDraft) return
+    const storageKey = getComposerDraftStorageKey(composerSessionKey)
+    setComposerDrafts((current) => {
+      if (current[composerSessionKey] !== undefined || readComposerDraft(storageKey)) return current
+      return { ...current, [composerSessionKey]: legacyDraft }
+    })
+    persistComposerDraft(MAIN_COMPOSER_DRAFT_KEY, '')
+  }, [activeProjectId, composerSessionKey])
+
+  useEffect(() => {
+    persistComposerDraft(getComposerDraftStorageKey(composerSessionKey), draft)
+  }, [composerSessionKey, draft])
 
   useEffect(() => {
     resizeComposerTextarea(composerTextareaRef.current)
@@ -1104,9 +1266,10 @@ export default function App() {
           const draftConversation = streamingConversationDraftsRef.current[chunk.conversationId]
           if (draftConversation) {
             updatedConversation = applyChatChunkToConversation(draftConversation, chunk)
-            const nextWithDraft = [updatedConversation, ...current.filter((conversation) => conversation.id !== chunk.conversationId)]
             streamingConversationDraftsRef.current[chunk.conversationId] = updatedConversation
             if (chunk.done) void window.gllm.saveConversation(updatedConversation)
+            if (updatedConversation.projectId !== activeProjectIdRef.current) return current
+            const nextWithDraft = [updatedConversation, ...current.filter((conversation) => conversation.id !== chunk.conversationId)]
             return nextWithDraft
           }
         }
@@ -1123,7 +1286,7 @@ export default function App() {
         if (chunk.targetMessageId) {
           setTranslatingMessageIds((current) => current.filter((id) => id !== chunk.targetMessageId))
         } else {
-          setIsStreaming(false)
+          completeConversationRun(chunk.conversationId, chunk.error ? 'error' : 'completed')
         }
         if (chunk.warning) showToolNotice(chunk.warning, 9000)
       }
@@ -1132,15 +1295,39 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    return window.gllm.onChatActivity((activity) => {
+      if (activity.active) {
+        beginConversationRun(activity.conversationId)
+      } else {
+        completeConversationRun(activity.conversationId, activity.error ? 'error' : 'completed')
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     return window.gllm.onConversationChanged((change) => {
-      setConversations(change.conversations)
+      if (change.action === 'deleted') {
+        delete streamingConversationDraftsRef.current[change.conversationId]
+        discardConversationRun(change.conversationId)
+      }
+      const mergedConversations = change.conversations.map(
+        (conversation) => streamingConversationDraftsRef.current[conversation.id] ?? conversation
+      )
+      for (const draftConversation of Object.values(streamingConversationDraftsRef.current)) {
+        if (draftConversation.projectId !== activeProjectIdRef.current) continue
+        if (!mergedConversations.some((conversation) => conversation.id === draftConversation.id)) {
+          mergedConversations.push(draftConversation)
+        }
+      }
+      setConversations(mergedConversations)
       if (change.action === 'deleted') {
         setActiveConversationId((current) => {
           if (current !== change.conversationId) return current
 
           const next = sortConversationsForSidebar(
-            change.conversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+            mergedConversations.filter((conversation) => conversation.assistantId === activeAssistantId)
           )[0]
+          activeConversationIdRef.current = next?.id ?? null
           return next?.id ?? null
         })
         return
@@ -1148,11 +1335,13 @@ export default function App() {
 
       if (change.action === 'metadata') return
 
-      const changedConversation = change.conversations.find((conversation) => conversation.id === change.conversationId)
+      if (activeConversationIdRef.current && activeConversationIdRef.current !== change.conversationId) return
+
+      const changedConversation = mergedConversations.find((conversation) => conversation.id === change.conversationId)
       if (changedConversation) {
         setActiveAssistantId(changedConversation.assistantId)
       }
-      setActiveConversationId(change.conversationId)
+      selectConversation(change.conversationId)
     })
   }, [activeAssistantId])
 
@@ -1189,19 +1378,28 @@ export default function App() {
 
   useEffect(
     () => window.gllm.onWorkspaceAgentProgress((progress) => {
-      setWorkspaceActivities((current) => {
-        const existing = current.findIndex((activity) => activity.id === progress.activity.id)
+      setWorkspaceActivitiesByConversation((current) => {
+        const activities = current[progress.conversationId] ?? []
+        const existing = activities.findIndex((activity) => activity.id === progress.activity.id)
         const next = existing < 0
-          ? [...current, progress.activity]
-          : current.map((activity, index) => index === existing ? progress.activity : activity)
-        workspaceActivitiesRef.current = next
-        return next
+          ? [...activities, progress.activity]
+          : activities.map((activity, index) => index === existing ? progress.activity : activity)
+        workspaceActivitiesRef.current[progress.conversationId] = next
+        return { ...current, [progress.conversationId]: next }
       })
     }),
     []
   )
 
-  useEffect(() => window.gllm.onWorkspaceApprovalRequested(setWorkspaceApprovalPrompt), [])
+  useEffect(
+    () => window.gllm.onWorkspaceApprovalRequested((prompt) => {
+      setWorkspaceApprovalPrompts((current) => [
+        ...current.filter((item) => item.id !== prompt.id),
+        prompt
+      ])
+    }),
+    []
+  )
 
   useEffect(() => {
     setMessageAutoFollow(true)
@@ -1280,21 +1478,15 @@ export default function App() {
     }
     setDraftWorkspace(undefined)
     setActiveAssistantId(conversation.assistantId)
-    setActiveConversationId(conversation.id)
+    selectConversation(conversation.id)
     dismissToolNotice()
     window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
   }
 
   function clearSpaceTransientState() {
-    setDraft('')
     setAssistantSearchQuery('')
-    setPendingAttachments([])
-    setPendingQuoteRefs([])
-    setPendingKnowledgeRefs([])
     setSelectionMenu(null)
     setImageAttachmentMenu(null)
-    setTranslatingMessageIds([])
-    setIsStreaming(false)
   }
 
   async function switchSpace(spaceId: string) {
@@ -1340,7 +1532,7 @@ export default function App() {
         clearSpaceTransientState()
       }
       setActiveAssistantId(result.assistantId)
-      setActiveConversationId(result.conversationId)
+      selectConversation(result.conversationId)
       setAssistantSearchQuery('')
       setConversationSearchOpen(false)
       showToolNotice(t('notices.conversationOpened', { title: result.title }))
@@ -1610,12 +1802,10 @@ export default function App() {
   function openAssistant(assistant: Assistant) {
     setDraftWorkspace(undefined)
     setActiveAssistantId(assistant.id)
-    setPendingQuoteRefs([])
-    setPendingKnowledgeRefs([])
     const existing = sortConversationsForSidebar(
       conversations.filter((conversation) => conversation.assistantId === assistant.id)
     )[0]
-    setActiveConversationId(existing?.id ?? null)
+    selectConversation(existing?.id ?? null)
   }
 
   function openAssistantContextMenu(event: ReactMouseEvent, assistant: Assistant) {
@@ -1682,6 +1872,11 @@ export default function App() {
     if (!confirmed) return
 
     const wasActive = activeAssistantId === assistant.id
+    for (const conversation of conversations.filter((item) => item.assistantId === assistant.id)) {
+      window.gllm.cancelResponse(conversation.id)
+      delete streamingConversationDraftsRef.current[conversation.id]
+      discardConversationRun(conversation.id)
+    }
     const state = await window.gllm.deleteAssistant(assistant.id)
     applyAppState(state)
 
@@ -1695,7 +1890,7 @@ export default function App() {
         const nextConversation = sortConversationsForSidebar(
           state.conversations.filter((conversation) => conversation.assistantId === replacement.id)
         )[0]
-        setActiveConversationId(nextConversation?.id ?? null)
+        selectConversation(nextConversation?.id ?? null)
       }
     }
 
@@ -1706,7 +1901,7 @@ export default function App() {
     setDraftWorkspace(undefined)
     const conversation = createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
     setConversations((current) => [conversation, ...current])
-    setActiveConversationId(conversation.id)
+    selectConversation(conversation.id)
     void window.gllm.saveConversation(conversation)
   }
 
@@ -1718,20 +1913,53 @@ export default function App() {
 
     const conversation = createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
     setConversations((current) => [conversation, ...current])
-    setActiveConversationId(conversation.id)
+    moveComposerSessionToConversation(conversation.id)
+    selectConversation(conversation.id)
     void window.gllm.saveConversation(conversation)
     setConversationModelOpen(true)
   }
 
   async function removeConversation(id: string) {
     setConversationContextMenu(null)
+    window.gllm.cancelResponse(id)
+    delete streamingConversationDraftsRef.current[id]
+    discardConversationRun(id)
+    clearWorkspaceActivities(id)
+    setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.conversationId !== id))
+    const sessionKey = getComposerSessionKey(id, activeProjectId, activeAssistantId)
+    setComposerDrafts((current) => {
+      const next = { ...current }
+      delete next[sessionKey]
+      return next
+    })
+    setComposerAttachments((current) => {
+      const next = { ...current }
+      delete next[sessionKey]
+      return next
+    })
+    setComposerQuoteRefs((current) => {
+      const next = { ...current }
+      delete next[sessionKey]
+      return next
+    })
+    setComposerKnowledgeRefs((current) => {
+      const next = { ...current }
+      delete next[sessionKey]
+      return next
+    })
+    setComposerWebSearch((current) => {
+      const next = { ...current }
+      delete next[sessionKey]
+      return next
+    })
+    persistComposerDraft(getComposerDraftStorageKey(sessionKey), '')
     const nextConversations = conversations.filter((conversation) => conversation.id !== id)
     setConversations(nextConversations)
     if (activeConversationId === id) {
       const next = sortConversationsForSidebar(
         nextConversations.filter((conversation) => conversation.assistantId === activeAssistantId)
       )[0]
-      setActiveConversationId(next?.id ?? null)
+      selectConversation(next?.id ?? null)
     }
     await window.gllm.deleteConversation(id)
   }
@@ -1756,7 +1984,10 @@ export default function App() {
     }
 
     saveConversationUpdate(nextConversation)
-    if (!activeConversation) setActiveConversationId(nextConversation.id)
+    if (!activeConversation) {
+      moveComposerSessionToConversation(nextConversation.id)
+      selectConversation(nextConversation.id)
+    }
     showToolNotice(t('notices.modelSwitched', { provider: conversationProvider.name, model: nextModelId }))
   }
 
@@ -1771,7 +2002,10 @@ export default function App() {
     }
 
     saveConversationUpdate(nextConversation)
-    if (!activeConversation) setActiveConversationId(nextConversation.id)
+    if (!activeConversation) {
+      moveComposerSessionToConversation(nextConversation.id)
+      selectConversation(nextConversation.id)
+    }
   }
 
   function changeActiveConversationModelAndReasoning(modelId: string, reasoningEffort: ReasoningEffort) {
@@ -1788,7 +2022,10 @@ export default function App() {
     }
 
     saveConversationUpdate(nextConversation)
-    if (!activeConversation) setActiveConversationId(nextConversation.id)
+    if (!activeConversation) {
+      moveComposerSessionToConversation(nextConversation.id)
+      selectConversation(nextConversation.id)
+    }
   }
 
   function getSelectedTextForMessage(messageId: string): string {
@@ -1970,8 +2207,9 @@ export default function App() {
     retryAttempts: MessageRetryAttempt[] = []
   ) {
     if (!settings) return
-    setWorkspaceActivities([])
-    workspaceActivitiesRef.current = []
+    const conversationId = nextConversation.id
+    clearWorkspaceActivities(conversationId)
+    let outcome: 'completed' | 'error' = 'completed'
     try {
       const result = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
@@ -2004,11 +2242,13 @@ export default function App() {
         showToolNotice(t('workspace.generationStopped'))
         return
       }
+      outcome = 'error'
       const message = formatWorkspaceError(rawMessage)
+      const currentActivities = workspaceActivitiesRef.current[conversationId] ?? []
       const currentAttempt: MessageRetryAttempt = {
         attemptedAt: Date.now(),
         error: message,
-        activities: workspaceActivitiesRef.current
+        activities: currentActivities
       }
       const failedConversation = withConversationTokens({
         ...nextConversation,
@@ -2016,7 +2256,7 @@ export default function App() {
         messages: [...nextConversation.messages, {
           ...createMessage('assistant', t('workspace.taskFailed', { message })),
           error: message,
-          workspaceActivities: workspaceActivitiesRef.current,
+          workspaceActivities: currentActivities,
           workspaceArtifactRoot: workspace.rootPath,
           retryAttempts: [...retryAttempts, currentAttempt]
         }],
@@ -2025,8 +2265,8 @@ export default function App() {
       setConversations((current) => [failedConversation, ...current.filter((item) => item.id !== failedConversation.id)])
       void window.gllm.saveConversation(failedConversation)
     } finally {
-      setWorkspaceApprovalPrompt(null)
-      setIsStreaming(false)
+      setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.conversationId !== conversationId))
+      completeConversationRun(conversationId, outcome)
     }
   }
 
@@ -2056,7 +2296,7 @@ export default function App() {
       updatedAt: Date.now()
     }
 
-    setIsStreaming(true)
+    beginConversationRun(nextConversation.id)
     saveConversationUpdate(nextConversation)
     if (activeConversation.workspace) {
       const retryAttempts: MessageRetryAttempt[] = message.error
@@ -2167,7 +2407,7 @@ export default function App() {
         messages: [...baseConversation.messages, userMessage, assistantMessage],
         updatedAt: Date.now()
       })
-      setActiveConversationId(nextConversation.id)
+      selectConversation(nextConversation.id)
       setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
       void window.gllm.saveConversation(nextConversation)
       setPendingAttachments([])
@@ -2227,8 +2467,7 @@ export default function App() {
         grantedAt: Date.now(),
         lastVerifiedAt: Date.now()
       }
-      setWorkspaceActivities([])
-      workspaceActivitiesRef.current = []
+      clearWorkspaceActivities()
       if (!activeConversation) {
         setDraftWorkspace(workspace)
         return
@@ -2254,8 +2493,7 @@ export default function App() {
   }
 
   async function unbindConversationWorkspace() {
-    setWorkspaceActivities([])
-    workspaceActivitiesRef.current = []
+    clearWorkspaceActivities()
     if (!activeConversation) {
       setDraftWorkspace(undefined)
       return
@@ -2270,7 +2508,7 @@ export default function App() {
   }
 
   async function sendMessage(content = draft) {
-    if (!settings || isStreaming) return
+    if (!settings || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
     const candidateText = content.trim()
     if (shouldPrepareLocalTask(candidateText)) {
       await preparePendingLocalTask(candidateText)
@@ -2310,12 +2548,13 @@ export default function App() {
       updatedAt: Date.now()
     })
 
+    if (!activeConversation) moveComposerSessionToConversation(nextConversation.id, true)
     setDraft('')
     setPendingAttachments([])
     setPendingQuoteRefs([])
     setPendingKnowledgeRefs([])
-    setIsStreaming(true)
-    setActiveConversationId(nextConversation.id)
+    beginConversationRun(nextConversation.id)
+    selectConversation(nextConversation.id)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     void window.gllm.saveConversation(nextConversation)
     if (currentWorkspace) {
@@ -2504,10 +2743,24 @@ export default function App() {
             {filteredAssistants.map((assistant) => {
               const active = assistant.id === activeAssistantId
               const displayAssistant = localizeAssistant(assistant)
+              const assistantRunStatuses = conversations
+                .filter((conversation) => conversation.assistantId === assistant.id)
+                .map((conversation) => conversationRunStates[conversation.id]?.status)
+                .filter(Boolean)
+              const assistantRunStatus = assistantRunStatuses.includes('running')
+                ? 'running'
+                : assistantRunStatuses.includes('error')
+                  ? 'error'
+                  : assistantRunStatuses.includes('completed')
+                    ? 'completed'
+                    : undefined
+              const assistantRunLabel = assistantRunStatus
+                ? t(`conversationActions.${assistantRunStatus === 'running' ? 'responding' : assistantRunStatus === 'completed' ? 'responseReady' : 'responseFailed'}`)
+                : ''
               return (
                 <button
                   key={assistant.id}
-                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''}`}
+                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}`}
                   onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
                   title={displayAssistant.name}
@@ -2518,6 +2771,17 @@ export default function App() {
                     <span className="assistant-card-heading">
                       <strong>{displayAssistant.name}</strong>
                       {assistant.pinnedAt && <Pin className="assistant-pin-badge" size={12} aria-label={t('assistantActions.pinned')} />}
+                      {assistantRunStatus === 'running' && (
+                        <span className="assistant-run-badge running" title={assistantRunLabel} aria-label={assistantRunLabel}>
+                          <span className="mini-spinner" aria-hidden="true" />
+                        </span>
+                      )}
+                      {assistantRunStatus === 'completed' && (
+                        <CircleCheck className="assistant-run-badge completed" size={12} aria-label={assistantRunLabel} />
+                      )}
+                      {assistantRunStatus === 'error' && (
+                        <CircleAlert className="assistant-run-badge error" size={12} aria-label={assistantRunLabel} />
+                      )}
                     </span>
                     <small>{displayAssistant.title}</small>
                   </span>
@@ -2644,7 +2908,7 @@ export default function App() {
             <button className="icon-button compact" onClick={() => setAssistantSettingsOpen(true)} title={t('app.assistantSettings')} type="button">
               <Pencil size={16} />
             </button>
-            <button className="icon-button compact" onClick={openConversationModelSettings} title={t('app.conversationModel')}>
+            <button className="icon-button compact" disabled={isStreaming} onClick={openConversationModelSettings} title={t('app.conversationModel')}>
               <SlidersHorizontal size={16} />
             </button>
             {historyCollapsed && (
@@ -3097,6 +3361,7 @@ export default function App() {
                   variant="dropdown"
                   placement="top"
                   showTriggerCapabilities={false}
+                  disabled={isStreaming}
                   reasoningEffort={activeReasoningEffort}
                   onReasoningEffortChange={changeActiveConversationReasoningEffort}
                   onModelReasoningChange={changeActiveConversationModelAndReasoning}
@@ -3141,18 +3406,23 @@ export default function App() {
           </div>
           <div className="history-list">
             {activeAssistantConversations.length === 0 && <div className="history-empty">{t('app.noConversations')}</div>}
-            {activeAssistantConversations.map((conversation) => (
+            {activeAssistantConversations.map((conversation) => {
+              const runState = conversationRunStates[conversation.id]
+              const runStatusLabel = runState
+                ? t(`conversationActions.${runState.status === 'running' ? 'responding' : runState.status === 'completed' ? 'responseReady' : 'responseFailed'}`)
+                : ''
+              return (
               <div
                 key={conversation.id}
-                className={`history-item ${conversation.id === activeConversationId ? 'active' : ''} ${conversation.pinnedAt ? 'pinned' : ''}`}
+                className={`history-item ${conversation.id === activeConversationId ? 'active' : ''} ${conversation.pinnedAt ? 'pinned' : ''} ${runState?.status ?? ''}`}
                 onClick={() => {
-                  setActiveConversationId(conversation.id)
+                  selectConversation(conversation.id)
                 }}
                 onContextMenu={(event) => openConversationContextMenu(event, conversation)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return
                   event.preventDefault()
-                  setActiveConversationId(conversation.id)
+                  selectConversation(conversation.id)
                 }}
                 role="button"
                 tabIndex={0}
@@ -3167,10 +3437,22 @@ export default function App() {
                         aria-label={t('app.workspaceAuthorized')}
                       />
                     )}
+                    {runState?.status === 'running' && (
+                      <span className="history-run-badge running" title={runStatusLabel} aria-label={runStatusLabel}>
+                        <span className="mini-spinner" aria-hidden="true" />
+                      </span>
+                    )}
+                    {runState?.status === 'completed' && (
+                      <CircleCheck className="history-run-badge completed" size={13} aria-label={runStatusLabel} />
+                    )}
+                    {runState?.status === 'error' && (
+                      <CircleAlert className="history-run-badge error" size={13} aria-label={runStatusLabel} />
+                    )}
                   </span>
                   <small>
                     <time>{formatSidebarConversationTime(conversation.updatedAt, i18n.resolvedLanguage ?? 'zh-CN')}</time>
                     {conversation.pinnedAt && <span>{t('conversationActions.pinned')}</span>}
+                    {runState && <span className={`history-run-label ${runState.status}`}>{runStatusLabel}</span>}
                   </small>
                 </span>
                 <span className="history-item-actions">
@@ -3197,7 +3479,8 @@ export default function App() {
                   </button>
                 </span>
               </div>
-            ))}
+              )
+            })}
           </div>
         </aside>
       )}
@@ -3231,7 +3514,7 @@ export default function App() {
           prompt={workspaceApprovalPrompt}
           onRespond={(approved) => {
             window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved)
-            setWorkspaceApprovalPrompt(null)
+            setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.id !== workspaceApprovalPrompt.id))
           }}
         />
       )}

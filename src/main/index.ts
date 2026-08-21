@@ -39,9 +39,17 @@ import type {
   FloatingMascotHintEvent,
   FloatingMascotSkin,
   LegalDocument,
+  WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
-import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID, isOfficialGllmApiProvider } from '../shared/providers'
+import {
+  DEFAULT_PROVIDER,
+  DEFAULT_PROVIDER_ID,
+  applyFetchedProviderModels,
+  isOfficialGllmApiProvider,
+  resolveProviderModelId,
+  shouldRefreshProviderModels
+} from '../shared/providers'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
 import { pickAttachments, preparePastedAttachments } from './attachments'
@@ -147,6 +155,74 @@ interface ActiveResponse {
 
 const activeResponses = new Map<string, ActiveResponse>()
 const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
+const providerModelCatalogRefreshes = new Map<string, Promise<ApiProvider>>()
+
+async function refreshOfficialProviderCatalog(provider: ApiProvider, force = false): Promise<ApiProvider> {
+  const savedProvider = getProviders().find((item) => item.id === provider.id) ?? provider
+  if (!isOfficialGllmApiProvider(savedProvider) || !savedProvider.apiKey.trim()) return savedProvider
+  if (!force && !shouldRefreshProviderModels(savedProvider)) return savedProvider
+
+  const inFlight = providerModelCatalogRefreshes.get(savedProvider.id)
+  if (inFlight) return inFlight
+
+  const refresh = (async () => {
+    try {
+      const models = await fetchProviderModels(savedProvider, getSettings().language)
+      const refreshed = saveProvider(applyFetchedProviderModels(savedProvider, models))
+      broadcastProvidersChange(getProviders())
+      void trackTelemetryEvent('provider_models_refreshed', getProviderTelemetryProperties(refreshed))
+      return refreshed
+    } catch (error) {
+      void trackTelemetryEvent('provider_models_refresh_failed', {
+        ...getProviderTelemetryProperties(savedProvider),
+        error_category: getErrorCategory(error)
+      })
+      throw error
+    } finally {
+      providerModelCatalogRefreshes.delete(savedProvider.id)
+    }
+  })()
+
+  providerModelCatalogRefreshes.set(savedProvider.id, refresh)
+  return refresh
+}
+
+async function refreshStaleOfficialProviderCatalogs(): Promise<void> {
+  await Promise.allSettled(
+    getProviders()
+      .filter((provider) => shouldRefreshProviderModels(provider))
+      .map((provider) => refreshOfficialProviderCatalog(provider))
+  )
+}
+
+async function prepareProviderRequestModel<T extends { provider: ApiProvider }>(
+  request: T,
+  forceRefresh = false
+): Promise<{ request: T; fallbackFrom?: string }> {
+  if (!isOfficialGllmApiProvider(request.provider)) return { request }
+
+  let provider = request.provider
+  try {
+    provider = await refreshOfficialProviderCatalog(provider, forceRefresh)
+  } catch (error) {
+    if (forceRefresh) throw error
+  }
+
+  const requestedModel = request.provider.defaultModel
+  const resolvedModel = resolveProviderModelId(provider, requestedModel)
+  return {
+    request: {
+      ...request,
+      provider: { ...provider, defaultModel: resolvedModel }
+    },
+    fallbackFrom: resolvedModel !== requestedModel ? requestedModel : undefined
+  }
+}
+
+function isModelNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /model_not_found|无可用渠道|no available channel/i.test(message)
+}
 
 function registerActiveResponse(
   kind: 'chat' | 'workspace',
@@ -1604,7 +1680,11 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('provider:save', async (_, provider) => {
     const isNewProvider = !getProviders().some((item) => item.id === provider.id)
-    const saved = saveProvider(provider)
+    const normalizedProvider = isOfficialGllmApiProvider(provider) && provider.modelsUpdatedAt
+      ? { ...provider, defaultModel: resolveProviderModelId(provider, provider.defaultModel) }
+      : provider
+    const saved = saveProvider(normalizedProvider)
+    broadcastProvidersChange(getProviders())
     void trackTelemetryEvent(isNewProvider ? 'provider_added' : 'provider_updated', getProviderTelemetryProperties(saved))
     return saved
   })
@@ -1614,12 +1694,7 @@ app.whenReady().then(() => {
   ipcMain.handle('provider:refresh-models', async (_, provider) => {
     try {
       const models = await fetchProviderModels(provider, getSettings().language)
-      const refreshed = {
-        ...provider,
-        models,
-        modelsUpdatedAt: Date.now(),
-        defaultModel: provider.defaultModel || models[0]?.id || provider.defaultModel
-      }
+      const refreshed = applyFetchedProviderModels(provider, models)
       void trackTelemetryEvent('provider_models_refreshed', getProviderTelemetryProperties(refreshed))
       return refreshed
     } catch (error) {
@@ -1638,6 +1713,7 @@ app.whenReady().then(() => {
     const deletedConversationIds = getConversations()
       .filter((conversation) => conversation.assistantId === id)
       .map((conversation) => conversation.id)
+    for (const conversationId of deletedConversationIds) cancelActiveResponse(conversationId)
     deleteAssistant(id)
     for (const conversationId of deletedConversationIds) {
       broadcastConversationChange(conversationId, 'deleted')
@@ -1665,6 +1741,7 @@ app.whenReady().then(() => {
     return saved
   })
   ipcMain.handle('conversation:delete', (_, id: string) => {
+    cancelActiveResponse(id)
     deleteConversation(id)
     broadcastConversationChange(id, 'deleted')
   })
@@ -1709,11 +1786,13 @@ app.whenReady().then(() => {
     if (!pending || pending.senderId !== event.sender.id) return
     pending.resolve(Boolean(approved))
   })
-  ipcMain.handle('workspace-agent:run', async (event, request) => {
+  ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
     const active = registerActiveResponse('workspace', request.conversationId)
+    broadcastChatActivity({ conversationId: request.conversationId, active: true })
     try {
-      return await runWorkspaceAgent(
-        request,
+      const prepared = await prepareProviderRequestModel(request)
+      const result = await runWorkspaceAgent(
+        prepared.request,
         (progress) => event.sender.send('workspace-agent:progress', progress),
         async (approval) => {
           const id = randomUUID()
@@ -1732,8 +1811,15 @@ app.whenReady().then(() => {
         },
         active.controller.signal
       )
+      broadcastChatActivity({ conversationId: request.conversationId, active: false })
+      return result
     } catch (error) {
-      if (active.controller.signal.aborted) throw new Error('任务已停止')
+      if (active.controller.signal.aborted) {
+        broadcastChatActivity({ conversationId: request.conversationId, active: false })
+        throw new Error('任务已停止')
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
       throw error
     } finally {
       releaseActiveResponse(active.key, active.controller)
@@ -1763,30 +1849,62 @@ app.whenReady().then(() => {
     let totalTokens = 0
     let finishReason = ''
     let isTruncated = false
+    let effectiveRequest: ChatRequest = request
+    let fallbackWarning = ''
     recordThemeRequestUsage(isOfficialGllmApiProvider(request.provider))
     broadcastChatActivity({ conversationId: request.conversationId, active: true })
 
     try {
-      void trackTelemetryEvent('chat_started', getChatTelemetryProperties(request))
-      for await (const chunk of streamGllmChat(request, active.controller.signal)) {
-        if (chunk.usage) {
-          inputTokens = chunk.usage.inputTokens
-          outputTokens = chunk.usage.outputTokens
-          totalTokens = chunk.usage.totalTokens
-        }
-        if (chunk.finishReason) finishReason = chunk.finishReason
-        if (chunk.isTruncated) isTruncated = true
-        event.sender.send('chat:chunk', {
-          ...chunkBase,
-          content: chunk.content ?? '',
-          usage: chunk.usage,
-          webSearch: chunk.webSearch,
-          finishReason: chunk.finishReason,
-          isTruncated: chunk.isTruncated
+      const prepared = await prepareProviderRequestModel(request)
+      effectiveRequest = prepared.request
+      if (prepared.fallbackFrom) {
+        fallbackWarning = mainT('main.provider.modelUnavailableFallback', request.settings.language, {
+          model: prepared.fallbackFrom,
+          fallback: effectiveRequest.provider.defaultModel
         })
       }
+
+      void trackTelemetryEvent('chat_started', getChatTelemetryProperties(effectiveRequest))
+      let modelFallbackRetried = false
+      while (true) {
+        try {
+          for await (const chunk of streamGllmChat(effectiveRequest, active.controller.signal)) {
+            if (chunk.usage) {
+              inputTokens = chunk.usage.inputTokens
+              outputTokens = chunk.usage.outputTokens
+              totalTokens = chunk.usage.totalTokens
+            }
+            if (chunk.finishReason) finishReason = chunk.finishReason
+            if (chunk.isTruncated) isTruncated = true
+            event.sender.send('chat:chunk', {
+              ...chunkBase,
+              content: chunk.content ?? '',
+              usage: chunk.usage,
+              webSearch: chunk.webSearch,
+              finishReason: chunk.finishReason,
+              isTruncated: chunk.isTruncated
+            })
+          }
+          break
+        } catch (error) {
+          if (modelFallbackRetried || !isOfficialGllmApiProvider(effectiveRequest.provider) || !isModelNotFoundError(error)) {
+            throw error
+          }
+
+          const failedModel = effectiveRequest.provider.defaultModel
+          const refreshed = await prepareProviderRequestModel(effectiveRequest, true)
+          if (refreshed.request.provider.defaultModel === failedModel) throw error
+
+          effectiveRequest = refreshed.request
+          modelFallbackRetried = true
+          fallbackWarning = mainT('main.provider.modelUnavailableFallback', request.settings.language, {
+            model: failedModel,
+            fallback: effectiveRequest.provider.defaultModel
+          })
+        }
+      }
       void trackTelemetryEvent('chat_completed', {
-        ...getChatTelemetryProperties(request),
+        ...getChatTelemetryProperties(effectiveRequest),
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         total_tokens: totalTokens,
@@ -1800,7 +1918,9 @@ app.whenReady().then(() => {
         done: true,
         finishReason: finishReason || undefined,
         isTruncated,
-        warning: isTruncated ? buildTruncationWarning(request, finishReason) : undefined
+        warning: [fallbackWarning, isTruncated ? buildTruncationWarning(effectiveRequest, finishReason) : '']
+          .filter(Boolean)
+          .join('\n') || undefined
       })
     } catch (error) {
       if (active.controller.signal.aborted) {
@@ -1815,7 +1935,7 @@ app.whenReady().then(() => {
       }
       const message = error instanceof Error ? error.message : String(error)
       void trackTelemetryEvent('chat_failed', {
-        ...getChatTelemetryProperties(request),
+        ...getChatTelemetryProperties(effectiveRequest),
         error_category: getErrorCategory(error)
       })
       broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
@@ -1834,6 +1954,7 @@ app.whenReady().then(() => {
   } else {
     createWindow()
   }
+  void refreshStaleOfficialProviderCatalogs()
   void trackTelemetryEvent('app_started')
   autoUpdateManager.scheduleAutomaticChecks()
 

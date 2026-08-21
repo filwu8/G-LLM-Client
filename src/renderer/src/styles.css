@@ -8248,6 +8248,27 @@ img.space-logo {
 .history-item-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
 .history-item-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-item .history-workspace-badge { flex: 0 0 auto; color: hsl(var(--success)); }
+.assistant-card .assistant-run-badge { flex: 0 0 auto; }
+.assistant-card .assistant-run-badge.running { display: grid; width: 12px; height: 12px; place-items: center; }
+.assistant-card .assistant-run-badge.running .mini-spinner { width: 10px; height: 10px; border-width: 1.5px; }
+.assistant-card .assistant-run-badge.completed { color: hsl(var(--success)); }
+.assistant-card .assistant-run-badge.error { color: hsl(var(--destructive)); }
+.history-item .history-run-badge { flex: 0 0 auto; }
+.history-item .history-run-badge.running { display: grid; width: 13px; height: 13px; place-items: center; }
+.history-item .history-run-badge.running .mini-spinner { width: 11px; height: 11px; border-width: 1.5px; }
+.history-item .history-run-badge.completed,
+.history-item-main small .history-run-label.completed { color: hsl(var(--success)); }
+.history-item .history-run-badge.error,
+.history-item-main small .history-run-label.error { color: hsl(var(--destructive)); }
+.history-item-main small .history-run-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-item.running:not(.active) { border-color: hsl(var(--primary) / .28); background: hsl(var(--primary) / .055); }
+.history-item.completed:not(.active) { border-color: hsl(var(--success) / .24); background: hsl(var(--success) / .05); }
+.history-item.error:not(.active) { border-color: hsl(var(--destructive) / .28); background: hsl(var(--destructive) / .055); }
+.theme-gold .history-item .history-run-badge.running .mini-spinner { border-color: hsl(var(--gold-deep)); border-top-color: hsl(var(--gold-bright)); }
+.theme-gold .history-item .history-run-badge.completed,
+.theme-gold .history-item-main small .history-run-label.completed { color: hsl(95 54% 65%); }
+.theme-gold .history-item .history-run-badge.error,
+.theme-gold .history-item-main small .history-run-label.error { color: hsl(2 82% 70%); }
 
 .send-button.stop:not(:disabled),
 .quick-send-button.stop:not(:disabled),

@@ -42,6 +42,9 @@
     "pin": "置顶会话",
     "unpin": "取消置顶",
     "pinned": "已置顶",
+    "responding": "回复中",
+    "responseReady": "回复完成",
+    "responseFailed": "回复失败",
     "delete": "删除会话"
   },
   "app": {
@@ -820,7 +823,8 @@
       "apiKeyRequired": "请先为「{{provider}}」填写 API Key",
       "modelsRequestFailed": "{{provider}} 模型列表请求失败：{{status}} {{detail}}",
       "noModels": "{{provider}} 没有返回可用模型",
-      "connected": "连接成功，发现 {{count}} 个模型"
+      "connected": "连接成功，发现 {{count}} 个模型",
+      "modelUnavailableFallback": "模型 {{model}} 已不可用，模型列表已刷新并自动切换到 {{fallback}}。"
     },
     "assistant": {
       "outputLanguage": "简体中文",

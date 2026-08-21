@@ -59,7 +59,7 @@ import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
 import { WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
-import { DEFAULT_PROVIDER, getProviderById } from '@shared/providers'
+import { DEFAULT_PROVIDER, getProviderById, resolveProviderModelId } from '@shared/providers'
 import type {
   ApiProvider,
   AppSettings,
@@ -255,6 +255,7 @@ export default function QuickChat() {
   const draftTextareaRef = useRef<HTMLTextAreaElement>(null)
   const autoFollowMessagesRef = useRef(true)
   const conversationRef = useRef<Conversation | null>(null)
+  const streamingConversationIdRef = useRef<string | null>(null)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
 
   const assistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
@@ -273,7 +274,7 @@ export default function QuickChat() {
     },
     [assistant.modelProviderId, conversation?.modelProviderId, providers, settings]
   )
-  const activeModelId = selectedModelId.trim() || provider.defaultModel
+  const activeModelId = resolveProviderModelId(provider, selectedModelId)
   const selectedProvider = useMemo(
     () => ({
       ...provider,
@@ -410,22 +411,31 @@ export default function QuickChat() {
 
   useEffect(() => {
     return window.gllm.onConversationChanged((change) => {
-      setConversations(change.conversations)
+      const liveConversation = conversationRef.current
+      const mergedConversations = change.conversations.map((item) =>
+        liveConversation && item.id === streamingConversationIdRef.current && item.id === liveConversation.id
+          ? liveConversation
+          : item
+      )
+      setConversations(mergedConversations)
       setConversation((current) => {
         if (change.action === 'metadata') {
           return current
-            ? change.conversations.find((item) => item.id === current.id) ?? current
+            ? mergedConversations.find((item) => item.id === current.id) ?? current
             : current
         }
         if (change.action === 'deleted' && current?.id === change.conversationId) {
-          return getLatestAssistantConversation(change.conversations, assistant.id)
+          streamingConversationIdRef.current = null
+          return getLatestAssistantConversation(mergedConversations, assistant.id)
         }
 
-        const updated = change.conversations.find((item) => item.id === (current?.id ?? change.conversationId))
+        if (current?.id === streamingConversationIdRef.current) return current
+
+        const updated = mergedConversations.find((item) => item.id === (current?.id ?? change.conversationId))
         if (updated) return updated
 
         if (!current || current.id === change.conversationId) {
-          return getLatestAssistantConversation(change.conversations, assistant.id)
+          return getLatestAssistantConversation(mergedConversations, assistant.id)
         }
 
         return current
@@ -461,6 +471,7 @@ export default function QuickChat() {
       })
 
       if (chunk.done) {
+        streamingConversationIdRef.current = null
         setIsStreaming(false)
         if (chunk.error) {
           setStatus(getChatErrorPresentation(chunk.error).userMessage)
@@ -706,6 +717,7 @@ export default function QuickChat() {
       await window.gllm.saveConversation(failedConversation)
     } finally {
       setWorkspaceApprovalPrompt(null)
+      streamingConversationIdRef.current = null
       setIsStreaming(false)
     }
   }
@@ -839,6 +851,7 @@ export default function QuickChat() {
 
     setStatus('')
     setIsStreaming(true)
+    streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
@@ -904,6 +917,7 @@ export default function QuickChat() {
     setPendingAttachments([])
     setStatus('')
     setIsStreaming(true)
+    streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
