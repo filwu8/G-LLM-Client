@@ -573,7 +573,8 @@ export interface FloatingMascotHintEvent {
 export interface ConversationChangeEvent {
   action: 'saved' | 'deleted' | 'metadata'
   conversationId: string
-  conversations: Conversation[]
+  conversation?: Conversation
+  conversations?: Conversation[]
 }
 
 export interface AppUpdateInfo {

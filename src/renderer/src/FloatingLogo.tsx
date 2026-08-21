@@ -123,7 +123,7 @@ export default function FloatingLogo() {
   }, [])
 
   useEffect(() => {
-    void window.gllm.getState().then((state) => applyRendererLanguage(state.settings.language))
+    void window.gllm.getSettings().then((settings) => applyRendererLanguage(settings.language))
     return window.gllm.onSettingsChanged((settings) => applyRendererLanguage(settings.language))
   }, [])
 
@@ -189,10 +189,17 @@ export default function FloatingLogo() {
     let disposed = false
     let nextBlinkAt = performance.now() + 1800 + Math.random() * 2600
     let blinkStartedAt = -1
+    let lastDrawAt = 0
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     const draw = (timestamp: number) => {
       if (disposed) return
+      const targetFps = reducedMotion ? 10 : activity === 'thinking' || activity === 'success' ? 30 : 20
+      if (timestamp - lastDrawAt < 1000 / targetFps) {
+        animationFrame = window.requestAnimationFrame(draw)
+        return
+      }
+      lastDrawAt = timestamp
       context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
       context.clearRect(0, 0, canvasSize, canvasSize)
 

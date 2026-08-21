@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { isValidElement, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -333,7 +333,7 @@ function markdownUrlTransform(value: string, key: string): string {
   return ''
 }
 
-export function MarkdownMessage({ content }: { content: string }) {
+function MarkdownMessageComponent({ content }: { content: string }) {
   const normalizedContent = useMemo(() => normalizeMarkdownForDisplay(content), [content])
 
   return (
@@ -363,3 +363,9 @@ export function MarkdownMessage({ content }: { content: string }) {
     </ReactMarkdown>
   )
 }
+
+/** Markdown parsing is one of the most expensive parts of the chat view. Most
+ * messages are immutable, so avoid reparsing the complete history whenever a
+ * model, notice, composer field, or unrelated stream changes. */
+export const MarkdownMessage = memo(MarkdownMessageComponent)
+MarkdownMessage.displayName = 'MarkdownMessage'

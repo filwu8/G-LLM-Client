@@ -451,6 +451,37 @@ function buildProviderUrl(provider: ApiProvider, fallbackPath: string): string {
   return `${provider.apiBaseUrl.replace(/\/$/, '')}${path}`
 }
 
+/** Limit only the wait for response headers. Once streaming starts, activity is
+ * governed by the per-chunk idle timeout in chatStreamParser instead of a fixed
+ * wall-clock deadline that aborts long but healthy reasoning responses.
+ */
+async function fetchStreamingModelResponse(
+  endpoint: string,
+  provider: ApiProvider,
+  body: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<Response> {
+  const timeoutController = new AbortController()
+  const timeout = setTimeout(() => {
+    timeoutController.abort(new DOMException('Model response headers timed out', 'TimeoutError'))
+  }, 120_000)
+  timeout.unref?.()
+  const fetchSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+
+  try {
+    return await fetch(endpoint, {
+      method: 'POST',
+      headers: getProviderHeaders(provider),
+      body: JSON.stringify(body),
+      signal: fetchSignal
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 function assertProviderReady(provider: ApiProvider, language: AppLanguage = 'system'): void {
   if (provider.requiresApiKey && !provider.apiKey.trim()) {
     throw new Error(mainT('main.provider.apiKeyRequired', language, { provider: provider.name }))
@@ -1918,12 +1949,15 @@ export async function checkProviderConnection(provider: ApiProvider, language: A
 
 class AbnormalResearchResponseError extends Error {}
 
-async function* streamValidatedResearchResponse(response: Response): AsyncGenerator<ChatStreamEvent> {
+async function* streamValidatedResearchResponse(
+  response: Response,
+  signal?: AbortSignal
+): AsyncGenerator<ChatStreamEvent> {
   const pendingEvents: ChatStreamEvent[] = []
   let pendingContent = ''
   let validated = false
 
-  for await (const event of streamChatResponseEvents(response)) {
+  for await (const event of streamChatResponseEvents(response, signal)) {
     if (validated) {
       yield event
       continue
@@ -2088,54 +2122,34 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
   const hasImages = hasSendableImageAttachments(request.messages)
   let includeReasoningEffort = true
   let requestBody = buildRequestBody(true)
-  let response = await fetch(endpoint, {
-    method: 'POST',
-    headers: getProviderHeaders(request.provider),
-    body: JSON.stringify({
+  let response = await fetchStreamingModelResponse(
+    endpoint,
+    request.provider,
+    {
       ...requestBody,
       stream_options: { include_usage: true }
-    }),
-    signal: requestSignal(signal, 120_000)
-  })
+    },
+    signal
+  )
 
   if (!response.ok && (response.status === 400 || response.status === 422)) {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: getProviderHeaders(request.provider),
-      body: JSON.stringify(requestBody),
-      signal: requestSignal(signal, 120_000)
-    })
+    response = await fetchStreamingModelResponse(endpoint, request.provider, requestBody, signal)
   }
 
   if (!response.ok && configuredReasoningEffort && (response.status === 400 || response.status === 422)) {
     includeReasoningEffort = false
     requestBody = buildRequestBody(true, false)
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: getProviderHeaders(request.provider),
-      body: JSON.stringify(requestBody),
-      signal: requestSignal(signal, 120_000)
-    })
+    response = await fetchStreamingModelResponse(endpoint, request.provider, requestBody, signal)
   }
 
   if (!response.ok && hasImages && (response.status === 400 || response.status === 415 || response.status === 422)) {
     requestBody = buildRequestBody(false, includeReasoningEffort)
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: getProviderHeaders(request.provider),
-      body: JSON.stringify(requestBody),
-      signal: requestSignal(signal, 120_000)
-    })
+    response = await fetchStreamingModelResponse(endpoint, request.provider, requestBody, signal)
 
     if (!response.ok && configuredReasoningEffort && includeReasoningEffort && (response.status === 400 || response.status === 422)) {
       includeReasoningEffort = false
       requestBody = buildRequestBody(false, false)
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: getProviderHeaders(request.provider),
-        body: JSON.stringify(requestBody),
-        signal: requestSignal(signal, 120_000)
-      })
+      response = await fetchStreamingModelResponse(endpoint, request.provider, requestBody, signal)
     }
   }
 
@@ -2146,12 +2160,12 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
 
   const shouldValidateResearchAnswer = request.webSearchEnabled && request.purpose !== 'translation' && Boolean(webContext)
   if (!shouldValidateResearchAnswer) {
-    for await (const event of streamChatResponseEvents(response)) yield event
+    for await (const event of streamChatResponseEvents(response, signal)) yield event
     return
   }
 
   try {
-    for await (const event of streamValidatedResearchResponse(response)) yield event
+    for await (const event of streamValidatedResearchResponse(response, signal)) yield event
     return
   } catch (error) {
     if (!(error instanceof AbnormalResearchResponseError)) throw error
@@ -2163,18 +2177,18 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
         content: '上一响应只返回了内部安全分类或空内容，没有回答用户。现在请基于已提供的联网研究证据直接完成用户问题；不要输出安全分类标签，不要虚构未提供的来源。'
       }
     ]
-    const retryResponse = await fetch(endpoint, {
-      method: 'POST',
-      headers: getProviderHeaders(request.provider),
-      body: JSON.stringify({ ...requestBody, messages: retryMessages }),
-      signal: requestSignal(signal, 120_000)
-    })
+    const retryResponse = await fetchStreamingModelResponse(
+      endpoint,
+      request.provider,
+      { ...requestBody, messages: retryMessages },
+      signal
+    )
     if (!retryResponse.ok || !retryResponse.body) {
       const detail = await retryResponse.text().catch(() => '')
       throw new Error(`${request.provider.name} 研究回答重试失败：${retryResponse.status} ${detail}`.trim())
     }
     try {
-      for await (const event of streamValidatedResearchResponse(retryResponse)) yield event
+      for await (const event of streamValidatedResearchResponse(retryResponse, signal)) yield event
       return
     } catch (retryError) {
       if (!(retryError instanceof AbnormalResearchResponseError)) throw retryError

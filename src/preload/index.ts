@@ -60,6 +60,7 @@ ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatu
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   getAppUpdateState: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:get-update-state'),
   checkForUpdates: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:check-for-updates'),
   downloadAppUpdate: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:download-update'),

@@ -78,3 +78,48 @@ test('streams single-newline reasoning records without waiting for the response 
   assert.equal(events[1].content, '答案')
   assert.equal(events[1].finishReason, 'stop')
 })
+
+test('keeps an active reasoning stream alive beyond one idle timeout window', async () => {
+  const encoder = new TextEncoder()
+  const timers: Array<ReturnType<typeof setTimeout>> = []
+  const response = new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"A"}}]}\n'))
+      timers.push(setTimeout(() => {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"B"}}]}\n'))
+      }, 20))
+      timers.push(setTimeout(() => {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"完成"}}]}\n'))
+      }, 40))
+      timers.push(setTimeout(() => controller.enqueue(encoder.encode('data: [DONE]\n')), 60))
+    },
+    cancel() {
+      for (const timer of timers) clearTimeout(timer)
+    }
+  }))
+  const events: ChatStreamEvent[] = []
+
+  for await (const event of streamChatResponseEvents(response, undefined, 35)) events.push(event)
+
+  assert.equal(events.map((event) => event.reasoningContent ?? '').join(''), 'AB')
+  assert.equal(events.map((event) => event.content ?? '').join(''), '完成')
+})
+
+test('times out only after the stream stays idle', async () => {
+  let canceled = false
+  const response = new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n'))
+    },
+    cancel() {
+      canceled = true
+    }
+  }))
+
+  await assert.rejects(async () => {
+    for await (const _event of streamChatResponseEvents(response, undefined, 20)) {
+      // Consume the first event, then wait for the idle timeout.
+    }
+  }, (error: unknown) => error instanceof Error && error.name === 'TimeoutError')
+  assert.equal(canceled, true)
+})

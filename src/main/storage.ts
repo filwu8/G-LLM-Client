@@ -7,7 +7,7 @@
 import { app } from 'electron'
 import Store from 'electron-store'
 import type { TOptions } from 'i18next'
-import JSZip from 'jszip'
+import type JSZip from 'jszip'
 import { randomUUID } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -532,6 +532,7 @@ export async function exportDataArchive(outputPath: string): Promise<DataArchive
   const targetPath = resolve(outputPath)
   mkdirSync(dirname(targetPath), { recursive: true })
 
+  const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   zip.file(
     archiveManifestFileName,
@@ -566,6 +567,7 @@ export async function exportDataArchive(outputPath: string): Promise<DataArchive
 
 export async function importDataArchive(archivePath: string): Promise<DataArchiveResult> {
   const sourcePath = resolve(archivePath)
+  const { default: JSZip } = await import('jszip')
   const zip = await JSZip.loadAsync(readFileSync(sourcePath))
   const entries = Object.values(zip.files).filter((entry) => !entry.dir)
   const filesToExtract = entries

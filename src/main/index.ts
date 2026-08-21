@@ -35,10 +35,12 @@ import type {
   ChatActivityEvent,
   ChatRequest,
   Conversation,
+  ConversationChangeEvent,
   FloatingMascotAppearance,
   FloatingMascotHintEvent,
   FloatingMascotSkin,
   LegalDocument,
+  PreparedAttachment,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
@@ -52,8 +54,6 @@ import {
 } from '../shared/providers'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
-import { pickAttachments, preparePastedAttachments } from './attachments'
-import { captureScreenshot } from './screenshot'
 import {
   GLLM_DEEP_LINK_SCHEME,
   inspectGllmDeepLinkArguments,
@@ -63,8 +63,6 @@ import {
 } from './deepLink'
 import { exchangeGllmHandoff, resolveGllmHandoffExchangeUrl } from './deepLinkHandoff'
 import { mainT } from './i18n'
-import { cancelLocalFileTask, executeLocalFileTask, getLocalTaskOutputDirectory, prepareLocalFileTask } from './localFileTasks'
-import { resolveWorkspaceItem, runWorkspaceAgent } from './workspaceAgent'
 import {
   checkProviderConnection,
   fetchProviderModels,
@@ -260,7 +258,7 @@ async function maybeUpdateProjectMemory(conversation: Conversation): Promise<voi
     const latest = getConversations(conversation.projectId).find((item) => item.id === conversation.id)
     if (!latest) return
     const saved = saveConversation({ ...latest, projectMemory, updatedAt: latest.updatedAt }, conversation.projectId)
-    broadcastConversationChange(saved.id, 'saved')
+    broadcastConversationChange(saved.id, 'saved', saved)
   } catch {
     // 项目记忆是后台增强能力，失败不影响正常会话。
   } finally {
@@ -608,7 +606,7 @@ function createWindow(): BrowserWindow {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
-    showFloatingLogo()
+    hideFloatingLogo()
     return mainWindow
   }
 
@@ -669,13 +667,13 @@ function createWindow(): BrowserWindow {
   })
   mainWindow.on('closed', () => {
     mainWindow = null
+    showFloatingLogo()
   })
 
   registerExternalLinkHandler(mainWindow)
   loadRenderer(mainWindow)
   lastMainWindowBounds = mainWindow.getBounds()
   if (process.platform === 'darwin') app.focus({ steal: true })
-  showFloatingLogo()
   return mainWindow
 }
 
@@ -1034,6 +1032,7 @@ function revealFloatingLogoWindow(window: BrowserWindow): void {
 function shouldRevealFloatingLogo(): boolean {
   return Boolean(
     getSettings().floatingMascotVisible &&
+    (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) &&
     !quickWindowShowPending &&
     (!quickWindow || quickWindow.isDestroyed() || !quickWindow.isVisible())
   )
@@ -1390,14 +1389,18 @@ function broadcastAppUpdateStatus(status: AppUpdateInfo): void {
   }
 }
 
-function broadcastConversationChange(conversationId: string, action: 'saved' | 'deleted' | 'metadata'): void {
+function broadcastConversationChange(
+  conversationId: string,
+  action: ConversationChangeEvent['action'],
+  conversation?: Conversation
+): void {
+  const change: ConversationChangeEvent = action === 'deleted'
+    ? { action, conversationId, conversations: getConversations() }
+    : { action, conversationId, conversation }
+
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
-      window.webContents.send('conversation:changed', {
-        action,
-        conversationId,
-        conversations: getConversations()
-      })
+      window.webContents.send('conversation:changed', change)
     }
   }
 }
@@ -1421,7 +1424,7 @@ function getAppStateSnapshot() {
   }
 }
 
-async function captureScreenshotForWindow(owner: BrowserWindow | null): Promise<Awaited<ReturnType<typeof captureScreenshot>>> {
+async function captureScreenshotForWindow(owner: BrowserWindow | null): Promise<PreparedAttachment | null> {
   const shouldHideOwner = process.platform === 'win32' && owner && !owner.isDestroyed() && owner.isVisible()
 
   if (shouldHideOwner) {
@@ -1430,6 +1433,7 @@ async function captureScreenshotForWindow(owner: BrowserWindow | null): Promise<
   }
 
   try {
+    const { captureScreenshot } = await import('./screenshot')
     return await captureScreenshot()
   } finally {
     if (shouldHideOwner && owner && !owner.isDestroyed()) {
@@ -1513,6 +1517,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
+  ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('app:get-update-state', () => autoUpdateManager?.getState())
   ipcMain.handle('app:check-for-updates', () => autoUpdateManager?.checkForUpdates())
   ipcMain.handle('app:download-update', () => autoUpdateManager?.downloadUpdate())
@@ -1726,7 +1731,7 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('conversation:save', (_, conversation) => {
     const saved = saveConversation(conversation)
-    broadcastConversationChange(saved.id, 'saved')
+    broadcastConversationChange(saved.id, 'saved', saved)
     void maybeUpdateProjectMemory(saved)
     return saved
   })
@@ -1737,7 +1742,7 @@ app.whenReady().then(() => {
       ...conversation,
       pinnedAt: pinned ? Date.now() : undefined
     })
-    broadcastConversationChange(saved.id, 'metadata')
+    broadcastConversationChange(saved.id, 'metadata', saved)
     return saved
   })
   ipcMain.handle('conversation:delete', (_, id: string) => {
@@ -1751,22 +1756,32 @@ app.whenReady().then(() => {
   ipcMain.handle('memory:delete', (_, id: string) => deleteMemory(id))
   ipcMain.handle('tool:save', (_, tool) => saveTool(tool))
   ipcMain.handle('tool:delete', (_, id: string) => deleteTool(id))
-  ipcMain.handle('attachment:pick', (event, kind) =>
-    pickAttachments(BrowserWindow.fromWebContents(event.sender), kind, getSettings().language)
-  )
-  ipcMain.handle('attachment:prepare-pasted', (_, inputs) => preparePastedAttachments(inputs))
-  ipcMain.handle('local-task:prepare', (_, request: string, attachmentIds: string[]) =>
-    prepareLocalFileTask(request, attachmentIds, getSettings().language)
-  )
-  ipcMain.handle('local-task:execute', async (event, planId: string) =>
-    executeLocalFileTask(
+  ipcMain.handle('attachment:pick', async (event, kind) => {
+    const { pickAttachments } = await import('./attachments')
+    return pickAttachments(BrowserWindow.fromWebContents(event.sender), kind, getSettings().language)
+  })
+  ipcMain.handle('attachment:prepare-pasted', async (_, inputs) => {
+    const { preparePastedAttachments } = await import('./attachments')
+    return preparePastedAttachments(inputs)
+  })
+  ipcMain.handle('local-task:prepare', async (_, request: string, attachmentIds: string[]) => {
+    const { prepareLocalFileTask } = await import('./localFileTasks')
+    return prepareLocalFileTask(request, attachmentIds, getSettings().language)
+  })
+  ipcMain.handle('local-task:execute', async (event, planId: string) => {
+    const { executeLocalFileTask } = await import('./localFileTasks')
+    return executeLocalFileTask(
       planId,
       (progress) => event.sender.send('local-task:progress', progress),
       getSettings().language
     )
-  )
-  ipcMain.handle('local-task:cancel', (_, planId: string) => cancelLocalFileTask(planId))
+  })
+  ipcMain.handle('local-task:cancel', async (_, planId: string) => {
+    const { cancelLocalFileTask } = await import('./localFileTasks')
+    return cancelLocalFileTask(planId)
+  })
   ipcMain.handle('local-task:open-output', async (_, planId: string) => {
+    const { getLocalTaskOutputDirectory } = await import('./localFileTasks')
     const outputPath = getLocalTaskOutputDirectory(planId)
     if (!outputPath) throw new Error(mainT('main.localTask.outputExpired', getSettings().language))
     const error = await shell.openPath(outputPath)
@@ -1790,6 +1805,7 @@ app.whenReady().then(() => {
     const active = registerActiveResponse('workspace', request.conversationId)
     broadcastChatActivity({ conversationId: request.conversationId, active: true })
     try {
+      const { runWorkspaceAgent } = await import('./workspaceAgent')
       const prepared = await prepareProviderRequestModel(request)
       const result = await runWorkspaceAgent(
         prepared.request,
@@ -1826,6 +1842,7 @@ app.whenReady().then(() => {
     }
   })
   ipcMain.handle('workspace:reveal-file', async (_, rootPath: string, relativePath: string) => {
+    const { resolveWorkspaceItem } = await import('./workspaceAgent')
     const filePath = await resolveWorkspaceItem(rootPath, relativePath)
     shell.showItemInFolder(filePath)
   })
@@ -1955,8 +1972,11 @@ app.whenReady().then(() => {
   } else {
     createWindow()
   }
-  void refreshStaleOfficialProviderCatalogs()
-  void trackTelemetryEvent('app_started')
+  const startupBackgroundTimer = setTimeout(() => {
+    void refreshStaleOfficialProviderCatalogs()
+    void trackTelemetryEvent('app_started')
+  }, 1_500)
+  startupBackgroundTimer.unref?.()
   autoUpdateManager.scheduleAutomaticChecks()
 
   screen.on('display-metrics-changed', () => {

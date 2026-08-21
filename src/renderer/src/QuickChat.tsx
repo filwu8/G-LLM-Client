@@ -39,6 +39,7 @@ import { useTranslation } from 'react-i18next'
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
+import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
@@ -114,10 +115,17 @@ function formatTokenUnit(value: number): string {
 }
 
 function getQuickMessageTokenUsage(message: ChatMessage) {
+  const storedInput = Number.isFinite(message.inputTokens) ? Math.max(0, Math.round(message.inputTokens!)) : null
+  const storedOutput = Number.isFinite(message.outputTokens) ? Math.max(0, Math.round(message.outputTokens!)) : null
+  const storedTotal = Number.isFinite(message.tokenCount) ? Math.max(0, Math.round(message.tokenCount!)) : null
+  if (storedInput !== null && storedOutput !== null && storedTotal !== null) {
+    return { total: storedTotal, input: storedInput, output: storedOutput }
+  }
+
   const fallback = estimateTokenCount(message.content) + estimateTokenCount(message.reasoningContent ?? '')
-  const input = Math.max(0, Math.round(message.inputTokens ?? (message.role === 'user' ? fallback : 0)))
-  const output = Math.max(0, Math.round(message.outputTokens ?? (message.role === 'assistant' ? fallback : 0)))
-  const total = Math.max(0, Math.round(message.tokenCount ?? input + output))
+  const input = storedInput ?? (message.role === 'user' ? fallback : 0)
+  const output = storedOutput ?? (message.role === 'assistant' ? fallback : 0)
+  const total = storedTotal ?? input + output
   return { total, input, output }
 }
 
@@ -262,6 +270,8 @@ export default function QuickChat() {
   const conversationRef = useRef<Conversation | null>(null)
   const streamingConversationIdRef = useRef<string | null>(null)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
+  const pendingChatChunksRef = useRef<ChatChunk[]>([])
+  const chatChunkFlushTimerRef = useRef<number | null>(null)
 
   const assistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
   const assistantDisplay = useMemo(
@@ -417,31 +427,30 @@ export default function QuickChat() {
   useEffect(() => {
     return window.gllm.onConversationChanged((change) => {
       const liveConversation = conversationRef.current
-      const mergedConversations = change.conversations.map((item) =>
-        liveConversation && item.id === streamingConversationIdRef.current && item.id === liveConversation.id
-          ? liveConversation
-          : item
-      )
-      setConversations(mergedConversations)
-      setConversation((current) => {
-        if (change.action === 'metadata') {
-          return current
-            ? mergedConversations.find((item) => item.id === current.id) ?? current
-            : current
-        }
-        if (change.action === 'deleted' && current?.id === change.conversationId) {
+      if (change.action === 'deleted') {
+        const mergedConversations = change.conversations ?? []
+        setConversations(mergedConversations)
+        setConversation((current) => {
+          if (current?.id !== change.conversationId) return current
           streamingConversationIdRef.current = null
           return getLatestAssistantConversation(mergedConversations, assistant.id)
+        })
+        return
+      }
+
+      const changedConversation = liveConversation?.id === streamingConversationIdRef.current && liveConversation.id === change.conversationId
+        ? liveConversation
+        : change.conversation
+      if (!changedConversation) return
+      setConversations((current) => mergeConversationChange(current, change, changedConversation))
+      setConversation((current) => {
+        if (change.action === 'metadata') {
+          return current?.id === changedConversation.id ? changedConversation : current
         }
 
         if (current?.id === streamingConversationIdRef.current) return current
 
-        const updated = mergedConversations.find((item) => item.id === (current?.id ?? change.conversationId))
-        if (updated) return updated
-
-        if (!current || current.id === change.conversationId) {
-          return getLatestAssistantConversation(mergedConversations, assistant.id)
-        }
+        if (!current || current.id === change.conversationId) return changedConversation
 
         return current
       })
@@ -462,20 +471,29 @@ export default function QuickChat() {
   }, [conversation?.id])
 
   useEffect(() => {
-    const unsubscribe = window.gllm.onChatChunk((chunk) => {
-      const current = conversationRef.current
-      if (!current || current.id !== chunk.conversationId) return
+    const flushChatChunks = () => {
+      chatChunkFlushTimerRef.current = null
+      const chunks = coalesceChatChunks(pendingChatChunksRef.current.splice(0))
+      if (chunks.length === 0) return
 
       setConversation((active) => {
-        if (!active || active.id !== chunk.conversationId) return active
-        const next = applyChatChunk(active, chunk)
+        if (!active) return active
+        let next = active
+        for (const chunk of chunks) {
+          if (next.id !== chunk.conversationId) continue
+          next = applyChatChunk(next, chunk)
+        }
+        if (next === active) return active
         conversationRef.current = next
         setConversations((current) => [next, ...current.filter((item) => item.id !== next.id)])
-        if (chunk.done) void window.gllm.saveConversation(next)
+        if (chunks.some((chunk) => chunk.conversationId === next.id && chunk.done)) {
+          void window.gllm.saveConversation(next)
+        }
         return next
       })
 
-      if (chunk.done) {
+      for (const chunk of chunks) {
+        if (!chunk.done) continue
         streamingConversationIdRef.current = null
         setIsStreaming(false)
         if (chunk.error) {
@@ -484,9 +502,26 @@ export default function QuickChat() {
           setStatus(chunk.warning)
         }
       }
+    }
+
+    const unsubscribe = window.gllm.onChatChunk((chunk) => {
+      const current = conversationRef.current
+      if (!current || current.id !== chunk.conversationId) return
+
+      pendingChatChunksRef.current.push(chunk)
+      if (chunk.done) {
+        if (chatChunkFlushTimerRef.current !== null) window.clearTimeout(chatChunkFlushTimerRef.current)
+        flushChatChunks()
+      } else if (chatChunkFlushTimerRef.current === null) {
+        chatChunkFlushTimerRef.current = window.setTimeout(flushChatChunks, 32)
+      }
     })
 
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      if (chatChunkFlushTimerRef.current !== null) window.clearTimeout(chatChunkFlushTimerRef.current)
+      pendingChatChunksRef.current = []
+    }
   }, [])
 
   useEffect(() => {

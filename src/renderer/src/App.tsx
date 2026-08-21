@@ -77,6 +77,7 @@ import { useTranslation } from 'react-i18next'
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
+import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   acknowledgeConversationRun,
   finishConversationRun,
@@ -423,21 +424,35 @@ function getClipboardFiles(data: DataTransfer): File[] {
 }
 
 function estimateMessageTokenUsage(message: ChatMessage): TokenUsage {
+  const storedInput = sanitizeLocalToken(message.inputTokens)
+  const storedOutput = sanitizeLocalToken(message.outputTokens)
+  const storedTotal = sanitizeLocalToken(message.tokenCount)
+  if (storedInput !== null && storedOutput !== null && storedTotal !== null) {
+    return { total: storedTotal, input: storedInput, output: storedOutput }
+  }
+
   const contentTokens = estimateTokenCount(message.content)
   const reasoningTokens = estimateTokenCount(message.reasoningContent ?? '')
   const translationTokens = estimateTokenCount(message.translation ?? '')
   const knowledgeTokens = message.role === 'assistant' ? 0 : estimateTokenCount(getKnowledgeReferenceText(message.knowledgeRefs ?? []))
   const fallbackInput = message.role === 'assistant' ? 0 : contentTokens + knowledgeTokens
   const fallbackOutput = message.role === 'assistant' ? contentTokens + reasoningTokens + translationTokens : translationTokens
-  const input = sanitizeLocalToken(message.inputTokens) ?? fallbackInput
-  const output = sanitizeLocalToken(message.outputTokens) ?? fallbackOutput
-  const total = sanitizeLocalToken(message.tokenCount) ?? input + output
+  const input = storedInput ?? fallbackInput
+  const output = storedOutput ?? fallbackOutput
+  const total = storedTotal ?? input + output
 
   return { total, input, output }
 }
 
 function getConversationTokenUsage(conversation: Conversation | null): TokenUsage {
   if (!conversation) return { total: 0, input: 0, output: 0 }
+
+  const storedInput = sanitizeLocalToken(conversation.totalInputTokens)
+  const storedOutput = sanitizeLocalToken(conversation.totalOutputTokens)
+  const storedTotal = sanitizeLocalToken(conversation.totalTokens)
+  if (storedInput !== null && storedOutput !== null && storedTotal !== null) {
+    return { total: storedTotal, input: storedInput, output: storedOutput }
+  }
 
   return conversation.messages.reduce<TokenUsage>(
     (sum, message) => {
@@ -493,7 +508,14 @@ function withConversationTokens(conversation: Conversation): Conversation {
       outputTokens: usage.output
     }
   })
-  const usage = getConversationTokenUsage({ ...conversation, messages })
+  const usage = messages.reduce<TokenUsage>(
+    (sum, message) => ({
+      total: sum.total + (message.tokenCount ?? 0),
+      input: sum.input + (message.inputTokens ?? 0),
+      output: sum.output + (message.outputTokens ?? 0)
+    }),
+    { total: 0, input: 0, output: 0 }
+  )
 
   return {
     ...conversation,
@@ -916,6 +938,8 @@ export default function App() {
   const activeProjectIdRef = useRef('')
   const workspaceActivitiesRef = useRef<Record<string, WorkspaceToolActivity[]>>({})
   const conversationSearchRequestRef = useRef(0)
+  const pendingChatChunksRef = useRef<ChatChunk[]>([])
+  const chatChunkFlushTimerRef = useRef<number | null>(null)
 
   const composerSessionKey = getComposerSessionKey(activeConversationId, activeProjectId, activeAssistantId)
   const draft = composerDrafts[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
@@ -1264,37 +1288,39 @@ export default function App() {
   }, [draft])
 
   useEffect(() => {
-    const unsubscribe = window.gllm.onChatChunk((chunk) => {
-      setConversations((current) => {
-        let updatedConversation: Conversation | null = null
-        let matchedConversation = false
-        const next = current.map((conversation) => {
-          if (conversation.id !== chunk.conversationId) return conversation
-          matchedConversation = true
-          updatedConversation = applyChatChunkToConversation(conversation, chunk)
-          return updatedConversation
-        })
+    const flushChatChunks = () => {
+      chatChunkFlushTimerRef.current = null
+      const chunks = coalesceChatChunks(pendingChatChunksRef.current.splice(0))
+      if (chunks.length === 0) return
 
-        if (!matchedConversation) {
-          const draftConversation = streamingConversationDraftsRef.current[chunk.conversationId]
-          if (draftConversation) {
-            updatedConversation = applyChatChunkToConversation(draftConversation, chunk)
-            streamingConversationDraftsRef.current[chunk.conversationId] = updatedConversation
-            if (chunk.done) void window.gllm.saveConversation(updatedConversation)
-            if (updatedConversation.projectId !== activeProjectIdRef.current) return current
-            const nextWithDraft = [updatedConversation, ...current.filter((conversation) => conversation.id !== chunk.conversationId)]
-            return nextWithDraft
+      setConversations((current) => {
+        let next = current
+
+        for (const chunk of chunks) {
+          const index = next.findIndex((conversation) => conversation.id === chunk.conversationId)
+          const source = index >= 0
+            ? next[index]
+            : streamingConversationDraftsRef.current[chunk.conversationId]
+          if (!source) continue
+
+          const updatedConversation = applyChatChunkToConversation(source, chunk)
+          streamingConversationDraftsRef.current[chunk.conversationId] = updatedConversation
+          if (chunk.done) void window.gllm.saveConversation(updatedConversation)
+          if (index < 0 && updatedConversation.projectId !== activeProjectIdRef.current) continue
+
+          if (index >= 0) {
+            if (next === current) next = [...current]
+            next[index] = updatedConversation
+          } else {
+            next = [updatedConversation, ...next.filter((conversation) => conversation.id !== chunk.conversationId)]
           }
         }
 
-        if (updatedConversation) {
-          streamingConversationDraftsRef.current[chunk.conversationId] = updatedConversation
-          if (chunk.done) void window.gllm.saveConversation(updatedConversation)
-        }
         return next
       })
 
-      if (chunk.done) {
+      for (const chunk of chunks) {
+        if (!chunk.done) continue
         delete streamingConversationDraftsRef.current[chunk.conversationId]
         if (chunk.targetMessageId) {
           setTranslatingMessageIds((current) => current.filter((id) => id !== chunk.targetMessageId))
@@ -1303,8 +1329,23 @@ export default function App() {
         }
         if (chunk.warning) showToolNotice(chunk.warning, 9000)
       }
+    }
+
+    const unsubscribe = window.gllm.onChatChunk((chunk) => {
+      pendingChatChunksRef.current.push(chunk)
+      if (chunk.done) {
+        if (chatChunkFlushTimerRef.current !== null) window.clearTimeout(chatChunkFlushTimerRef.current)
+        flushChatChunks()
+      } else if (chatChunkFlushTimerRef.current === null) {
+        chatChunkFlushTimerRef.current = window.setTimeout(flushChatChunks, 32)
+      }
     })
-    return unsubscribe
+
+    return () => {
+      unsubscribe()
+      if (chatChunkFlushTimerRef.current !== null) window.clearTimeout(chatChunkFlushTimerRef.current)
+      pendingChatChunksRef.current = []
+    }
   }, [])
 
   useEffect(() => {
@@ -1322,18 +1363,16 @@ export default function App() {
       if (change.action === 'deleted') {
         delete streamingConversationDraftsRef.current[change.conversationId]
         discardConversationRun(change.conversationId)
-      }
-      const mergedConversations = change.conversations.map(
-        (conversation) => streamingConversationDraftsRef.current[conversation.id] ?? conversation
-      )
-      for (const draftConversation of Object.values(streamingConversationDraftsRef.current)) {
-        if (draftConversation.projectId !== activeProjectIdRef.current) continue
-        if (!mergedConversations.some((conversation) => conversation.id === draftConversation.id)) {
-          mergedConversations.push(draftConversation)
+        const mergedConversations = (change.conversations ?? []).map(
+          (conversation) => streamingConversationDraftsRef.current[conversation.id] ?? conversation
+        )
+        for (const draftConversation of Object.values(streamingConversationDraftsRef.current)) {
+          if (draftConversation.projectId !== activeProjectIdRef.current) continue
+          if (!mergedConversations.some((conversation) => conversation.id === draftConversation.id)) {
+            mergedConversations.push(draftConversation)
+          }
         }
-      }
-      setConversations(mergedConversations)
-      if (change.action === 'deleted') {
+        setConversations(mergedConversations)
         setActiveConversationId((current) => {
           if (current !== change.conversationId) return current
 
@@ -1346,14 +1385,15 @@ export default function App() {
         return
       }
 
+      const changedConversation = streamingConversationDraftsRef.current[change.conversationId] ?? change.conversation
+      if (!changedConversation || changedConversation.projectId !== activeProjectIdRef.current) return
+      setConversations((current) => mergeConversationChange(current, change, changedConversation))
+
       if (change.action === 'metadata') return
 
       if (activeConversationIdRef.current && activeConversationIdRef.current !== change.conversationId) return
 
-      const changedConversation = mergedConversations.find((conversation) => conversation.id === change.conversationId)
-      if (changedConversation) {
-        setActiveAssistantId(changedConversation.assistantId)
-      }
+      setActiveAssistantId(changedConversation.assistantId)
       selectConversation(change.conversationId)
     })
   }, [activeAssistantId])

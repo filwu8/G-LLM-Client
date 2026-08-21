@@ -191,11 +191,47 @@ export function getSseEventData(eventBlock: string): string[] {
   return trimmed ? [trimmed] : []
 }
 
-export async function* streamChatResponseEvents(response: Response): AsyncGenerator<ChatStreamEvent> {
+function streamIdleTimeoutError(timeoutMs: number): DOMException {
+  return new DOMException(
+    `Model stream was idle for ${Math.max(1, Math.ceil(timeoutMs / 1000))} seconds`,
+    'TimeoutError'
+  )
+}
+
+async function readChatStreamChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal | undefined,
+  idleTimeoutMs: number
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  signal?.throwIfAborted()
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const timeout = setTimeout(() => {
+      void reader.cancel().catch(() => undefined)
+      rejectPromise(streamIdleTimeoutError(idleTimeoutMs))
+    }, idleTimeoutMs)
+    const handleAbort = () => {
+      clearTimeout(timeout)
+      void reader.cancel().catch(() => undefined)
+      rejectPromise(signal?.reason)
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true })
+    void reader.read().then(resolvePromise, rejectPromise).finally(() => {
+      clearTimeout(timeout)
+      signal?.removeEventListener('abort', handleAbort)
+    })
+  })
+}
+
+export async function* streamChatResponseEvents(
+  response: Response,
+  signal?: AbortSignal,
+  idleTimeoutMs = 120_000
+): AsyncGenerator<ChatStreamEvent> {
   if (!response.body) return
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let finished = false
 
   function* drainStreamBuffer(final = false): Generator<ChatStreamEvent> {
     const separatorPattern = /\r?\n\r?\n/
@@ -205,7 +241,10 @@ export async function* streamChatResponseEvents(response: Response): AsyncGenera
       const eventBlock = buffer.slice(0, match.index)
       buffer = buffer.slice(match.index + match[0].length)
       for (const data of getSseEventData(eventBlock)) {
-        if (data.trim() === '[DONE]') return
+        if (data.trim() === '[DONE]') {
+          finished = true
+          return
+        }
         const parsed = parseStreamDataPayload(data)
         if (parsed) yield parsed
       }
@@ -229,7 +268,10 @@ export async function* streamChatResponseEvents(response: Response): AsyncGenera
       const data = trimmedLine.startsWith('data:') ? trimmedLine.slice(5).trimStart() : trimmedLine
       if (!isCompleteStreamDataPayload(data)) break
       buffer = buffer.slice(lineMatch.index + lineMatch[0].length)
-      if (data === '[DONE]') continue
+      if (data === '[DONE]') {
+        finished = true
+        return
+      }
       const parsed = parseStreamDataPayload(data)
       if (parsed) yield parsed
     }
@@ -238,14 +280,17 @@ export async function* streamChatResponseEvents(response: Response): AsyncGenera
     const tail = buffer
     buffer = ''
     for (const data of getSseEventData(tail)) {
-      if (data.trim() === '[DONE]') return
+      if (data.trim() === '[DONE]') {
+        finished = true
+        return
+      }
       const parsed = parseStreamDataPayload(data)
       if (parsed) yield parsed
     }
   }
 
-  while (true) {
-    const { done, value } = await reader.read()
+  while (!finished) {
+    const { done, value } = await readChatStreamChunk(reader, signal, idleTimeoutMs)
     if (done) {
       buffer += decoder.decode()
       for (const event of drainStreamBuffer(true)) yield event
@@ -254,4 +299,5 @@ export async function* streamChatResponseEvents(response: Response): AsyncGenera
     buffer += decoder.decode(value, { stream: true })
     for (const event of drainStreamBuffer()) yield event
   }
+  if (finished) void reader.cancel().catch(() => undefined)
 }

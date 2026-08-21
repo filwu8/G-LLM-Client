@@ -24,6 +24,11 @@ import { supportsReasoningEffort } from '../shared/featureFlags'
 import { compressImageToTarget, renderPdfToTarget } from './localFileTasks'
 import { getConversationProjectMemoryContext, prepareConversationContext } from './gllmClient'
 import { mainT } from './i18n'
+import {
+  readWorkspaceModelEventStream,
+  type WorkspaceModelMessage as ModelMessage,
+  type WorkspaceToolCall as ToolCall
+} from './workspaceModelStream'
 
 type AgentMessageContent = string | Array<
   | { type: 'text'; text: string }
@@ -34,17 +39,6 @@ interface AgentMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: AgentMessageContent | null
   tool_call_id?: string
-  tool_calls?: ToolCall[]
-}
-
-interface ToolCall {
-  id: string
-  type: 'function'
-  function: { name: string; arguments: string }
-}
-
-interface ModelMessage {
-  content?: string | null
   tool_calls?: ToolCall[]
 }
 
@@ -156,18 +150,6 @@ async function readStreamChunk(
   })
 }
 
-function sseData(eventBlock: string): string[] {
-  const lines = eventBlock.split(/\r?\n/)
-  const values: string[] = []
-  let current: string[] = []
-  for (const line of lines) {
-    if (!line.startsWith('data:')) continue
-    current.push(line.slice(5).trimStart())
-  }
-  if (current.length > 0) values.push(current.join('\n'))
-  return values
-}
-
 async function readModelMessage(response: Response, signal?: AbortSignal): Promise<ModelMessage | undefined> {
   const contentType = response.headers.get('content-type')?.toLocaleLowerCase() ?? ''
   if (!contentType.includes('text/event-stream')) {
@@ -187,86 +169,10 @@ async function readModelMessage(response: Response, signal?: AbortSignal): Promi
     return payload.choices?.[0]?.message
   }
   if (!response.body) throw new Error('模型服务未返回响应正文')
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  const toolCalls = new Map<number, ToolCall>()
-  let content = ''
-  let buffer = ''
-
-  const consume = (eventBlock: string): boolean => {
-    for (const data of sseData(eventBlock)) {
-      if (data.trim() === '[DONE]') return true
-      let payload: {
-        error?: { message?: unknown }
-        choices?: Array<{
-          delta?: {
-            content?: unknown
-            tool_calls?: Array<{
-              index?: number
-              id?: string
-              type?: string
-              function?: { name?: string; arguments?: string }
-            }>
-          }
-        }>
-      }
-      try {
-        payload = JSON.parse(data) as typeof payload
-      } catch {
-        continue
-      }
-      if (payload.error) throw new Error(String(payload.error.message ?? '模型流式响应失败'))
-      for (const choice of payload.choices ?? []) {
-        const delta = choice.delta
-        if (typeof delta?.content === 'string') content += delta.content
-        for (const part of delta?.tool_calls ?? []) {
-          const index = Number.isInteger(part.index) ? Number(part.index) : toolCalls.size
-          const existing = toolCalls.get(index) ?? {
-            id: part.id ?? `stream_tool_${randomUUID()}`,
-            type: 'function' as const,
-            function: { name: '', arguments: '' }
-          }
-          if (part.id) existing.id = part.id
-          if (part.function?.name) existing.function.name += part.function.name
-          if (part.function?.arguments) existing.function.arguments += part.function.arguments
-          toolCalls.set(index, existing)
-        }
-      }
-    }
-    return false
-  }
-
-  let finished = false
-  while (!finished) {
-    const { done, value } = await readStreamChunk(reader, signal)
-    if (done) {
-      buffer += decoder.decode()
-      break
-    }
-    buffer += decoder.decode(value, { stream: true })
-    let separator = buffer.match(/\r?\n\r?\n/)
-    while (separator?.index !== undefined) {
-      const eventBlock = buffer.slice(0, separator.index)
-      buffer = buffer.slice(separator.index + separator[0].length)
-      if (consume(eventBlock)) {
-        finished = true
-        break
-      }
-      separator = buffer.match(/\r?\n\r?\n/)
-    }
-  }
-  if (!finished && buffer.trim()) consume(buffer)
-
-  const calls = Array.from(toolCalls.entries())
-    .sort(([left], [right]) => left - right)
-    .map(([, call]) => call)
-    .filter((call) => call.function.name)
-  if (!content && calls.length === 0) return undefined
-  return {
-    content: content || null,
-    tool_calls: calls.length > 0 ? calls : undefined
-  }
+  return await readWorkspaceModelEventStream(
+    response.body,
+    (reader) => readStreamChunk(reader, signal)
+  )
 }
 
 function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {

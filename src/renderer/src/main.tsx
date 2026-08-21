@@ -4,16 +4,17 @@
  * Change Date: 2030-08-01
  */
 
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 
-import App from './App'
-import FloatingLogo from './FloatingLogo'
-import FloatingMascotHint from './FloatingMascotHint'
 import './i18n'
-import QuickChat from './QuickChat'
 import { applyDocumentTheme } from './theme'
 import './styles.css'
+
+const App = lazy(() => import('./App'))
+const QuickChat = lazy(() => import('./QuickChat'))
+const FloatingLogo = lazy(() => import('./FloatingLogo'))
+const FloatingMascotHint = lazy(() => import('./FloatingMascotHint'))
 
 const [windowRoute, windowQuery = ''] = window.location.hash.slice(1).split('?')
 const initialTheme = new URLSearchParams(windowQuery).get('theme')
@@ -37,6 +38,8 @@ document.body.classList.toggle('floating-hint-body', isFloatingHintWindow)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isFloatingHintWindow ? <FloatingMascotHint /> : isFloatingLogoWindow ? <FloatingLogo /> : isQuickWindow ? <QuickChat /> : <App />}
+    <Suspense fallback={null}>
+      {isFloatingHintWindow ? <FloatingMascotHint /> : isFloatingLogoWindow ? <FloatingLogo /> : isQuickWindow ? <QuickChat /> : <App />}
+    </Suspense>
   </React.StrictMode>
 )
