@@ -87,6 +87,7 @@ import {
   syncConversationUpdateIntoStreamingDrafts,
   type ConversationRunStates
 } from './conversationRuntime'
+import { replaceUserMessageBranch } from './conversationEditing'
 import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
@@ -924,6 +925,8 @@ export default function App() {
   const [conversationContextMenu, setConversationContextMenu] = useState<ConversationContextMenu | null>(null)
   const [hiddenAssistantsOpen, setHiddenAssistantsOpen] = useState(false)
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([])
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageContent, setEditingMessageContent] = useState('')
   const [autoFollowMessages, setAutoFollowMessages] = useState(true)
   const [isNearMessageBottom, setIsNearMessageBottom] = useState(true)
   const [composerHeight, setComposerHeight] = useState(0)
@@ -1455,6 +1458,8 @@ export default function App() {
   )
 
   useEffect(() => {
+    setEditingMessageId(null)
+    setEditingMessageContent('')
     setMessageAutoFollow(true)
     setIsNearMessageBottom(true)
     window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
@@ -2257,6 +2262,69 @@ export default function App() {
     showToolNotice(t('notices.messageDeleted'))
   }
 
+  function editMessage(message: ChatMessage) {
+    if (isStreaming || message.role !== 'user') return
+    setEditingMessageId(message.id)
+    setEditingMessageContent(message.content)
+  }
+
+  function cancelMessageEdit() {
+    setEditingMessageId(null)
+    setEditingMessageContent('')
+  }
+
+  function resendEditedMessage(messageId: string) {
+    if (!settings || isStreaming || !activeConversation) return
+    if (needsApiKey) {
+      setSettingsOpen(true)
+      return
+    }
+
+    const messageIndex = activeConversation.messages.findIndex((message) => message.id === messageId)
+    const originalMessage = activeConversation.messages[messageIndex]
+    const content = editingMessageContent.trim()
+    if (messageIndex < 0 || originalMessage?.role !== 'user' || !content) return
+
+    const editedMessage = createMessage(
+      'user',
+      content,
+      originalMessage.attachments,
+      originalMessage.knowledgeRefs
+    )
+    const editedBranch = replaceUserMessageBranch(activeConversation, messageId, editedMessage)
+    if (!editedBranch) return
+    const { messages, projectMemory } = editedBranch
+    const firstUserMessage = messages.find((message) => message.role === 'user')
+    const nextConversation = withConversationTokens({
+      ...activeConversation,
+      title: firstUserMessage?.content.slice(0, 28) || activeConversation.title,
+      messages,
+      projectMemory,
+      updatedAt: Date.now()
+    })
+
+    cancelMessageEdit()
+    beginConversationRun(nextConversation.id)
+    setMessageAutoFollow(true)
+    saveConversationUpdate(nextConversation)
+    if (nextConversation.workspace) {
+      void executeWorkspaceConversation(nextConversation, nextConversation.workspace, conversationProvider)
+      return
+    }
+    streamingConversationDraftsRef.current[nextConversation.id] = nextConversation
+    window.gllm.streamChat({
+      conversationId: nextConversation.id,
+      assistant: activeAssistant,
+      assistantMemories: enabledAssistantMemories,
+      projectMemory: nextConversation.projectMemory,
+      provider: conversationProvider,
+      messages: nextConversation.messages,
+      settings,
+      reasoningEffort: nextConversation.reasoningEffort,
+      webSearchEnabled
+    })
+  }
+
   async function executeWorkspaceConversation(
     nextConversation: Conversation,
     workspace: ConversationWorkspace,
@@ -2998,6 +3066,7 @@ export default function App() {
               <>
               {activeConversation.messages.map((message, messageIndex) => {
                 const isTranslating = translatingMessageIds.includes(message.id)
+                const isEditing = editingMessageId === message.id
                 const isReasoningInProgress = Boolean(
                   message.reasoningContent &&
                   isStreaming &&
@@ -3054,7 +3123,38 @@ export default function App() {
                             </details>
                           )
                         )}
-                        {(message.content.trim() || !message.webSearch) && (
+                        {isEditing ? (
+                          <div className="message-edit-panel">
+                            <textarea
+                              autoFocus
+                              aria-label={t('app.editMessage')}
+                              value={editingMessageContent}
+                              onChange={(event) => setEditingMessageContent(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                  event.preventDefault()
+                                  cancelMessageEdit()
+                                } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                                  event.preventDefault()
+                                  resendEditedMessage(message.id)
+                                }
+                              }}
+                            />
+                            <small>{t('app.editMessageBranchHint')}</small>
+                            <div className="message-edit-actions">
+                              <button type="button" onClick={cancelMessageEdit}>{t('common.cancel')}</button>
+                              <button
+                                className="primary"
+                                disabled={!editingMessageContent.trim()}
+                                type="button"
+                                onClick={() => resendEditedMessage(message.id)}
+                              >
+                                <Send size={14} />
+                                {t('app.resendEditedMessage')}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (message.content.trim() || !message.webSearch) && (
                           <div className="message-content markdown-body">
                             <MarkdownMessage content={message.content} />
                           </div>
@@ -3118,7 +3218,7 @@ export default function App() {
                             })}
                           </div>
                         )}
-                        {(message.translation !== undefined || isTranslating) && (
+                        {!isEditing && (message.translation !== undefined || isTranslating) && (
                           <div className="translation-block">
                             <div className="translation-divider">
                               <span />
@@ -3131,11 +3231,21 @@ export default function App() {
                           </div>
                         )}
                       </div>
-                      <div className="message-footer">
+                      {!isEditing && <div className="message-footer">
                         <div className="message-actions" onMouseDown={(event) => event.preventDefault()}>
                           <button title={t('app.copyMarkdown')} type="button" onClick={() => void copyMessage(message.content)}>
                             <Copy size={16} />
                           </button>
+                          {message.role === 'user' && (
+                            <button
+                              disabled={isStreaming}
+                              title={t('app.editAndResend')}
+                              type="button"
+                              onClick={() => editMessage(message)}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                          )}
                           {message.role === 'assistant' && !message.error && (
                             <button
                               disabled={isStreaming}
@@ -3179,7 +3289,7 @@ export default function App() {
                             <span>↓{formatTokenUnit(messageTokens.output)}</span>
                           </span>
                         </div>
-                      </div>
+                      </div>}
                     </div>
                   </article>
                 )

@@ -2055,6 +2055,69 @@ img.space-logo {
   opacity: 0.45;
 }
 
+.message-edit-panel {
+  display: grid;
+  min-width: min(520px, 62vw);
+  gap: 9px;
+}
+
+.message-edit-panel textarea {
+  width: 100%;
+  min-height: 104px;
+  max-height: 42vh;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  outline: none;
+  background: hsl(var(--background) / 0.72);
+  color: hsl(var(--foreground));
+  font: inherit;
+  line-height: 1.55;
+  padding: 10px 11px;
+}
+
+.message-edit-panel textarea:focus {
+  border-color: hsl(var(--primary) / 0.7);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+}
+
+.message-edit-panel small {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.message-edit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  padding: 6px 11px;
+}
+
+.message-edit-actions button.primary {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.message-edit-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .message-token {
   display: inline-flex;
   min-width: 0;
@@ -7035,6 +7098,16 @@ img.space-logo {
 .quick-message-actions button:disabled {
   cursor: wait;
   opacity: 0.45;
+}
+
+.quick-message-edit-panel {
+  min-width: 0;
+}
+
+.quick-message-edit-panel textarea {
+  min-height: 92px;
+  max-height: 34vh;
+  background: hsl(var(--background) / 0.82);
 }
 
 .quick-message-bubble {

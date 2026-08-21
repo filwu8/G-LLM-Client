@@ -19,7 +19,9 @@ import {
   Minus,
   NotebookPen,
   Paperclip,
+  Pencil,
   RefreshCw,
+  Send,
   Square,
   Trash2,
   Wrench,
@@ -40,6 +42,7 @@ import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
+import { replaceUserMessageBranch } from './conversationEditing'
 import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
@@ -253,6 +256,8 @@ export default function QuickChat() {
   const [draft, setDraft] = useState(() => readComposerDraft(QUICK_COMPOSER_DRAFT_KEY))
   const [isStreaming, setIsStreaming] = useState(false)
   const [status, setStatus] = useState('')
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageContent, setEditingMessageContent] = useState('')
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
   const [pendingQuoteRefs, setPendingQuoteRefs] = useState<KnowledgeReference[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
@@ -462,6 +467,8 @@ export default function QuickChat() {
   }, [conversation])
 
   useEffect(() => {
+    setEditingMessageId(null)
+    setEditingMessageContent('')
     setMessageAutoFollow(true)
     setIsNearMessageBottom(true)
     setDraftWorkspace(undefined)
@@ -917,6 +924,81 @@ export default function QuickChat() {
     })
   }
 
+  function editQuickMessage(message: ChatMessage) {
+    if (isStreaming || message.role !== 'user') return
+    setEditingMessageId(message.id)
+    setEditingMessageContent(message.content)
+  }
+
+  function cancelQuickMessageEdit() {
+    setEditingMessageId(null)
+    setEditingMessageContent('')
+  }
+
+  function resendEditedQuickMessage(messageId: string) {
+    if (!settings || isStreaming || !conversation) return
+    if (needsApiKey) {
+      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      void openMainWindow()
+      return
+    }
+
+    const messageIndex = conversation.messages.findIndex((message) => message.id === messageId)
+    const originalMessage = conversation.messages[messageIndex]
+    const content = editingMessageContent.trim()
+    if (messageIndex < 0 || originalMessage?.role !== 'user' || !content) return
+
+    const editedMessage = createMessage(
+      'user',
+      content,
+      originalMessage.attachments,
+      originalMessage.knowledgeRefs
+    )
+    const editedBranch = replaceUserMessageBranch(conversation, messageId, editedMessage)
+    if (!editedBranch) return
+    const { messages: nextMessages, projectMemory } = editedBranch
+    const firstUserMessage = nextMessages.find((message) => message.role === 'user')
+    const nextConversation: Conversation = {
+      ...conversation,
+      title: firstUserMessage
+        ? t('quickChat.conversationTitle', { text: firstUserMessage.content.slice(0, 18) })
+        : conversation.title,
+      messages: nextMessages,
+      projectMemory,
+      modelProviderId: selectedProvider.id,
+      modelId: selectedProvider.defaultModel,
+      reasoningEffort: selectedReasoningEffort,
+      totalTokens: nextMessages.reduce((sum, message) => sum + (message.tokenCount ?? 0), 0),
+      totalInputTokens: nextMessages.reduce((sum, message) => sum + (message.inputTokens ?? 0), 0),
+      totalOutputTokens: nextMessages.reduce((sum, message) => sum + (message.outputTokens ?? 0), 0),
+      updatedAt: Date.now()
+    }
+
+    cancelQuickMessageEdit()
+    setStatus('')
+    setIsStreaming(true)
+    setMessageAutoFollow(true)
+    streamingConversationIdRef.current = nextConversation.id
+    setConversation(nextConversation)
+    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
+    conversationRef.current = nextConversation
+    void window.gllm.saveConversation(nextConversation)
+    if (nextConversation.workspace) {
+      void executeQuickWorkspaceConversation(nextConversation, nextConversation.workspace)
+      return
+    }
+    window.gllm.streamChat({
+      conversationId: nextConversation.id,
+      assistant,
+      assistantMemories,
+      provider: selectedProvider,
+      messages: nextConversation.messages,
+      settings,
+      reasoningEffort: nextConversation.reasoningEffort,
+      webSearchEnabled
+    })
+  }
+
   function sendMessage(content = draft) {
     if (!settings || isStreaming) return
 
@@ -1152,6 +1234,7 @@ export default function QuickChat() {
           </section>
         ) : (
           messages.map((message, messageIndex) => {
+            const isEditing = editingMessageId === message.id
             const isReasoningInProgress = Boolean(
               message.reasoningContent &&
               isStreaming &&
@@ -1196,7 +1279,38 @@ export default function QuickChat() {
                     </details>
                   )
                 )}
-                {(message.content || !message.reasoningContent) && (
+                {isEditing ? (
+                  <div className="message-edit-panel quick-message-edit-panel">
+                    <textarea
+                      autoFocus
+                      aria-label={t('app.editMessage')}
+                      value={editingMessageContent}
+                      onChange={(event) => setEditingMessageContent(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          cancelQuickMessageEdit()
+                        } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault()
+                          resendEditedQuickMessage(message.id)
+                        }
+                      }}
+                    />
+                    <small>{t('app.editMessageBranchHint')}</small>
+                    <div className="message-edit-actions">
+                      <button type="button" onClick={cancelQuickMessageEdit}>{t('common.cancel')}</button>
+                      <button
+                        className="primary"
+                        disabled={!editingMessageContent.trim()}
+                        type="button"
+                        onClick={() => resendEditedQuickMessage(message.id)}
+                      >
+                        <Send size={13} />
+                        {t('app.resendEditedMessage')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (message.content || !message.reasoningContent) && (
                   <MarkdownMessage content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')} />
                 )}
                 {message.attachments && message.attachments.length > 0 && (
@@ -1232,11 +1346,16 @@ export default function QuickChat() {
                   />
                 )}
               </div>
-              <div className="quick-message-footer">
+              {!isEditing && <div className="quick-message-footer">
                 <div className="quick-message-actions" onMouseDown={(event) => event.preventDefault()}>
                   <button title={t('app.copyMarkdown')} type="button" onClick={() => void copyQuickMessage(message)}>
                     <Copy size={14} />
                   </button>
+                  {message.role === 'user' && (
+                    <button disabled={isStreaming} title={t('app.editAndResend')} type="button" onClick={() => editQuickMessage(message)}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
                   {message.role === 'assistant' && !message.error && (
                     <button disabled={isStreaming} title={t('app.regenerate')} type="button" onClick={() => retryMessage(message.id)}>
                       <RefreshCw size={14} />
@@ -1267,7 +1386,7 @@ export default function QuickChat() {
                     <span>↓{formatTokenUnit(messageTokens.output)}</span>
                   </span>
                 </div>
-              </div>
+              </div>}
             </article>
             )
           })
