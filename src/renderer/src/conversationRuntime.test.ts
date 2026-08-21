@@ -12,8 +12,10 @@ import {
   finishConversationRun,
   isConversationRunning,
   removeConversationRun,
-  startConversationRun
+  startConversationRun,
+  syncConversationUpdateIntoStreamingDrafts
 } from './conversationRuntime.ts'
+import type { Conversation } from '../../shared/types.ts'
 
 test('tracks simultaneous model responses independently by conversation', () => {
   let states = startConversationRun({}, 'conversation-a', 10)
@@ -42,4 +44,45 @@ test('active completion returns to idle while background errors remain visible',
 
   states = removeConversationRun(states, 'background')
   assert.deepEqual(states, {})
+})
+
+test('keeps a model change in the live streaming draft', () => {
+  const oldDraft: Conversation = {
+    id: 'conversation-a',
+    assistantId: 'assistant-a',
+    title: 'test',
+    messages: [],
+    modelProviderId: 'provider-gllm',
+    modelId: 'nvidia/old-model',
+    createdAt: 10,
+    updatedAt: 10
+  }
+  const changedConversation: Conversation = {
+    ...oldDraft,
+    modelId: 'gpt-5.5',
+    updatedAt: 20
+  }
+
+  const drafts = syncConversationUpdateIntoStreamingDrafts(
+    { [oldDraft.id]: oldDraft },
+    changedConversation
+  )
+
+  assert.equal(drafts[oldDraft.id].modelId, 'gpt-5.5')
+  assert.equal(drafts[oldDraft.id].updatedAt, 20)
+})
+
+test('does not create a streaming draft for an idle conversation update', () => {
+  const conversation: Conversation = {
+    id: 'conversation-idle',
+    assistantId: 'assistant-a',
+    title: 'test',
+    messages: [],
+    modelId: 'gpt-5.5',
+    createdAt: 10,
+    updatedAt: 20
+  }
+  const drafts = {}
+
+  assert.equal(syncConversationUpdateIntoStreamingDrafts(drafts, conversation), drafts)
 })

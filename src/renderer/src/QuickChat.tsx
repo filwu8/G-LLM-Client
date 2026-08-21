@@ -9,6 +9,7 @@ import {
   ArrowUp,
   AtSign,
   BookOpen,
+  Brain,
   Copy,
   ExternalLink,
   FolderOpen,
@@ -113,7 +114,7 @@ function formatTokenUnit(value: number): string {
 }
 
 function getQuickMessageTokenUsage(message: ChatMessage) {
-  const fallback = estimateTokenCount(message.content)
+  const fallback = estimateTokenCount(message.content) + estimateTokenCount(message.reasoningContent ?? '')
   const input = Math.max(0, Math.round(message.inputTokens ?? (message.role === 'user' ? fallback : 0)))
   const output = Math.max(0, Math.round(message.outputTokens ?? (message.role === 'assistant' ? fallback : 0)))
   const total = Math.max(0, Math.round(message.tokenCount ?? input + output))
@@ -168,31 +169,35 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
   const errorPresentation = chunk.error ? getChatErrorPresentation(chunk.error) : undefined
   const nextContent = errorPresentation?.userMessage ?? chunk.content
 
-  if (!nextContent && !chunk.webSearch && !chunk.usage) {
+  if (!nextContent && !chunk.reasoningContent && !chunk.webSearch && !chunk.usage) {
     return { ...conversation, updatedAt: Date.now() }
   }
 
   if (last?.role === 'assistant') {
     const content = chunk.error ? nextContent : `${last.content}${nextContent}`
+    const reasoningContent = `${last.reasoningContent ?? ''}${chunk.reasoningContent ?? ''}` || undefined
+    const estimatedOutputTokens = estimateTokenCount(content) + estimateTokenCount(reasoningContent ?? '')
     messages[messages.length - 1] = {
       ...last,
       content,
+      reasoningContent,
       error: errorPresentation?.technicalDetail ?? last.error,
       retryAt: errorPresentation?.automaticallyRetryable ? Date.now() + 60_000 : last.retryAt,
       webSearch: chunk.webSearch ?? last.webSearch,
-      tokenCount: chunk.usage?.totalTokens ?? estimateTokenCount(content),
+      tokenCount: chunk.usage?.totalTokens ?? estimatedOutputTokens,
       inputTokens: chunk.usage?.inputTokens ?? last.inputTokens,
-      outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(content)
+      outputTokens: chunk.usage?.outputTokens ?? estimatedOutputTokens
     }
   } else {
     messages.push({
       ...createMessage('assistant', nextContent),
+      reasoningContent: chunk.reasoningContent,
       error: errorPresentation?.technicalDetail,
       retryAt: errorPresentation?.automaticallyRetryable ? Date.now() + 60_000 : undefined,
       webSearch: chunk.webSearch,
-      tokenCount: chunk.usage?.totalTokens ?? estimateTokenCount(nextContent),
+      tokenCount: chunk.usage?.totalTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? ''),
       inputTokens: chunk.usage?.inputTokens ?? 0,
-      outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(nextContent)
+      outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? '')
     })
   }
 
@@ -942,6 +947,8 @@ export default function QuickChat() {
   function stopGenerating() {
     if (!isStreaming || !conversation) return
     window.gllm.cancelResponse(conversation.id)
+    streamingConversationIdRef.current = null
+    setIsStreaming(false)
   }
 
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1110,6 +1117,12 @@ export default function QuickChat() {
           </section>
         ) : (
           messages.map((message, messageIndex) => {
+            const isReasoningInProgress = Boolean(
+              message.reasoningContent &&
+              isStreaming &&
+              messageIndex === messages.length - 1 &&
+              message.role === 'assistant'
+            )
             const messageTimestamp = formatMessageTimestamp(
               message.createdAt,
               i18n.resolvedLanguage ?? 'zh-CN',
@@ -1124,7 +1137,33 @@ export default function QuickChat() {
               onContextMenu={(event) => openSelectionContextMenu(event, message)}
             >
               <div className="quick-message-bubble">
-                <MarkdownMessage content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')} />
+                {message.reasoningContent && (
+                  isReasoningInProgress ? (
+                    <div className="message-reasoning running">
+                      <div className="message-reasoning-label">
+                        <Brain size={15} />
+                        <span>{t('app.reasoningInProgress')}</span>
+                        <span className="typing-dots compact" aria-hidden="true"><i /><i /><i /></span>
+                      </div>
+                      <div className="message-reasoning-content markdown-body">
+                        <MarkdownMessage content={message.reasoningContent} />
+                      </div>
+                    </div>
+                  ) : (
+                    <details className="message-reasoning">
+                      <summary>
+                        <Brain size={15} />
+                        <span>{t('app.reasoningProcess')}</span>
+                      </summary>
+                      <div className="message-reasoning-content markdown-body">
+                        <MarkdownMessage content={message.reasoningContent} />
+                      </div>
+                    </details>
+                  )
+                )}
+                {(message.content || !message.reasoningContent) && (
+                  <MarkdownMessage content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')} />
+                )}
                 {message.attachments && message.attachments.length > 0 && (
                   <div className="message-attachments quick-message-attachments">
                     {message.attachments.map((attachment) => (

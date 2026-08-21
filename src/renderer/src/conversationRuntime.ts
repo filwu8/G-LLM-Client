@@ -4,6 +4,8 @@
  * Change Date: 2030-08-01
  */
 
+import type { Conversation } from '@shared/types'
+
 export type ConversationRunStatus = 'running' | 'completed' | 'error'
 
 export interface ConversationRunState {
@@ -13,6 +15,14 @@ export interface ConversationRunState {
 }
 
 export type ConversationRunStates = Record<string, ConversationRunState>
+
+export function syncConversationUpdateIntoStreamingDrafts(
+  drafts: Record<string, Conversation>,
+  conversation: Conversation
+): Record<string, Conversation> {
+  if (!drafts[conversation.id]) return drafts
+  return { ...drafts, [conversation.id]: conversation }
+}
 
 export function startConversationRun(
   states: ConversationRunStates,

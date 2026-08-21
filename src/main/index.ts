@@ -1879,6 +1879,7 @@ app.whenReady().then(() => {
             event.sender.send('chat:chunk', {
               ...chunkBase,
               content: chunk.content ?? '',
+              reasoningContent: chunk.reasoningContent,
               usage: chunk.usage,
               webSearch: chunk.webSearch,
               finishReason: chunk.finishReason,

@@ -5,9 +5,9 @@
  */
 
 const MAX_RELEASE_NOTES_LENGTH = 8_000
-// V2.0.5 is distributed without platform signing. Keep automatic installation
-// disabled until Windows Authenticode and macOS Developer ID/notarization are configured.
-const SIGNED_AUTOMATIC_UPDATE_ENABLED = false
+// V2.0.6 is the first signed bridge release. Users install it manually once;
+// subsequent signed releases can update automatically on Windows and macOS.
+const SIGNED_AUTOMATIC_UPDATE_ENABLED = true
 
 export function supportsAutomaticUpdate(isPackaged: boolean, platform: NodeJS.Platform): boolean {
   return SIGNED_AUTOMATIC_UPDATE_ENABLED && isPackaged && (platform === 'win32' || platform === 'darwin')

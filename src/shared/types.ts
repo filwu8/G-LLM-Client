@@ -19,6 +19,7 @@ export interface ChatMessage {
   id: string
   role: Role
   content: string
+  reasoningContent?: string
   error?: string
   retryAt?: number
   attachments?: PreparedAttachment[]
@@ -541,6 +542,7 @@ export interface ChatRequest {
 export interface ChatChunk {
   conversationId: string
   content: string
+  reasoningContent?: string
   webSearch?: WebSearchActivity
   usage?: {
     inputTokens: number

@@ -1,6 +1,6 @@
 # 安全自动更新与发布
 
-G-LLM Client 使用公开的 GitHub Releases 作为更新源。Windows 和 macOS 正式安装包会在启动后延迟检查更新，默认不静默下载；用户确认后才下载，下载完成后可立即重启安装，也可在正常退出时安装。
+G-LLM Client 使用公开的 GitHub Releases 作为更新源。Windows 和 macOS 正式安装包会在启动后延迟检查更新，并在发现新版本后自动后台下载；下载完成后可立即重启安装，也可在正常退出时安装。
 
 开发环境、未打包应用和 Linux 构建不会自动执行安装包，只保留版本检查和手动下载入口。这样可以避免在缺少 Windows Authenticode 或 macOS Developer ID 平台签名保护时自动执行远程制品。
 
@@ -22,9 +22,9 @@ G-LLM Client 使用公开的 GitHub Releases 作为更新源。Windows 和 macOS
 
 ## 首次启用
 
-V2.0.3 已包含安装更新器代码，但在 Windows 与 macOS 平台签名、notarization 配置完成前保持禁用，继续由用户手动下载安装。取得证书后发布的第一个签名版本仍需用户手动下载安装；从该桥接版本开始，后续版本才能通过客户端安全更新。
+V2.0.6 是第一个启用安全自动更新的签名桥接版本。V2.0.5 及更早版本没有启用自动安装，因此用户仍需手动下载安装 V2.0.6；从 V2.0.6 开始，后续已签名版本可由客户端自动后台下载并在重启或退出时安装。
 
-启用平台签名和自动安装前必须完成以下 GitHub 设置。这些设置不保存在仓库文件中，克隆代码不会自动获得它们。当前无证书过渡版本继续使用手动下载安装，不读取这些 Secrets。
+发布 V2.0.6 前必须完成以下 GitHub 设置。这些设置不保存在仓库文件中，克隆代码不会自动获得它们。正式工作流缺少任何签名或 notarization Secret 时都会立即失败，不会降级生成未签名安装包。
 
 ### 1. `production-release` Environment
 
@@ -71,24 +71,24 @@ V2.0.3 已包含安装更新器代码，但在 Windows 与 macOS 平台签名、
 
 - `MAC_CSC_LINK`：Developer ID Application `.p12` 的 base64 内容
 - `MAC_CSC_KEY_PASSWORD`
-- `APPLE_API_KEY_BASE64`：App Store Connect API `.p8` 文件的 base64 内容
+- `APPLE_API_KEY_BASE64`：App Store Connect API `.p8` 文件的 base64 内容；工作流只在临时 runner 中解码并在构建结束后删除
 - `APPLE_API_KEY_ID`
 - `APPLE_API_ISSUER`
 
-取得证书并恢复签名发布门禁后，发布任务必须强制执行签名、notarization、`codesign --verify` 和 Gatekeeper 验证；任何一步失败都不会创建 Release。当前过渡版 Windows 不做 Authenticode 签名，macOS 仅使用 ad-hoc 签名，不冒充 Developer ID 受信任签名。
+发布任务强制执行 Windows Authenticode 签名、macOS Developer ID 签名与 notarization，并验证签名发布者、受信任时间戳、`codesign`、stapled ticket 和 Gatekeeper；任何一步失败都不会创建 Release。
 
-## 取得证书后的签名发布流程
+## 签名发布流程
 
 1. 合并并确认 `main` 全部检查通过，工作区中不得混入未提交改动。
 2. 更新 `package.json` 版本及对应许可、README 和更新说明。
 3. 在 Actions 中从 `main` 手动运行 `Client Release`。
-4. 输入与 `package.json` 完全一致的新标签，例如 `v2.0.3`，并输入 `RELEASE`。
+4. 输入与 `package.json` 完全一致的新标签，例如 `v2.0.6`，并输入 `RELEASE`。
 5. 审核人检查目标 commit 后批准 `production-release`。
 6. 三个平台分别构建；Windows/macOS 必须签名，所有公开附件生成 SHA-256 与 GitHub artifact attestation。
 7. 最终任务再次验证摘要和来源证明，然后创建草稿、一次性上传全部附件并发布。
 8. 启用 Release immutability 后，发布瞬间锁定标签和附件。
 
-恢复签名发布门禁后，工作流必须拒绝以下情况：
+工作流必须拒绝以下情况：
 
 - 不是从当前 `origin/main` HEAD 发起。
 - 标签格式、`package.json` 版本不一致。
@@ -104,9 +104,9 @@ V2.0.3 已包含安装更新器代码，但在 Windows 与 macOS 平台签名、
 下载 Release 附件后可以执行：
 
 ```bash
-gh attestation verify G-LLM-Client-Setup-2.0.3-x64.exe -R filwu8/G-LLM-Client
-gh release verify v2.0.3 -R filwu8/G-LLM-Client
-gh release verify-asset v2.0.3 G-LLM-Client-Setup-2.0.3-x64.exe -R filwu8/G-LLM-Client
+gh attestation verify G-LLM-Client-Setup-2.0.6-x64.exe -R filwu8/G-LLM-Client
+gh release verify v2.0.6 -R filwu8/G-LLM-Client
+gh release verify-asset v2.0.6 G-LLM-Client-Setup-2.0.6-x64.exe -R filwu8/G-LLM-Client
 ```
 
 同时使用 Release 中的 `SHA256SUMS-*.txt` 核对下载文件。启用签名后，Windows 还应检查 Authenticode 发布者，macOS 应检查 Developer ID、notarization 和 Gatekeeper 结果。

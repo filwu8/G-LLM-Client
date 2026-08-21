@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.5](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.6](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.5](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.5), released on 2026-08-21.
+Latest stable release: [V2.0.6](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.6), released on 2026-08-21.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.5 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.6 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,13 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.6 Secure Automatic Updates and Reasoning-Model Compatibility
+
+- Windows packages now require Authenticode signing, while macOS packages require Developer ID signing and notarization. The production release stops if credentials are missing or verification fails.
+- V2.0.6 is the first signed bridge release and must still be installed manually once. Later Windows and macOS releases are checked and downloaded in the background, then installed on restart or app exit.
+- OpenAI-compatible streams that place reasoning output in `reasoning_content` are now supported, fixing the indefinite waiting state with `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+- Fixed the model label becoming inconsistent after stopping a response and switching models.
 
 ## V2.0.5 Model Availability and Background Conversations
 
@@ -87,7 +94,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
 - Privacy-friendly anonymous telemetry. The client only sends anonymous metadata and does not collect chat content, API keys, file content, screenshot content, knowledge base content, or memory content. Users can disable telemetry in settings.
-- Update readiness. This version checks GitHub Releases and directs users to a manual download. Automatic installation on Windows and macOS will be enabled in a later release after platform signing and notarization are configured.
+- Secure updates. Windows and macOS check GitHub Releases and download signed updates in the background, then install on restart or app exit. Linux keeps version checking with manual downloads.
 
 ## Desktop Resident Behavior
 
@@ -104,7 +111,7 @@ The client includes the following resident desktop behavior:
 - Single-instance protection is enabled. Launching the shortcut again brings the existing app to the front instead of starting another process.
 - Main-process logs are written to `%APPDATA%/G-LLM/logs/main.log` for startup and crash diagnostics.
 
-> Current public packages do not yet use Windows or macOS platform signing, so operating systems may display security warnings. The client never automatically downloads or executes these unsigned packages.
+> V2.0.6 is the first signed bridge release and must be downloaded and installed manually once. Later signed releases can update from inside the client.
 
 ## Development
 
@@ -124,7 +131,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-Build artifacts are written to `dist/`. During the current transition, GitHub Actions builds manual-download packages for Windows, macOS, and Linux with updater metadata, SHA-256 manifests, and provenance. Platform signing, notarization, and automatic installation will be enabled after certificates are available. See [Secure automatic updates and releases](./docs/secure-auto-update.md) for the planned controls.
+Build artifacts are written to `dist/`. GitHub Actions creates Windows, macOS, and Linux packages with updater metadata, SHA-256 manifests, and provenance. Production Windows/macOS builds require platform signing, and macOS additionally requires notarization. See [Secure automatic updates and releases](./docs/secure-auto-update.md) for the enforced controls.
 
 ## API Contract
 
@@ -167,15 +174,15 @@ The client supports standard OpenAI `/models` responses and simple string-array 
 
 ## Release QA
 
-Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) for cross-platform QA. After certificates are available, configure the Environment, Rulesets, immutable Releases, and platform signing described in [Secure automatic updates and releases](./docs/secure-auto-update.md).
+Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.md) for cross-platform QA, then verify the Environment, Rulesets, immutable Releases, signing, and notarization controls described in [Secure automatic updates and releases](./docs/secure-auto-update.md).
 
 ## License
 
-G-LLM Client is published by GPROPHET LIMITED. The current V2.0.5 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Client is published by GPROPHET LIMITED. The current V2.0.6 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V2.0.5 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+V2.0.6 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 

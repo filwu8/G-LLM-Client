@@ -966,6 +966,7 @@ function sanitizeTimeZone(value: unknown): string {
 function sanitizeMessage(message: ChatMessage): ChatMessage {
   const role = message.role === 'assistant' || message.role === 'user' || message.role === 'system' ? message.role : 'user'
   const content = String(message.content ?? '')
+  const reasoningContent = String(message.reasoningContent ?? '').trim()
   const inferredError =
     message.error?.trim() ||
     (role === 'assistant'
@@ -985,6 +986,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     id: message.id?.trim() || `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     role,
     content,
+    reasoningContent: reasoningContent || undefined,
     error: inferredError || undefined,
     attachments: attachments.length > 0 ? attachments : undefined,
     knowledgeRefs: knowledgeRefs.length > 0 ? knowledgeRefs : undefined,

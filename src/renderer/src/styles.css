@@ -1396,6 +1396,78 @@ img.space-logo {
   color: hsl(var(--foreground));
 }
 
+.message-reasoning {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  margin: 0 0 12px;
+  background: hsl(var(--muted) / 0.56);
+  color: hsl(var(--muted-foreground));
+}
+
+.message-reasoning > summary,
+.message-reasoning-label {
+  display: flex;
+  min-height: 34px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  list-style: none;
+}
+
+.message-reasoning > summary {
+  cursor: pointer;
+}
+
+.message-reasoning > summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-reasoning > summary::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 17px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.16s ease;
+}
+
+.message-reasoning[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+.message-reasoning.running {
+  border-style: dashed;
+}
+
+.message-reasoning-content {
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid hsl(var(--border));
+  padding: 9px 10px 10px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.message-reasoning-content.markdown-body,
+.message-reasoning-content.markdown-body code {
+  font-size: 12px;
+}
+
+.typing-dots.compact {
+  margin-left: 2px;
+}
+
+.typing-dots.compact i {
+  width: 4px;
+  height: 4px;
+}
+
 .project-memory-button {
   border-color: hsl(var(--primary) / 0.35);
   background: hsl(var(--accent));

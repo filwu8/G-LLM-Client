@@ -53,7 +53,7 @@ export class AutoUpdateManager {
 
     if (!this.supported) return
 
-    autoUpdater.autoDownload = false
+    autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.autoRunAppAfterInstall = true
     autoUpdater.allowPrerelease = false

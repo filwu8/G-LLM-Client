@@ -83,6 +83,7 @@ import {
   isConversationRunning,
   removeConversationRun,
   startConversationRun,
+  syncConversationUpdateIntoStreamingDrafts,
   type ConversationRunStates
 } from './conversationRuntime'
 import {
@@ -423,10 +424,11 @@ function getClipboardFiles(data: DataTransfer): File[] {
 
 function estimateMessageTokenUsage(message: ChatMessage): TokenUsage {
   const contentTokens = estimateTokenCount(message.content)
+  const reasoningTokens = estimateTokenCount(message.reasoningContent ?? '')
   const translationTokens = estimateTokenCount(message.translation ?? '')
   const knowledgeTokens = message.role === 'assistant' ? 0 : estimateTokenCount(getKnowledgeReferenceText(message.knowledgeRefs ?? []))
   const fallbackInput = message.role === 'assistant' ? 0 : contentTokens + knowledgeTokens
-  const fallbackOutput = message.role === 'assistant' ? contentTokens + translationTokens : translationTokens
+  const fallbackOutput = message.role === 'assistant' ? contentTokens + reasoningTokens + translationTokens : translationTokens
   const input = sanitizeLocalToken(message.inputTokens) ?? fallbackInput
   const output = sanitizeLocalToken(message.outputTokens) ?? fallbackOutput
   const total = sanitizeLocalToken(message.tokenCount) ?? input + output
@@ -452,9 +454,10 @@ function getConversationTokenUsage(conversation: Conversation | null): TokenUsag
 
 function withTokenCount(message: ChatMessage): ChatMessage {
   const contentTokens = estimateTokenCount(message.content)
+  const reasoningTokens = estimateTokenCount(message.reasoningContent ?? '')
   const translationTokens = estimateTokenCount(message.translation ?? '')
   const inputTokens = message.role === 'assistant' ? 0 : contentTokens
-  const outputTokens = message.role === 'assistant' ? contentTokens + translationTokens : translationTokens
+  const outputTokens = message.role === 'assistant' ? contentTokens + reasoningTokens + translationTokens : translationTokens
 
   return {
     ...message,
@@ -598,9 +601,11 @@ function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChu
     messages = messages.map((message) => {
       if (message.id !== chunk.targetMessageId) return message
       if (chunk.error) return withTokenCount({ ...message, translation: rendererI18n.t('notices.translationFailed', { error: chunk.error }) })
-      if (chunk.usage) return withApiTokenUsage(message, chunk.usage)
-      if (!chunk.content) return message
-      return withTokenCount({ ...message, translation: `${message.translation ?? ''}${chunk.content}` })
+      let nextMessage = chunk.content
+        ? withTokenCount({ ...message, translation: `${message.translation ?? ''}${chunk.content}` })
+        : message
+      if (chunk.usage) nextMessage = withApiTokenUsage(nextMessage, chunk.usage)
+      return nextMessage
     })
   } else if (chunk.error) {
     const presentation = getChatErrorPresentation(chunk.error)
@@ -609,18 +614,26 @@ function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChu
       error: presentation.technicalDetail,
       retryAt: presentation.automaticallyRetryable ? Date.now() + 60_000 : undefined
     })
-  } else if (chunk.webSearch) {
-    if (last?.role === 'assistant') {
-      messages[messages.length - 1] = withWebSearchActivity(last, chunk.webSearch)
-    } else {
-      messages.push(withWebSearchActivity(createMessage('assistant', ''), chunk.webSearch))
+  } else {
+    let assistantMessage = last?.role === 'assistant' ? last : null
+    if (!assistantMessage && (chunk.content || chunk.reasoningContent || chunk.webSearch)) {
+      assistantMessage = createMessage('assistant', '')
+      messages.push(assistantMessage)
     }
-  } else if (chunk.usage && last?.role === 'assistant') {
-    messages[messages.length - 1] = withApiTokenUsage(last, chunk.usage)
-  } else if (last?.role === 'assistant') {
-    messages[messages.length - 1] = withTokenCount({ ...last, content: last.content + chunk.content })
-  } else if (chunk.content) {
-    messages.push(createMessage('assistant', chunk.content))
+
+    if (assistantMessage) {
+      let nextMessage = assistantMessage
+      if (chunk.webSearch) nextMessage = withWebSearchActivity(nextMessage, chunk.webSearch)
+      if (chunk.content || chunk.reasoningContent) {
+        nextMessage = withTokenCount({
+          ...nextMessage,
+          content: nextMessage.content + chunk.content,
+          reasoningContent: `${nextMessage.reasoningContent ?? ''}${chunk.reasoningContent ?? ''}` || undefined
+        })
+      }
+      if (chunk.usage) nextMessage = withApiTokenUsage(nextMessage, chunk.usage)
+      messages[messages.length - 1] = nextMessage
+    }
   }
 
   return withConversationTokens({ ...conversation, messages, updatedAt: Date.now() })
@@ -1966,6 +1979,10 @@ export default function App() {
 
   function saveConversationUpdate(conversation: Conversation) {
     const nextConversation = withConversationTokens({ ...conversation, projectId: conversation.projectId ?? activeProjectId })
+    streamingConversationDraftsRef.current = syncConversationUpdateIntoStreamingDrafts(
+      streamingConversationDraftsRef.current,
+      nextConversation
+    )
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     void window.gllm.saveConversation(nextConversation)
   }
@@ -2583,6 +2600,7 @@ export default function App() {
   function stopGenerating() {
     if (!isStreaming || !activeConversation) return
     window.gllm.cancelResponse(activeConversation.id)
+    discardConversationRun(activeConversation.id)
   }
 
   async function saveSettings(next: AppSettings) {
@@ -2940,6 +2958,12 @@ export default function App() {
               <>
               {activeConversation.messages.map((message, messageIndex) => {
                 const isTranslating = translatingMessageIds.includes(message.id)
+                const isReasoningInProgress = Boolean(
+                  message.reasoningContent &&
+                  isStreaming &&
+                  messageIndex === activeConversation.messages.length - 1 &&
+                  message.role === 'assistant'
+                )
                 const messageTokens = estimateMessageTokenUsage(message)
                 const messageTimestamp = formatMessageTimestamp(
                   message.createdAt,
@@ -2965,6 +2989,30 @@ export default function App() {
                             onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
                             onArtifactContextMenu={openWorkspaceArtifactMenu}
                           />
+                        )}
+                        {message.reasoningContent && (
+                          isReasoningInProgress ? (
+                            <div className="message-reasoning running">
+                              <div className="message-reasoning-label">
+                                <Brain size={15} />
+                                <span>{t('app.reasoningInProgress')}</span>
+                                <span className="typing-dots compact" aria-hidden="true"><i /><i /><i /></span>
+                              </div>
+                              <div className="message-reasoning-content markdown-body">
+                                <MarkdownMessage content={message.reasoningContent} />
+                              </div>
+                            </div>
+                          ) : (
+                            <details className="message-reasoning">
+                              <summary>
+                                <Brain size={15} />
+                                <span>{t('app.reasoningProcess')}</span>
+                              </summary>
+                              <div className="message-reasoning-content markdown-body">
+                                <MarkdownMessage content={message.reasoningContent} />
+                              </div>
+                            </details>
+                          )
                         )}
                         {(message.content.trim() || !message.webSearch) && (
                           <div className="message-content markdown-body">

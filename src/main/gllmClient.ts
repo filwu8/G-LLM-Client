@@ -58,43 +58,14 @@ import {
   parseDuckDuckGoSearchResults,
   parseGoogleSearchResults
 } from './webSearchParser'
+import {
+  extractTextContent,
+  streamChatResponseEvents,
+  type ChatStreamEvent as ParsedChatStreamEvent
+} from './chatStreamParser'
 
-interface ChatStreamEvent {
-  content?: string
+interface ChatStreamEvent extends ParsedChatStreamEvent {
   webSearch?: WebSearchActivity
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-  }
-  finishReason?: string
-  isTruncated?: boolean
-}
-
-interface StreamChoice {
-  delta?: Record<string, unknown>
-  message?: Record<string, unknown>
-  text?: unknown
-  finish_reason?: unknown
-  finishReason?: unknown
-  native_finish_reason?: unknown
-  nativeFinishReason?: unknown
-  stop_reason?: unknown
-}
-
-interface StreamPayload {
-  choices?: StreamChoice[]
-  candidates?: Array<{ finishReason?: unknown }>
-  finish_reason?: unknown
-  finishReason?: unknown
-  native_finish_reason?: unknown
-  nativeFinishReason?: unknown
-  stop_reason?: unknown
-  response?: {
-    candidates?: Array<{ finishReason?: unknown }>
-    stop_reason?: unknown
-  }
-  usage?: unknown
 }
 
 const quoteReferencePrefix = 'quote_'
@@ -1043,121 +1014,6 @@ function parseProviderModels(payload: unknown): ProviderModel[] {
   return models.slice(0, 300)
 }
 
-function parseUsage(payload: unknown): ChatStreamEvent['usage'] | undefined {
-  const usage = (payload as { usage?: Record<string, unknown> })?.usage
-  if (!usage) return undefined
-
-  const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0)
-  const outputTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0)
-  const totalTokens = Number(usage.total_tokens ?? inputTokens + outputTokens)
-
-  if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || !Number.isFinite(totalTokens)) {
-    return undefined
-  }
-
-  return {
-    inputTokens: Math.max(0, Math.round(inputTokens)),
-    outputTokens: Math.max(0, Math.round(outputTokens)),
-    totalTokens: Math.max(0, Math.round(totalTokens))
-  }
-}
-
-function extractTextContent(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (!Array.isArray(value)) return ''
-
-  return value
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (!part || typeof part !== 'object') return ''
-
-      const item = part as { text?: unknown; content?: unknown; type?: unknown }
-      return extractTextContent(item.text ?? item.content)
-    })
-    .join('')
-}
-
-function extractStreamContent(payload: StreamPayload): string {
-  const choice = payload.choices?.[0]
-  if (!choice) return ''
-
-  return (
-    extractTextContent(choice.delta?.content) ||
-    extractTextContent(choice.message?.content) ||
-    extractTextContent(choice.text)
-  )
-}
-
-function normalizeFinishReason(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  return value.trim().toLowerCase()
-}
-
-function extractStreamFinishReason(payload: StreamPayload): string {
-  const choice = payload.choices?.[0]
-  const values = [
-    choice?.finish_reason,
-    choice?.finishReason,
-    choice?.native_finish_reason,
-    choice?.nativeFinishReason,
-    choice?.stop_reason,
-    payload.finish_reason,
-    payload.finishReason,
-    payload.native_finish_reason,
-    payload.nativeFinishReason,
-    payload.stop_reason,
-    payload.candidates?.[0]?.finishReason,
-    payload.response?.candidates?.[0]?.finishReason,
-    payload.response?.stop_reason
-  ]
-
-  for (const value of values) {
-    const reason = normalizeFinishReason(value)
-    if (reason) return reason
-  }
-  return ''
-}
-
-function isTruncatedFinishReason(reason: string): boolean {
-  const normalized = reason.replace(/[\s-]+/g, '_')
-  return ['length', 'max_tokens', 'max_output_tokens', 'token_limit'].includes(normalized)
-}
-
-function parseStreamDataPayload(data: string): ChatStreamEvent | null {
-  const trimmed = data.trim()
-  if (!trimmed || trimmed === '[DONE]') return null
-
-  try {
-    const parsed = JSON.parse(trimmed) as StreamPayload
-    const content = extractStreamContent(parsed)
-    const usage = parseUsage(parsed)
-    const finishReason = extractStreamFinishReason(parsed)
-    if (!content && !usage && !finishReason) return null
-    return {
-      content,
-      usage,
-      finishReason: finishReason || undefined,
-      isTruncated: finishReason ? isTruncatedFinishReason(finishReason) : undefined
-    }
-  } catch {
-    return null
-  }
-}
-
-function getSseEventData(eventBlock: string): string[] {
-  const dataLines = eventBlock
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).trimStart())
-
-  if (dataLines.length > 0) return [dataLines.join('\n')]
-
-  const trimmed = eventBlock.trim()
-  return trimmed ? [trimmed] : []
-}
-
 function decodeHtmlEntities(value: string): string {
   const entities: Record<string, string> = {
     amp: '&',
@@ -2057,49 +1913,6 @@ export async function checkProviderConnection(provider: ApiProvider, language: A
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     }
-  }
-}
-
-async function* streamChatResponseEvents(response: Response): AsyncGenerator<ChatStreamEvent> {
-  if (!response.body) return
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  function* drainStreamBuffer(final = false): Generator<ChatStreamEvent> {
-    const separatorPattern = /\r?\n\r?\n/
-    let match = buffer.match(separatorPattern)
-
-    while (match?.index !== undefined) {
-      const eventBlock = buffer.slice(0, match.index)
-      buffer = buffer.slice(match.index + match[0].length)
-      for (const data of getSseEventData(eventBlock)) {
-        if (data.trim() === '[DONE]') return
-        const parsed = parseStreamDataPayload(data)
-        if (parsed) yield parsed
-      }
-      match = buffer.match(separatorPattern)
-    }
-
-    if (!final || !buffer.trim()) return
-    const tail = buffer
-    buffer = ''
-    for (const data of getSseEventData(tail)) {
-      if (data.trim() === '[DONE]') return
-      const parsed = parseStreamDataPayload(data)
-      if (parsed) yield parsed
-    }
-  }
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      buffer += decoder.decode()
-      for (const event of drainStreamBuffer(true)) yield event
-      break
-    }
-    buffer += decoder.decode(value, { stream: true })
-    for (const event of drainStreamBuffer()) yield event
   }
 }
 
