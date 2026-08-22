@@ -117,6 +117,7 @@ const api = {
   copyImageToClipboard: (dataUrl: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-image', dataUrl),
   getDataLocation: (): Promise<DataLocationInfo> => ipcRenderer.invoke('storage:get-data-location'),
   openDataDirectory: (): Promise<void> => ipcRenderer.invoke('storage:open-data-directory'),
+  openLogDirectory: (): Promise<void> => ipcRenderer.invoke('app:open-log-directory'),
   chooseDataDirectory: (): Promise<DataLocationChangeResult | null> => ipcRenderer.invoke('storage:choose-data-directory'),
   chooseExistingDataDirectory: (): Promise<DataLocationChangeResult | null> =>
     ipcRenderer.invoke('storage:choose-existing-data-directory'),

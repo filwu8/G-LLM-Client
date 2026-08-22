@@ -9,13 +9,137 @@ import test from 'node:test'
 
 import {
   acknowledgeConversationRun,
+  attachDraftWorkspace,
+  collapsePristineConversationDrafts,
   finishConversationRun,
+  isPristineConversationDraft,
   isConversationRunning,
   removeConversationRun,
   startConversationRun,
+  stopConversationWebSearch,
+  stopPendingWebSearch,
   syncConversationUpdateIntoStreamingDrafts
 } from './conversationRuntime.ts'
 import type { Conversation } from '../../shared/types.ts'
+
+test('keeps a draft workspace when changing model creates the first conversation', () => {
+  const conversation: Conversation = {
+    id: 'conversation-new',
+    assistantId: 'assistant-a',
+    title: 'new chat',
+    messages: [],
+    modelProviderId: 'provider-gllm',
+    modelId: 'gpt-5.5',
+    createdAt: 10,
+    updatedAt: 10
+  }
+  const workspace = {
+    rootPath: '/workspace/project',
+    displayName: 'project',
+    permission: 'read-write' as const,
+    approvalMode: 'ask' as const,
+    grantedAt: 11,
+    lastVerifiedAt: 11
+  }
+
+  const materialized = attachDraftWorkspace(conversation, workspace)
+
+  assert.equal(materialized.workspace, workspace)
+  assert.equal(conversation.workspace, undefined)
+})
+
+test('collapses repeated untouched conversations but keeps the selected draft', () => {
+  const createDraft = (id: string): Conversation => ({
+    id,
+    assistantId: 'assistant-a',
+    title: 'Assistant A',
+    messages: [],
+    reasoningEffort: 'default',
+    createdAt: 10,
+    updatedAt: 10
+  })
+  const completed: Conversation = {
+    ...createDraft('completed'),
+    messages: [{ id: 'message-1', role: 'user', content: 'hello', createdAt: 11 }],
+    updatedAt: 11
+  }
+  const drafts = [createDraft('draft-a'), createDraft('draft-b'), completed]
+
+  assert.equal(isPristineConversationDraft(drafts[0]), true)
+  assert.deepEqual(
+    collapsePristineConversationDrafts(drafts, 'draft-b').map((conversation) => conversation.id),
+    ['draft-b', 'completed']
+  )
+  assert.deepEqual(
+    collapsePristineConversationDrafts(drafts, 'completed').map((conversation) => conversation.id),
+    ['completed']
+  )
+})
+
+test('does not collapse configured empty conversations', () => {
+  const configured: Conversation = {
+    id: 'configured',
+    assistantId: 'assistant-a',
+    title: 'Assistant A',
+    messages: [],
+    reasoningEffort: 'high',
+    createdAt: 10,
+    updatedAt: 20
+  }
+
+  assert.equal(isPristineConversationDraft(configured), false)
+  assert.deepEqual(collapsePristineConversationDrafts([configured]), [configured])
+})
+
+test('stops an active web search without changing completed research', () => {
+  const searching = {
+    status: 'searching' as const,
+    query: 'test',
+    activeQueries: ['test'],
+    results: []
+  }
+  const completed = { ...searching, status: 'completed' as const }
+
+  assert.deepEqual(stopPendingWebSearch(searching), {
+    ...searching,
+    status: 'stopped',
+    activeQueries: [],
+    error: 'stopped'
+  })
+  assert.equal(stopPendingWebSearch(completed), completed)
+
+  const conversation: Conversation = {
+    id: 'conversation-searching',
+    assistantId: 'assistant-a',
+    title: 'Searching',
+    messages: [{ id: 'message-searching', role: 'assistant', content: '', createdAt: 10, webSearch: searching }],
+    createdAt: 10,
+    updatedAt: 10
+  }
+  assert.equal(stopConversationWebSearch(conversation).messages[0].webSearch?.status, 'stopped')
+})
+
+test('does not replace an existing conversation workspace with stale draft state', () => {
+  const existingWorkspace = {
+    rootPath: '/workspace/existing',
+    displayName: 'existing',
+    permission: 'read-write' as const,
+    grantedAt: 10,
+    lastVerifiedAt: 10
+  }
+  const conversation: Conversation = {
+    id: 'conversation-existing',
+    assistantId: 'assistant-a',
+    title: 'chat',
+    messages: [],
+    workspace: existingWorkspace,
+    createdAt: 10,
+    updatedAt: 10
+  }
+  const staleWorkspace = { ...existingWorkspace, rootPath: '/workspace/stale' }
+
+  assert.equal(attachDraftWorkspace(conversation, staleWorkspace), conversation)
+})
 
 test('tracks simultaneous model responses independently by conversation', () => {
   let states = startConversationRun({}, 'conversation-a', 10)

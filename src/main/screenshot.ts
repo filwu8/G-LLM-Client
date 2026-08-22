@@ -4,10 +4,21 @@
  * Change Date: 2030-08-01
  */
 
-import { clipboard, shell } from 'electron'
+import { spawn } from 'node:child_process'
+import { readFile, unlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { clipboard, shell, systemPreferences } from 'electron'
 
 import type { PreparedAttachment } from '../shared/types'
 import { prepareImageDataUrlForVision } from './attachments'
+import {
+  getMacScreenCapturePermissionError,
+  getMacScreenshotArguments,
+  getScreenshotBackend,
+  type ScreenMediaAccessStatus
+} from './screenshotPlatform'
 
 const screenshotTimeoutMs = 45_000
 const pollIntervalMs = 350
@@ -36,6 +47,75 @@ function readClipboardImageDataUrl(): string {
   return image.isEmpty() ? '' : image.toDataURL()
 }
 
+interface MacCaptureResult {
+  completed: boolean
+  stderr: string
+}
+
+function runMacInteractiveCapture(outputPath: string): Promise<MacCaptureResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('/usr/sbin/screencapture', getMacScreenshotArguments(outputPath), {
+      stdio: ['ignore', 'ignore', 'pipe']
+    })
+    let settled = false
+    let stderr = ''
+    let timedOut = false
+
+    const finish = (result: MacCaptureResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(result)
+    }
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+    }, screenshotTimeoutMs)
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length < 4_096) stderr += chunk.toString('utf8').slice(0, 4_096 - stderr.length)
+    })
+    child.once('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(error)
+    })
+    child.once('close', (code) => {
+      finish({ completed: !timedOut && code === 0, stderr })
+    })
+  })
+}
+
+function createMacScreenshotPath(): string {
+  return join(tmpdir(), `gllm-screenshot-${Date.now()}-${Math.random().toString(16).slice(2)}.png`)
+}
+
+async function captureMacScreenshot(): Promise<string> {
+  const screenshotPath = createMacScreenshotPath()
+
+  try {
+    const result = await runMacInteractiveCapture(screenshotPath)
+    if (!result.completed) {
+      const status = systemPreferences.getMediaAccessStatus('screen') as ScreenMediaAccessStatus
+      const permissionError = getMacScreenCapturePermissionError(status, result.stderr)
+      if (permissionError) throw new Error(permissionError)
+      return ''
+    }
+
+    const buffer = await readFile(screenshotPath).catch(() => null)
+    if (!buffer?.length) {
+      const status = systemPreferences.getMediaAccessStatus('screen') as ScreenMediaAccessStatus
+      const permissionError = getMacScreenCapturePermissionError(status, result.stderr)
+      if (permissionError) throw new Error(permissionError)
+      return ''
+    }
+    return `data:image/png;base64,${buffer.toString('base64')}`
+  } finally {
+    await unlink(screenshotPath).catch(() => undefined)
+  }
+}
+
 async function waitForNewClipboardImage(previousDataUrl: string): Promise<string> {
   const startedAt = Date.now()
 
@@ -49,13 +129,18 @@ async function waitForNewClipboardImage(previousDataUrl: string): Promise<string
 }
 
 export async function captureScreenshot(): Promise<PreparedAttachment | null> {
-  if (process.platform !== 'win32') {
-    throw new Error('当前版本截图功能先支持 Windows。其他系统请通过附件上传图片。')
-  }
+  const backend = getScreenshotBackend(process.platform)
+  let dataUrl = ''
 
-  const previousDataUrl = readClipboardImageDataUrl()
-  await shell.openExternal('ms-screenclip:')
-  const dataUrl = await waitForNewClipboardImage(previousDataUrl)
+  if (backend === 'windows-screenclip') {
+    const previousDataUrl = readClipboardImageDataUrl()
+    await shell.openExternal('ms-screenclip:')
+    dataUrl = await waitForNewClipboardImage(previousDataUrl)
+  } else if (backend === 'macos-screencapture') {
+    dataUrl = await captureMacScreenshot()
+  } else {
+    throw new Error('当前系统暂不支持截图，请通过附件上传图片。')
+  }
 
   if (!dataUrl) return null
   const image = await prepareImageDataUrlForVision(dataUrl, 'image/png')

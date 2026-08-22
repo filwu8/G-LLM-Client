@@ -15,7 +15,8 @@ import {
   extractResearchFocus,
   extractResearchKeywords,
   getSearchAnchors,
-  matchesSearchAnchors
+  matchesSearchAnchors,
+  shouldUseModelSearchPlanner
 } from './webSearchPolicy.ts'
 
 test('turns a website evaluation request into focused research queries when model planning fails', () => {
@@ -98,4 +99,10 @@ test('accepts structured planning fields while retaining deterministic entities 
   assert.ok(plan.queries.includes('Example privacy policy'))
   assert.ok(!plan.queries.includes('unrelated dictionary result'))
   assert.equal(plan.budget.maxRounds, 2)
+})
+
+test('uses deterministic planning for direct sites and reserves model planning for nuanced requests', () => {
+  assert.equal(shouldUseModelSearchPlanner('帮我看看 https://gprophet.com 是做什么的'), false)
+  assert.equal(shouldUseModelSearchPlanner('量子计算最近有什么进展？'), false)
+  assert.equal(shouldUseModelSearchPlanner('核实 Acme 与 Beta 的说法是否一致，并分别寻找原始证据和反例'), true)
 })

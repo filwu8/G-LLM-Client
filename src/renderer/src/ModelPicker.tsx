@@ -19,6 +19,7 @@ import {
 import { supportsReasoningEffort } from '@shared/featureFlags'
 import { resolveProviderModelId } from '@shared/providers'
 import type { ApiProvider, ProviderModel, ReasoningEffort } from '@shared/types'
+import { getCompactModelTitle } from './modelDisplay'
 
 const reasoningEffortOptions: Array<{ value: ReasoningEffort; labelKey: string; titleKey: string }> = [
   { value: 'default', labelKey: 'modelPicker.reasoning.default', titleKey: 'modelPicker.reasoning.defaultTitle' },
@@ -279,6 +280,7 @@ export function ModelPickerMenu({
   placement = 'bottom',
   disabled = false,
   showTriggerCapabilities = true,
+  compactTrigger = false,
   reasoningEffort,
   onReasoningEffortChange,
   onModelReasoningChange
@@ -291,6 +293,7 @@ export function ModelPickerMenu({
   placement?: 'bottom' | 'top'
   disabled?: boolean
   showTriggerCapabilities?: boolean
+  compactTrigger?: boolean
   reasoningEffort?: ReasoningEffort
   onReasoningEffortChange?: (effort: ReasoningEffort) => void
   onModelReasoningChange?: (modelId: string, effort: ReasoningEffort) => void
@@ -363,6 +366,8 @@ export function ModelPickerMenu({
 
   if (variant === 'dropdown') {
     const subtitle = selectedModel ? getModelSubtitle(selectedModel) : ''
+    const compactTitle = selectedModel && compactTrigger ? getCompactModelTitle(selectedModel) : ''
+    const isFreeModel = Boolean(selectedModel && /:free$/i.test(selectedModel.id))
 
     return (
       <div
@@ -381,7 +386,8 @@ export function ModelPickerMenu({
         >
           <span className="model-dropdown-current">
             <strong>
-              {selectedModel ? getModelTitle(selectedModel) : value || t('modelPicker.select')}
+              {selectedModel ? compactTitle || getModelTitle(selectedModel) : value || t('modelPicker.select')}
+              {compactTrigger && isFreeModel && <span className="model-current-tier"> · {t('modelPicker.free')}</span>}
               {showReasoningValue && <span className="model-current-reasoning"> {t(selectedReasoningOption.labelKey)}</span>}
             </strong>
             {subtitle && <small>{subtitle}</small>}

@@ -43,6 +43,7 @@ export function coalesceChatChunks(chunks: ChatChunk[]): ChatChunk[] {
       reasoningContent: `${current.reasoningContent ?? ''}${chunk.reasoningContent ?? ''}` || undefined,
       webSearch: chunk.webSearch ?? current.webSearch,
       usage: chunk.usage ?? current.usage,
+      contextSavings: chunk.contextSavings ?? current.contextSavings,
       done: Boolean(current.done || chunk.done) || undefined,
       warning: appendNotice(current.warning, chunk.warning),
       finishReason: chunk.finishReason ?? current.finishReason,

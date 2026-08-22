@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.6](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.9](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.6](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.6), released on 2026-08-21.
+Latest stable release: [V2.0.8](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.8), released on 2026-08-21.
 
-> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; the current V2.0.6 release will automatically change to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
+> Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
@@ -23,6 +23,29 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.9 Stability, Documents, and Cross-Platform Experience
+
+- Fixed workspace authorization disappearing after a model change, repeated blank conversations, stop indicators that kept spinning, overflowing edit fields, and requests that appeared not to send.
+- Added native interactive region capture and permission diagnostics on macOS; sent images now render larger and open in a full-size preview.
+- Word generation now converts Markdown tables into real editable DOCX tables, validates document structure, honors the requested output format, and keeps one final deliverable.
+- Web search now offers global Auto / On / Off modes, defaults to Off, and remembers the user's choice; search planning also gains timeout fallbacks and recovery when sources are insufficient.
+- Long conversations and workspace tool results compact older context and show the saved percentage, reducing token usage while preserving the latest instruction and verifiable results.
+- Improved the gold theme, model picker, message editor, screenshot preview, and web-search menu for alignment, contrast, and narrow-window layouts.
+
+## V2.0.8 Edit and Resend
+
+- Sent user messages in the main chat and Quick Chat can now be edited in place and resent, with `Command/Ctrl + Enter` to submit and `Escape` to cancel.
+- Resending preserves the earlier context and replaces the old reply branch after the edited message; affected project memories are also cleared so stale answers do not contaminate the new branch.
+- The original images, files, quotes, and knowledge references are preserved, and conversations with authorized folders continue to use the workspace agent.
+- The new request keeps the conversation's current provider, model, reasoning effort, and web-search setting.
+
+## V2.0.7 Performance and Long-Reasoning Stability
+
+- Screenshots, attachments, file tasks, the workspace agent, and window renderers now load on demand, while conversation saves use incremental synchronization to reduce startup and switching overhead.
+- Historical Markdown avoids unrelated reparsing, streaming fragments render in batches, and the floating assistant is created only when needed with a capped frame rate.
+- The workspace agent now supports single-newline SSE, Nemotron `reasoning_content`, fragmented tool calls, and `[DONE]` responses whose connections close late.
+- Streaming uses response-header and per-chunk idle timeouts, so long reasoning that keeps sending content or heartbeats is no longer limited by a fixed 120-second total timeout.
 
 ## V2.0.6 Windows Automatic Updates and Reasoning-Model Compatibility
 
@@ -85,12 +108,12 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Multi-provider and multi-model setup with the default G-LLM gateway and OpenAI-compatible provider templates.
 - Model management with connection tests, `/models` fetching, capability detection, and default model selection.
 - Unified model selection across chat, global defaults, assistant settings, and quick chat, with capability labels and natural name sorting.
-- Streaming chat, starter prompts, Markdown rendering, conversation history, and local persistence, with full dates, selected time zones, and total/input/output token details shared by the main window and Quick Chat.
+- Streaming chat, starter prompts, Markdown rendering, conversation history, local persistence, and editing and resending sent messages. Long conversations preserve the latest instruction while compacting older context, and the main window and Quick Chat show total/input/output tokens plus the request's context-saving percentage.
 - Intelligent conversation search across spaces using topics, people, tasks, or conclusions, with direct navigation back to the original conversation.
 - Local-first features including lightweight knowledge base, assistant memory, persistent project memory, local data storage, and data import/export.
 - Attachments and visual inputs including files, images, pasted clipboard content, system screenshots, and image copy to the system clipboard.
 - Local file tasks that compress images or PDFs to a requested byte limit with approval, PDF rasterization warnings, non-destructive output, and per-file verification.
-- Conversation workspaces that grant a single conversation controlled access to inspect, search, create, and modify files with a visible tool activity timeline.
+- Conversation workspaces that grant a single conversation controlled access to inspect, search, create, and modify files. Large text is read in ranges, while completed older tool payloads become verifiable summaries and the newest read result remains verbatim.
 - Progressive multi-engine retrieval through Google, Bing, DuckDuckGo, and Google News, with query planning, source deduplication, evidence evaluation, and auditing before highly relevant material is organized into the conversation context.
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
@@ -179,11 +202,11 @@ Before shipping, use [docs/release-qa-checklist.md](./docs/release-qa-checklist.
 
 ## License
 
-G-LLM Client is published by GPROPHET LIMITED. The current V2.0.6 version is licensed under the [Business Source License 1.1](./LICENSE) with an Additional Use Grant.
+G-LLM Client is published by GPROPHET LIMITED. V1.1.0 and later releases use the [Business Source License 1.1](./LICENSE) included with each version, with an Additional Use Grant.
 
 Personal use, research, evaluation, and internal business operations are free. Without a written commercial license from GPROPHET LIMITED, you may not white-label or OEM the client, resell or rent it, release or distribute it as a competing product, or provide it to third parties as a hosted, managed, outsourcing, service-bureau, or application service.
 
-V2.0.6 automatically changes to AGPL-3.0-only on 2030-08-01. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
+Each BUSL release automatically changes to AGPL-3.0-only on the Change Date specified in its `LICENSE`. V1.0.10 and earlier are unaffected and remain under the license included in each release tag.
 
 See [LICENSE](./LICENSE) and [LICENSE_POLICY.md](./LICENSE_POLICY.md) for the controlling scope, [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for commercial licensing, and [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing code.
 

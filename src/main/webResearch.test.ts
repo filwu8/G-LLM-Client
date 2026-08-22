@@ -11,6 +11,7 @@ import type { WebSearchResult } from '../shared/types.ts'
 import { buildResilientSearchPlan } from './webSearchPolicy.ts'
 import {
   areResearchResultsDuplicates,
+  buildResearchRecoveryAnswer,
   canonicalizeResearchUrl,
   governWebResearch,
   isAbnormalWebResearchAnswer,
@@ -182,4 +183,36 @@ test('recognizes internal safety labels without rejecting a real safety analysis
   assert.equal(isPotentialAbnormalWebResearchAnswer('User Safety: safe'), true)
   assert.equal(isPotentialAbnormalWebResearchAnswer('## 结论'), false)
   assert.equal(isPotentialAbnormalWebResearchAnswer('User Safety: safe\nHere is the actual answer.'), false)
+})
+
+test('builds an attributable recovery answer instead of leaving a failed request empty', () => {
+  const query = 'Acme 是否值得使用？'
+  const plan = buildResilientSearchPlan(null, query)
+  const results: WebSearchResult[] = [{
+    title: 'Acme independent review',
+    url: 'https://review.test/acme',
+    snippet: '独立测试总结了 Acme 的优势、成本与局限。'
+  }]
+  const governed = governWebResearch(results, plan, query)
+  const answer = buildResearchRecoveryAnswer(governed.accepted, plan, {
+    taskType: plan.taskType,
+    depth: plan.depth,
+    plannerMode: plan.plannerMode,
+    questions: plan.questions,
+    candidateCount: governed.candidateCount,
+    acceptedCount: governed.accepted.length,
+    duplicateCount: governed.duplicateCount,
+    outdatedCount: governed.outdatedCount,
+    notApplicableCount: governed.notApplicableCount,
+    lowRelevanceCount: governed.lowRelevanceCount,
+    conflictCount: governed.conflicts.length,
+    coveredQuestionCount: governed.coveredQuestions.length,
+    totalQuestionCount: plan.questions.length,
+    searchRounds: 1,
+    contextCharacterBudget: plan.budget.maxContextCharacters
+  })
+
+  assert.match(answer, /模型连续两次没有生成有效正文/)
+  assert.match(answer, /\[Acme independent review\]\(https:\/\/review\.test\/acme\)/)
+  assert.match(answer, /检索证据摘要/)
 })

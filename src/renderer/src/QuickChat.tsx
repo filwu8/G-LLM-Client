@@ -13,7 +13,6 @@ import {
   Copy,
   ExternalLink,
   FolderOpen,
-  Globe2,
   ImagePlus,
   MessageSquarePlus,
   Minus,
@@ -43,6 +42,7 @@ import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import { replaceUserMessageBranch } from './conversationEditing'
+import { attachDraftWorkspace, stopConversationWebSearch, stopPendingWebSearch } from './conversationRuntime'
 import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
@@ -57,14 +57,17 @@ import {
 } from './composerInput'
 import { getMessageSendShortcutLabel, shouldSendMessageFromKeyboard } from './keyboard'
 import { applyRendererLanguage } from './i18n'
+import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { localizeAssistant } from './localizedContent'
 import { MarkdownMessage } from './MarkdownMessage'
 import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
-import { WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { WebSearchModePicker } from './WebSearchModePicker'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
 import { DEFAULT_PROVIDER, getProviderById, resolveProviderModelId } from '@shared/providers'
+import { decideConversationWebSearch } from '@shared/webSearchMode'
 import type {
   ApiProvider,
   AppSettings,
@@ -73,12 +76,14 @@ import type {
   AssistantMemory,
   ChatChunk,
   ChatMessage,
+  ChatRequest,
   Conversation,
   ConversationWorkspace,
   KnowledgeReference,
   MessageRetryAttempt,
   PreparedAttachment,
   ReasoningEffort,
+  WebSearchMode,
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
 } from '@shared/types'
@@ -169,8 +174,19 @@ function createQuickConversation(assistant: Assistant, title: string): Conversat
     title,
     messages: [],
     reasoningEffort: 'default',
+    webSearchMode: 'off',
     createdAt: now,
     updatedAt: now
+  }
+}
+
+function getQuickWebSearchRequestSettings(
+  mode: WebSearchMode,
+  conversation: Conversation
+): Pick<ChatRequest, 'webSearchMode' | 'webSearchEnabled'> {
+  return {
+    webSearchMode: mode,
+    webSearchEnabled: decideConversationWebSearch(mode, conversation.messages).enabled
   }
 }
 
@@ -180,7 +196,7 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
   const errorPresentation = chunk.error ? getChatErrorPresentation(chunk.error) : undefined
   const nextContent = errorPresentation?.userMessage ?? chunk.content
 
-  if (!nextContent && !chunk.reasoningContent && !chunk.webSearch && !chunk.usage) {
+  if (!nextContent && !chunk.reasoningContent && !chunk.webSearch && !chunk.usage && !chunk.contextSavings && !chunk.cancelled) {
     return { ...conversation, updatedAt: Date.now() }
   }
 
@@ -194,12 +210,14 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
       reasoningContent,
       error: errorPresentation?.technicalDetail ?? last.error,
       retryAt: errorPresentation?.automaticallyRetryable ? Date.now() + 60_000 : last.retryAt,
-      webSearch: chunk.webSearch ?? last.webSearch,
+      webSearch: chunk.cancelled ? stopPendingWebSearch(chunk.webSearch ?? last.webSearch) : chunk.webSearch ?? last.webSearch,
       tokenCount: chunk.usage?.totalTokens ?? estimatedOutputTokens,
       inputTokens: chunk.usage?.inputTokens ?? last.inputTokens,
-      outputTokens: chunk.usage?.outputTokens ?? estimatedOutputTokens
+      outputTokens: chunk.usage?.outputTokens ?? estimatedOutputTokens,
+      contextSavings: chunk.contextSavings ?? last.contextSavings
     }
   } else {
+    if (chunk.cancelled) return { ...conversation, updatedAt: Date.now() }
     messages.push({
       ...createMessage('assistant', nextContent),
       reasoningContent: chunk.reasoningContent,
@@ -208,7 +226,8 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
       webSearch: chunk.webSearch,
       tokenCount: chunk.usage?.totalTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? ''),
       inputTokens: chunk.usage?.inputTokens ?? 0,
-      outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? '')
+      outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? ''),
+      contextSavings: chunk.contextSavings
     })
   }
 
@@ -259,10 +278,10 @@ export default function QuickChat() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageContent, setEditingMessageContent] = useState('')
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
+  const [imagePreview, setImagePreview] = useState<ImagePreviewSource | null>(null)
   const [pendingQuoteRefs, setPendingQuoteRefs] = useState<KnowledgeReference[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
   const [isPickingAttachment, setIsPickingAttachment] = useState(false)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [draftWorkspace, setDraftWorkspace] = useState<ConversationWorkspace | undefined>()
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
   const [workspaceApprovalPrompt, setWorkspaceApprovalPrompt] = useState<WorkspaceApprovalPrompt | null>(null)
@@ -274,9 +293,15 @@ export default function QuickChat() {
   const autoFollowMessagesRef = useRef(true)
   const conversationRef = useRef<Conversation | null>(null)
   const streamingConversationIdRef = useRef<string | null>(null)
+  const isStreamingRef = useRef(false)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
+
+  function updateStreaming(value: boolean) {
+    isStreamingRef.current = value
+    setIsStreaming(value)
+  }
 
   const assistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
   const assistantDisplay = useMemo(
@@ -308,6 +333,7 @@ export default function QuickChat() {
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
   const messages = conversation?.messages ?? []
   const currentWorkspace = conversation?.workspace ?? draftWorkspace
+  const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
 
   useEffect(() => {
     void Promise.all([window.gllm.getState(), window.gllm.getActiveAssistantId()]).then(([state, activeId]) => {
@@ -502,7 +528,7 @@ export default function QuickChat() {
       for (const chunk of chunks) {
         if (!chunk.done) continue
         streamingConversationIdRef.current = null
-        setIsStreaming(false)
+        updateStreaming(false)
         if (chunk.error) {
           setStatus(getChatErrorPresentation(chunk.error).userMessage)
         } else if (chunk.warning) {
@@ -709,6 +735,7 @@ export default function QuickChat() {
         messages: nextConversation.messages,
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
+        ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation),
         projectMemory: nextConversation.projectMemory
       })
       const assistantMessage: ChatMessage = {
@@ -716,6 +743,7 @@ export default function QuickChat() {
         workspaceActivities: result.activities,
         workspaceChangedFiles: result.changedFiles,
         workspaceArtifactRoot: workspace.rootPath,
+        contextSavings: result.contextSavings,
         retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
       }
       const nextMessages = [...nextConversation.messages, assistantMessage]
@@ -765,7 +793,7 @@ export default function QuickChat() {
     } finally {
       setWorkspaceApprovalPrompt(null)
       streamingConversationIdRef.current = null
-      setIsStreaming(false)
+      updateStreaming(false)
     }
   }
 
@@ -838,28 +866,12 @@ export default function QuickChat() {
     }
   }
 
-  function changeReasoningEffort(reasoningEffort: ReasoningEffort) {
-    setSelectedReasoningEffort(reasoningEffort)
-    if (!conversation || conversation.reasoningEffort === reasoningEffort) return
-
+  function saveQuickConversationModel(modelId: string, reasoningEffort: ReasoningEffort) {
+    const currentConversation = conversationRef.current ?? conversation
+    if (!currentConversation) return
+    const sourceConversation = attachDraftWorkspace(currentConversation, draftWorkspace)
     const nextConversation: Conversation = {
-      ...conversation,
-      reasoningEffort,
-      updatedAt: Date.now()
-    }
-    setConversation(nextConversation)
-    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
-    conversationRef.current = nextConversation
-    void window.gllm.saveConversation(nextConversation)
-  }
-
-  function changeModelAndReasoning(modelId: string, reasoningEffort: ReasoningEffort) {
-    setSelectedModelId(modelId)
-    setSelectedReasoningEffort(reasoningEffort)
-    if (!conversation) return
-
-    const nextConversation: Conversation = {
-      ...conversation,
+      ...sourceConversation,
       modelProviderId: provider.id,
       modelId,
       reasoningEffort,
@@ -871,8 +883,37 @@ export default function QuickChat() {
     void window.gllm.saveConversation(nextConversation)
   }
 
+  function changeModel(modelId: string) {
+    setSelectedModelId(modelId)
+    saveQuickConversationModel(modelId, selectedReasoningEffort)
+  }
+
+  function changeReasoningEffort(reasoningEffort: ReasoningEffort) {
+    setSelectedReasoningEffort(reasoningEffort)
+    saveQuickConversationModel(selectedModelId, reasoningEffort)
+  }
+
+  function changeModelAndReasoning(modelId: string, reasoningEffort: ReasoningEffort) {
+    setSelectedModelId(modelId)
+    setSelectedReasoningEffort(reasoningEffort)
+    saveQuickConversationModel(modelId, reasoningEffort)
+  }
+
+  async function changeWebSearchMode(nextMode: WebSearchMode) {
+    if (!settings || webSearchMode === nextMode) return
+
+    const saved = await window.gllm.saveSettings({ ...settings, webSearchMode: nextMode })
+    setSettings(saved)
+    const labelKey = nextMode === 'auto'
+      ? 'app.webSearchModeAuto'
+      : nextMode === 'on'
+        ? 'app.webSearchModeOn'
+        : 'app.webSearchModeOff'
+    setStatus(t('app.webSearchModeChanged', { mode: t(labelKey) }))
+  }
+
   function retryMessage(messageId: string) {
-    if (!settings || isStreaming || !conversation) return
+    if (!settings || isStreamingRef.current || !conversation) return
 
     if (needsApiKey) {
       setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
@@ -897,7 +938,7 @@ export default function QuickChat() {
     }
 
     setStatus('')
-    setIsStreaming(true)
+    updateStreaming(true)
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
@@ -920,7 +961,7 @@ export default function QuickChat() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
@@ -936,7 +977,7 @@ export default function QuickChat() {
   }
 
   function resendEditedQuickMessage(messageId: string) {
-    if (!settings || isStreaming || !conversation) return
+    if (!settings || isStreamingRef.current || !conversation) return
     if (needsApiKey) {
       setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
       void openMainWindow()
@@ -976,7 +1017,7 @@ export default function QuickChat() {
 
     cancelQuickMessageEdit()
     setStatus('')
-    setIsStreaming(true)
+    updateStreaming(true)
     setMessageAutoFollow(true)
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
@@ -995,12 +1036,12 @@ export default function QuickChat() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
   function sendMessage(content = draft) {
-    if (!settings || isStreaming) return
+    if (!settings || isStreamingRef.current) return
 
     if (needsApiKey) {
       setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
@@ -1031,6 +1072,7 @@ export default function QuickChat() {
       modelProviderId: selectedProvider.id,
       modelId: selectedProvider.defaultModel,
       reasoningEffort: selectedReasoningEffort,
+      webSearchMode,
       updatedAt: Date.now()
     }
 
@@ -1038,7 +1080,7 @@ export default function QuickChat() {
     setPendingQuoteRefs([])
     setPendingAttachments([])
     setStatus('')
-    setIsStreaming(true)
+    updateStreaming(true)
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
@@ -1057,15 +1099,22 @@ export default function QuickChat() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
   function stopGenerating() {
     if (!isStreaming || !conversation) return
     window.gllm.cancelResponse(conversation.id)
+    const stoppedConversation = stopConversationWebSearch(conversation)
+    if (stoppedConversation !== conversation) {
+      setConversation(stoppedConversation)
+      setConversations((current) => current.map((item) => item.id === stoppedConversation.id ? stoppedConversation : item))
+      conversationRef.current = stoppedConversation
+      void window.gllm.saveConversation(stoppedConversation)
+    }
     streamingConversationIdRef.current = null
-    setIsStreaming(false)
+    updateStreaming(false)
   }
 
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1318,7 +1367,14 @@ export default function QuickChat() {
                     {message.attachments.map((attachment) => (
                       <span key={attachment.id} className={`attachment-chip ${attachment.kind === 'image' && attachment.dataUrl ? 'image-chip' : ''}`}>
                         {attachment.kind === 'image' && attachment.dataUrl ? (
-                          <img alt="" src={attachment.dataUrl} />
+                          <button
+                            aria-label={t('app.imagePreview')}
+                            className="attachment-image-preview"
+                            onClick={() => setImagePreview({ dataUrl: attachment.dataUrl!, name: attachment.name })}
+                            type="button"
+                          >
+                            <img alt={attachment.name} src={attachment.dataUrl} />
+                          </button>
                         ) : attachment.kind === 'image' ? (
                           <ImagePlus size={14} />
                         ) : (
@@ -1385,6 +1441,18 @@ export default function QuickChat() {
                     <span>↑{formatTokenUnit(messageTokens.input)}</span>
                     <span>↓{formatTokenUnit(messageTokens.output)}</span>
                   </span>
+                  {message.contextSavings && (
+                    <span
+                      className="quick-message-context-saving"
+                      title={t('app.contextSavingsDetail', {
+                        original: formatTokenUnit(message.contextSavings.originalCharacters),
+                        sent: formatTokenUnit(message.contextSavings.sentCharacters),
+                        items: message.contextSavings.compactedItems
+                      })}
+                    >
+                      {t('app.contextSavings', { percent: message.contextSavings.savedPercent })}
+                    </span>
+                  )}
                 </div>
               </div>}
             </article>
@@ -1395,9 +1463,9 @@ export default function QuickChat() {
           <article className="quick-message assistant">
             <div className={`quick-message-bubble ${currentWorkspace ? '' : 'quick-thinking'}`}>
               {currentWorkspace ? (
-                <WorkspaceActivityLog activities={workspaceActivities} running />
+                <WorkspaceActivityLog activities={workspaceActivities} model={selectedProvider.defaultModel} running />
               ) : (
-                <><span /><span /><span /></>
+                <ModelResponseWait model={selectedProvider.defaultModel} />
               )}
             </div>
           </article>
@@ -1428,6 +1496,7 @@ export default function QuickChat() {
           </button>
         </div>
       )}
+      {imagePreview && <ImagePreviewDialog image={imagePreview} onClose={() => setImagePreview(null)} />}
 
       {status && (
         <div className="quick-status">
@@ -1496,7 +1565,14 @@ export default function QuickChat() {
                 title={attachment.name}
               >
                 {attachment.kind === 'image' && attachment.dataUrl ? (
-                  <img alt="" src={attachment.dataUrl} />
+                  <button
+                    aria-label={t('app.imagePreview')}
+                    className="attachment-image-preview"
+                    onClick={() => setImagePreview({ dataUrl: attachment.dataUrl!, name: attachment.name })}
+                    type="button"
+                  >
+                    <img alt={attachment.name} src={attachment.dataUrl} />
+                  </button>
                 ) : attachment.kind === 'image' ? (
                   <ImagePlus size={14} />
                 ) : (
@@ -1535,19 +1611,11 @@ export default function QuickChat() {
             <button title={t('quickChat.knowledge')} type="button" onClick={() => void openMainWindow()}>
               <BookOpen size={16} />
             </button>
-            <button
-              className={webSearchEnabled ? 'active' : ''}
-              title={webSearchEnabled ? t('app.disableWebSearch') : t('app.enableWebSearch')}
-              type="button"
-              onClick={() => {
-                setWebSearchEnabled((enabled) => {
-                  setStatus(enabled ? t('app.webSearchDisabled') : t('app.webSearchEnabled'))
-                  return !enabled
-                })
-              }}
-            >
-              <Globe2 size={16} />
-            </button>
+            <WebSearchModePicker
+              disabled={isStreaming}
+              mode={webSearchMode}
+              onChange={changeWebSearchMode}
+            />
             <button title={t('quickChat.tools')} type="button" onClick={() => void openMainWindow()}>
               <Wrench size={16} />
             </button>
@@ -1575,7 +1643,7 @@ export default function QuickChat() {
             reasoningEffort={selectedReasoningEffort}
             onReasoningEffortChange={changeReasoningEffort}
             onModelReasoningChange={changeModelAndReasoning}
-            onChange={setSelectedModelId}
+            onChange={changeModel}
           />
           <button
             className={`quick-send-button${isStreaming ? ' stop' : ''}`}

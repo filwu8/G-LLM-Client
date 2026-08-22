@@ -39,6 +39,28 @@ test('coalesces a burst of normal stream fragments into one renderer update', ()
   assert.deepEqual(result[0].usage, { inputTokens: 10, outputTokens: 20, totalTokens: 30 })
 })
 
+test('keeps context saving statistics when the final stream event is coalesced', () => {
+  const result = coalesceChatChunks([
+    { conversationId: 'conversation_1', content: 'answer' },
+    {
+      conversationId: 'conversation_1',
+      content: '',
+      done: true,
+      contextSavings: {
+        originalCharacters: 52_000,
+        sentCharacters: 4_000,
+        savedCharacters: 48_000,
+        savedPercent: 92,
+        compactedItems: 4
+      }
+    }
+  ])
+
+  assert.equal(result.length, 1)
+  assert.equal(result[0].done, true)
+  assert.equal(result[0].contextSavings?.savedPercent, 92)
+})
+
 test('keeps errors separate so preceding output is not discarded', () => {
   const result = coalesceChatChunks([
     { conversationId: 'conversation-a', content: 'partial answer' },

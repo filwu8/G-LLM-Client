@@ -204,6 +204,25 @@ export function getAutomaticResearchDepth(taskType: WebResearchTaskType): WebRes
   return 'quick'
 }
 
+/**
+ * Most direct lookups and explicit website requests can be planned more
+ * reliably by the deterministic planner. Reserving an extra model call for
+ * genuinely nuanced requests avoids spending time and tokens asking an
+ * unstable/free model to restate information the client can derive locally.
+ */
+export function shouldUseModelSearchPlanner(value: string): boolean {
+  const query = sanitizePublicSearchQuery(value)
+  if (!query || extractSearchDomains(query).length > 0) return false
+
+  const taskType = detectResearchTaskType(query)
+  const hasComplexStructure =
+    query.length > 140 ||
+    /分别|同时|综合|结合|多角度|从.{0,16}(?:方面|角度)|前者|后者|利弊|权衡|条件|反例|争议/iu.test(query)
+
+  if (hasComplexStructure) return true
+  return taskType === 'compare' || taskType === 'verify'
+}
+
 export function getResearchBudget(depth: WebResearchDepth): ResearchBudget {
   return { ...researchBudgets[depth] }
 }

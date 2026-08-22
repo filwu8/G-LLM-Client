@@ -28,6 +28,57 @@ function getSearchDomain(value: string): string | undefined {
   }
 }
 
+function normalizePageHost(value: string): string {
+  return value.toLocaleLowerCase().replace(/^www\./, '')
+}
+
+export interface SearchPageLink {
+  title: string
+  url: string
+}
+
+/** Extract a few useful first-party pages from an explicitly requested site. */
+export function extractSameSitePageLinks(
+  html: string,
+  baseUrl: string,
+  requestedDomain: string,
+  limit = 4
+): SearchPageLink[] {
+  const requestedHost = normalizePageHost(requestedDomain)
+  const usefulPattern = /about|company|product|feature|service|solution|docs?|guide|help|security|privacy|pricing|news|blog|case|介绍|关于|产品|功能|服务|方案|文档|帮助|安全|隐私|价格|新闻|博客|案例/i
+  const excludedPattern = /login|logout|sign[-_]?in|register|auth|account|search|tag|category|javascript:|mailto:|tel:/i
+  const assetPattern = /\.(?:png|jpe?g|gif|webp|svg|ico|pdf|zip|dmg|exe|mp4|mp3)(?:$|[?#])/i
+  const seen = new Set<string>()
+  const candidates: Array<SearchPageLink & { score: number }> = []
+
+  for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const rawHref = decodeSearchHtml(match[1]).trim()
+    const title = stripSearchHtml(match[2]).slice(0, 120)
+    if (!rawHref || excludedPattern.test(rawHref) || assetPattern.test(rawHref)) continue
+    try {
+      const url = new URL(rawHref, baseUrl)
+      if (!/^https?:$/.test(url.protocol)) continue
+      const host = normalizePageHost(url.hostname)
+      if (host !== requestedHost && !host.endsWith(`.${requestedHost}`)) continue
+      url.hash = ''
+      url.search = ''
+      const normalized = url.toString().replace(/\/$/, '')
+      if (!normalized || normalized === baseUrl.replace(/\/$/, '') || seen.has(normalized)) continue
+      seen.add(normalized)
+      const signal = `${url.pathname} ${title}`
+      const score = (usefulPattern.test(signal) ? 10 : 0) + (title.length >= 4 ? 2 : 0) - Math.min(4, url.pathname.split('/').length - 2)
+      candidates.push({ title: title || requestedHost, url: normalized, score })
+    } catch {
+      // Ignore malformed links in third-party HTML.
+    }
+  }
+
+  return candidates
+    .sort((left, right) => right.score - left.score)
+    .slice(0, Math.max(0, limit))
+    .map(({ title, url }) => ({ title, url }))
+}
+
 function getDuckDuckGoResultUrl(value: string): string {
   const decoded = decodeSearchHtml(value).trim()
   try {

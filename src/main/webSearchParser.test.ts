@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  extractSameSitePageLinks,
   isBlockedGoogleSearchHtml,
   parseDuckDuckGoSearchResults,
   parseGoogleSearchResults
@@ -35,6 +36,22 @@ test('parses DuckDuckGo result links, snippets, entities, and target domains', (
     sourceDomain: 'example.com'
   })
   assert.equal(results[1].sourceDomain, 'independent.test')
+})
+
+test('extracts useful same-site pages while excluding account and asset links', () => {
+  const html = `
+    <a href="/login">登录</a>
+    <a href="/assets/logo.png">Logo</a>
+    <a href="https://outside.test/review">Outside review</a>
+    <a href="/about?from=home#team">关于我们</a>
+    <a href="https://docs.example.com/guide">产品文档</a>
+  `
+  const links = extractSameSitePageLinks(html, 'https://example.com/', 'example.com')
+
+  assert.deepEqual(links, [
+    { title: '关于我们', url: 'https://example.com/about' },
+    { title: '产品文档', url: 'https://docs.example.com/guide' }
+  ])
 })
 
 test('parses accessible Google result pages and recognizes blocked responses', () => {

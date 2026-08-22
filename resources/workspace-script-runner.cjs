@@ -7,19 +7,39 @@
 'use strict'
 
 const { copyFile, mkdir, readFile, readdir, realpath, rename, stat, writeFile } = require('node:fs/promises')
-const { isAbsolute, relative, resolve } = require('node:path')
+const { extname, isAbsolute, relative, resolve } = require('node:path')
 const vm = require('node:vm')
 
 const rootInput = process.argv[2]
 const scriptPath = process.argv[3]
 const MAX_TEXT_BYTES = 10 * 1024 * 1024
 const MAX_BINARY_BYTES = 25 * 1024 * 1024
+const NON_TEXT_EXTENSIONS = new Set([
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.zip', '.7z', '.rar',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.mp3', '.wav', '.mp4', '.mov',
+  '.dmg', '.exe', '.dll', '.bin'
+])
+const STRUCTURED_DOCUMENT_EXTENSIONS = new Set(['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'])
 
 if (!rootInput || !scriptPath) throw new Error('缺少工作区或脚本路径')
 
 function isInside(child, root) {
   const diff = relative(root, child)
   return diff === '' || (!diff.startsWith('..') && !isAbsolute(diff))
+}
+
+function assertTextTarget(path) {
+  const extension = extname(String(path || '')).toLowerCase()
+  if (NON_TEXT_EXTENSIONS.has(extension)) {
+    throw new Error(`不能把 UTF-8 文本写入 ${extension} 文件；请使用客户端提供的专用文档工具`)
+  }
+}
+
+function assertGenericBinaryTarget(path) {
+  const extension = extname(String(path || '')).toLowerCase()
+  if (STRUCTURED_DOCUMENT_EXTENSIONS.has(extension)) {
+    throw new Error(`不能用通用 Base64 脚本生成或修改 ${extension} 文件；请使用客户端提供的专用文档工具`)
+  }
 }
 
 async function existingPath(root, input = '.') {
@@ -77,6 +97,7 @@ async function main() {
       return readFile(target, 'utf8')
     },
     writeText: async (path, content) => {
+      assertTextTarget(path)
       const text = String(content)
       if (Buffer.byteLength(text) > MAX_TEXT_BYTES) throw new Error(`写入内容超过 ${MAX_TEXT_BYTES} 字节：${path}`)
       const target = await writablePath(root, path)
@@ -90,6 +111,7 @@ async function main() {
       return (await readFile(target)).toString('base64')
     },
     writeBase64: async (path, content) => {
+      assertGenericBinaryTarget(path)
       const data = Buffer.from(String(content), 'base64')
       if (data.length > MAX_BINARY_BYTES) throw new Error(`写入内容超过 ${MAX_BINARY_BYTES} 字节：${path}`)
       const target = await writablePath(root, path)

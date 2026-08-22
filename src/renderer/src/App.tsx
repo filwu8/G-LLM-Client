@@ -80,10 +80,15 @@ import { getChatErrorPresentation } from './chatErrors'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   acknowledgeConversationRun,
+  attachDraftWorkspace,
+  collapsePristineConversationDrafts,
   finishConversationRun,
+  isPristineConversationDraft,
   isConversationRunning,
   removeConversationRun,
   startConversationRun,
+  stopConversationWebSearch,
+  stopPendingWebSearch,
   syncConversationUpdateIntoStreamingDrafts,
   type ConversationRunStates
 } from './conversationRuntime'
@@ -102,6 +107,7 @@ import {
 } from './composerInput'
 import { getMessageSendShortcutLabel, shouldSendMessageFromKeyboard } from './keyboard'
 import { applyRendererLanguage, rendererI18n } from './i18n'
+import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { MarkdownMessage } from './MarkdownMessage'
 import { LocalTaskPanel } from './LocalTaskPanel'
 import {
@@ -110,8 +116,9 @@ import {
   localizeAssistantPresetCategory,
   searchLocalizedAssistantPresets
 } from './localizedContent'
-import { WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
 import { getModelDisplayLabel, getModelOptions, ModelPickerMenu } from './ModelPicker'
+import { WebSearchModePicker } from './WebSearchModePicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp, getTimeZoneOptionLabel, resolveTimeZone, TIME_ZONE_OPTIONS } from './timeZone'
 import { sortAssistantsForSidebar, sortConversationsForSidebar } from '@shared/sidebarOrdering'
@@ -120,6 +127,7 @@ import {
   type AssistantPreset
 } from '@shared/assistantPresets'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
+import { decideConversationWebSearch } from '@shared/webSearchMode'
 import {
   DEFAULT_PROVIDER,
   DEFAULT_PROVIDER_ID,
@@ -146,6 +154,7 @@ import type {
   AssistantSuggestion,
   ChatChunk,
   ChatMessage,
+  ChatRequest,
   ClipboardAttachmentInput,
   Conversation,
   ConversationSearchResponse,
@@ -168,6 +177,7 @@ import type {
   ToolConfigType,
   ThemeEntitlementResult,
   WebSearchActivity,
+  WebSearchMode,
   ConversationWorkspace,
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
@@ -538,11 +548,22 @@ function createConversation(assistant: Assistant, provider: ApiProvider, project
     modelProviderId: provider.id,
     modelId: provider.defaultModel,
     reasoningEffort: 'default',
+    webSearchMode: 'off',
     totalTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
     createdAt: now,
     updatedAt: now
+  }
+}
+
+function getWebSearchRequestSettings(
+  mode: WebSearchMode,
+  conversation: Conversation
+): Pick<ChatRequest, 'webSearchMode' | 'webSearchEnabled'> {
+  return {
+    webSearchMode: mode,
+    webSearchEnabled: decideConversationWebSearch(mode, conversation.messages).enabled
   }
 }
 
@@ -647,6 +668,9 @@ function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChu
     if (assistantMessage) {
       let nextMessage = assistantMessage
       if (chunk.webSearch) nextMessage = withWebSearchActivity(nextMessage, chunk.webSearch)
+      if (chunk.cancelled) {
+        nextMessage = { ...nextMessage, webSearch: stopPendingWebSearch(nextMessage.webSearch) }
+      }
       if (chunk.content || chunk.reasoningContent) {
         nextMessage = withTokenCount({
           ...nextMessage,
@@ -655,6 +679,7 @@ function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChu
         })
       }
       if (chunk.usage) nextMessage = withApiTokenUsage(nextMessage, chunk.usage)
+      if (chunk.contextSavings) nextMessage = { ...nextMessage, contextSavings: chunk.contextSavings }
       messages[messages.length - 1] = nextMessage
     }
   }
@@ -681,6 +706,7 @@ function WebSearchActivityCard({ activity }: { activity: WebSearchActivity }) {
   const isPlanning = activity.status === 'planning'
   const isSearching = activity.status === 'searching'
   const isFailed = activity.status === 'failed'
+  const isStopped = activity.status === 'stopped'
   const audit = activity.audit
   const rejectedCount = audit
     ? audit.duplicateCount + audit.outdatedCount + audit.notApplicableCount + audit.lowRelevanceCount
@@ -691,6 +717,8 @@ function WebSearchActivityCard({ activity }: { activity: WebSearchActivity }) {
     ? t('webActivity.planning')
     : isSearching
       ? t('webActivity.searching')
+      : isStopped
+        ? t('webActivity.stopped')
       : isFailed
         ? t('webActivity.failed')
         : t('webActivity.complete', { count: activity.results.length })
@@ -805,6 +833,7 @@ function getComparableSettings(settings: AppSettings) {
     language: settings.language,
     timeZone: settings.timeZone,
     theme: settings.theme,
+    webSearchMode: settings.webSearchMode,
     temperature: Number(settings.temperature),
     enableTemperature: settings.enableTemperature,
     maxTokens: Number(settings.maxTokens),
@@ -883,7 +912,6 @@ export default function App() {
   const [composerAttachments, setComposerAttachments] = useState<Record<string, PreparedAttachment[]>>({})
   const [composerQuoteRefs, setComposerQuoteRefs] = useState<Record<string, KnowledgeReference[]>>({})
   const [composerKnowledgeRefs, setComposerKnowledgeRefs] = useState<Record<string, KnowledgeReference[]>>({})
-  const [composerWebSearch, setComposerWebSearch] = useState<Record<string, boolean>>({})
   const [conversationRunStates, setConversationRunStates] = useState<ConversationRunStates>({})
   const [isPickingAttachment, setIsPickingAttachment] = useState(false)
   const [localTaskPlan, setLocalTaskPlan] = useState<LocalTaskPlan | null>(null)
@@ -920,6 +948,7 @@ export default function App() {
   } | null>(null)
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
   const [imageAttachmentMenu, setImageAttachmentMenu] = useState<ImageAttachmentContextMenu | null>(null)
+  const [imagePreview, setImagePreview] = useState<ImagePreviewSource | null>(null)
   const [workspaceArtifactMenu, setWorkspaceArtifactMenu] = useState<WorkspaceArtifactContextMenu | null>(null)
   const [assistantContextMenu, setAssistantContextMenu] = useState<AssistantContextMenu | null>(null)
   const [conversationContextMenu, setConversationContextMenu] = useState<ConversationContextMenu | null>(null)
@@ -943,13 +972,13 @@ export default function App() {
   const conversationSearchRequestRef = useRef(0)
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
+  const newConversationDraftRef = useRef<{ id: string; assistantId: string; projectId?: string } | null>(null)
 
   const composerSessionKey = getComposerSessionKey(activeConversationId, activeProjectId, activeAssistantId)
   const draft = composerDrafts[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
   const pendingAttachments = composerAttachments[composerSessionKey] ?? []
   const pendingQuoteRefs = composerQuoteRefs[composerSessionKey] ?? []
   const pendingKnowledgeRefs = composerKnowledgeRefs[composerSessionKey] ?? []
-  const webSearchEnabled = composerWebSearch[composerSessionKey] ?? false
   const workspaceActivities = activeConversationId
     ? workspaceActivitiesByConversation[activeConversationId] ?? []
     : []
@@ -987,13 +1016,6 @@ export default function App() {
     }))
   }
 
-  function setWebSearchEnabled(update: SessionStateUpdate<boolean>) {
-    setComposerWebSearch((current) => ({
-      ...current,
-      [composerSessionKey]: resolveSessionStateUpdate(update, current[composerSessionKey] ?? false)
-    }))
-  }
-
   function moveComposerSessionToConversation(conversationId: string, clearContent = false) {
     const sourceKey = composerSessionKey
     const targetKey = getComposerSessionKey(conversationId, activeProjectId, activeAssistantId)
@@ -1003,7 +1025,6 @@ export default function App() {
     const sourceAttachments = composerAttachments[sourceKey] ?? []
     const sourceQuoteRefs = composerQuoteRefs[sourceKey] ?? []
     const sourceKnowledgeRefs = composerKnowledgeRefs[sourceKey] ?? []
-    const sourceWebSearch = composerWebSearch[sourceKey] ?? false
     const moveValue = <T,>(current: Record<string, T>, value: T, cleared: T) => {
       const next = { ...current, [targetKey]: clearContent ? cleared : value }
       delete next[sourceKey]
@@ -1014,7 +1035,6 @@ export default function App() {
     setComposerAttachments((current) => moveValue(current, sourceAttachments, []))
     setComposerQuoteRefs((current) => moveValue(current, sourceQuoteRefs, []))
     setComposerKnowledgeRefs((current) => moveValue(current, sourceKnowledgeRefs, []))
-    setComposerWebSearch((current) => moveValue(current, sourceWebSearch, sourceWebSearch))
     persistComposerDraft(getComposerDraftStorageKey(sourceKey), '')
     persistComposerDraft(getComposerDraftStorageKey(targetKey), clearContent ? '' : sourceDraft)
   }
@@ -1078,13 +1098,17 @@ export default function App() {
     [activeAssistant, activeProvider, providers]
   )
   const activeAssistantConversations = useMemo(
-    () => sortConversationsForSidebar(
-      conversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+    () => collapsePristineConversationDrafts(
+      sortConversationsForSidebar(
+        conversations.filter((conversation) => conversation.assistantId === activeAssistantId)
+      ),
+      activeConversationId
     ),
-    [activeAssistantId, conversations]
+    [activeAssistantId, activeConversationId, conversations]
   )
   const activeConversation =
     activeAssistantConversations.find((conversation) => conversation.id === activeConversationId) ?? null
+  const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
   const currentWorkspace = activeConversation ? activeConversation.workspace : draftWorkspace
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
@@ -1121,6 +1145,7 @@ export default function App() {
     : ''
   const showScrollToLatest = Boolean(activeConversation?.messages.length && !isNearMessageBottom)
   const waitingForAssistantResponse = Boolean(isStreaming && activeConversation?.messages.at(-1)?.role === 'user')
+  const activeRunStartedAt = activeConversationId ? conversationRunStates[activeConversationId]?.startedAt : undefined
   const modelCapabilities = useMemo(() => getModelCapabilities(conversationProvider), [conversationProvider])
   const messageSendShortcut = settings?.messageSendShortcut ?? 'enter'
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
@@ -1542,6 +1567,7 @@ export default function App() {
   }
 
   function clearSpaceTransientState() {
+    newConversationDraftRef.current = null
     setAssistantSearchQuery('')
     setSelectionMenu(null)
     setImageAttachmentMenu(null)
@@ -1956,11 +1982,54 @@ export default function App() {
   }
 
   function startNewChat() {
-    setDraftWorkspace(undefined)
+    const selectedConversation = conversations.find((conversation) => conversation.id === activeConversationIdRef.current)
+    if (selectedConversation?.assistantId === activeAssistant.id && selectedConversation.messages.length === 0) {
+      showToolNotice(t('notices.blankConversationReady'))
+      window.requestAnimationFrame(() => composerTextareaRef.current?.focus())
+      return
+    }
+
+    const pendingDraft = newConversationDraftRef.current
+    if (
+      pendingDraft?.assistantId === activeAssistant.id &&
+      pendingDraft.projectId === activeProjectId
+    ) {
+      selectConversation(pendingDraft.id)
+      showToolNotice(t('notices.blankConversationReady'))
+      window.requestAnimationFrame(() => composerTextareaRef.current?.focus())
+      return
+    }
+
+    const reusableDraft = sortConversationsForSidebar(
+      conversations.filter((conversation) =>
+        conversation.assistantId === activeAssistant.id &&
+        conversation.projectId === activeProjectId &&
+        isPristineConversationDraft(conversation)
+      )
+    )[0]
+    if (reusableDraft) {
+      newConversationDraftRef.current = {
+        id: reusableDraft.id,
+        assistantId: reusableDraft.assistantId,
+        projectId: reusableDraft.projectId
+      }
+      setDraftWorkspace(undefined)
+      selectConversation(reusableDraft.id)
+      showToolNotice(t('notices.blankConversationReady'))
+      window.requestAnimationFrame(() => composerTextareaRef.current?.focus())
+      return
+    }
+
     const conversation = createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+    newConversationDraftRef.current = {
+      id: conversation.id,
+      assistantId: conversation.assistantId,
+      projectId: conversation.projectId
+    }
+    setDraftWorkspace(undefined)
     setConversations((current) => [conversation, ...current])
     selectConversation(conversation.id)
-    void window.gllm.saveConversation(conversation)
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus())
   }
 
   function openConversationModelSettings() {
@@ -1969,16 +2038,21 @@ export default function App() {
       return
     }
 
-    const conversation = createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+    const conversation = attachDraftWorkspace(
+      createConversation(activeAssistant, assistantDefaultProvider, activeProjectId),
+      draftWorkspace
+    )
     setConversations((current) => [conversation, ...current])
     moveComposerSessionToConversation(conversation.id)
     selectConversation(conversation.id)
     void window.gllm.saveConversation(conversation)
+    setDraftWorkspace(undefined)
     setConversationModelOpen(true)
   }
 
   async function removeConversation(id: string) {
     setConversationContextMenu(null)
+    if (newConversationDraftRef.current?.id === id) newConversationDraftRef.current = null
     window.gllm.cancelResponse(id)
     delete streamingConversationDraftsRef.current[id]
     discardConversationRun(id)
@@ -2001,11 +2075,6 @@ export default function App() {
       return next
     })
     setComposerKnowledgeRefs((current) => {
-      const next = { ...current }
-      delete next[sessionKey]
-      return next
-    })
-    setComposerWebSearch((current) => {
       const next = { ...current }
       delete next[sessionKey]
       return next
@@ -2037,7 +2106,10 @@ export default function App() {
     if (!nextModelId) return
     if (activeConversation?.modelProviderId === conversationProvider.id && activeConversation.modelId === nextModelId) return
 
-    const conversation = activeConversation ?? createConversation(activeAssistant, conversationProvider, activeProjectId)
+    const conversation = activeConversation ?? attachDraftWorkspace(
+      createConversation(activeAssistant, conversationProvider, activeProjectId),
+      draftWorkspace
+    )
     const nextConversation: Conversation = {
       ...conversation,
       modelProviderId: conversationProvider.id,
@@ -2047,6 +2119,7 @@ export default function App() {
 
     saveConversationUpdate(nextConversation)
     if (!activeConversation) {
+      setDraftWorkspace(undefined)
       moveComposerSessionToConversation(nextConversation.id)
       selectConversation(nextConversation.id)
     }
@@ -2056,7 +2129,10 @@ export default function App() {
   function changeActiveConversationReasoningEffort(reasoningEffort: ReasoningEffort) {
     if (activeConversation?.reasoningEffort === reasoningEffort) return
 
-    const conversation = activeConversation ?? createConversation(activeAssistant, conversationProvider, activeProjectId)
+    const conversation = activeConversation ?? attachDraftWorkspace(
+      createConversation(activeAssistant, conversationProvider, activeProjectId),
+      draftWorkspace
+    )
     const nextConversation: Conversation = {
       ...conversation,
       reasoningEffort,
@@ -2065,6 +2141,7 @@ export default function App() {
 
     saveConversationUpdate(nextConversation)
     if (!activeConversation) {
+      setDraftWorkspace(undefined)
       moveComposerSessionToConversation(nextConversation.id)
       selectConversation(nextConversation.id)
     }
@@ -2074,7 +2151,10 @@ export default function App() {
     const nextModelId = modelId.trim()
     if (!nextModelId) return
 
-    const conversation = activeConversation ?? createConversation(activeAssistant, conversationProvider, activeProjectId)
+    const conversation = activeConversation ?? attachDraftWorkspace(
+      createConversation(activeAssistant, conversationProvider, activeProjectId),
+      draftWorkspace
+    )
     const nextConversation: Conversation = {
       ...conversation,
       modelProviderId: conversationProvider.id,
@@ -2085,9 +2165,22 @@ export default function App() {
 
     saveConversationUpdate(nextConversation)
     if (!activeConversation) {
+      setDraftWorkspace(undefined)
       moveComposerSessionToConversation(nextConversation.id)
       selectConversation(nextConversation.id)
     }
+  }
+
+  async function changeActiveConversationWebSearchMode(nextMode: WebSearchMode) {
+    if (!settings || webSearchMode === nextMode) return
+
+    await saveSettings({ ...settings, webSearchMode: nextMode })
+    const labelKey = nextMode === 'auto'
+      ? 'app.webSearchModeAuto'
+      : nextMode === 'on'
+        ? 'app.webSearchModeOn'
+        : 'app.webSearchModeOff'
+    showToolNotice(t('app.webSearchModeChanged', { mode: t(labelKey) }))
   }
 
   function getSelectedTextForMessage(messageId: string): string {
@@ -2321,7 +2414,7 @@ export default function App() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
@@ -2343,6 +2436,7 @@ export default function App() {
         messages: nextConversation.messages,
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
+        ...getWebSearchRequestSettings(webSearchMode, nextConversation),
         projectMemory: nextConversation.projectMemory
       })
       const assistantMessage: ChatMessage = {
@@ -2350,6 +2444,7 @@ export default function App() {
         workspaceActivities: result.activities,
         workspaceChangedFiles: result.changedFiles,
         workspaceArtifactRoot: workspace.rootPath,
+        contextSavings: result.contextSavings,
         retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
       }
       const completedConversation = withConversationTokens({
@@ -2442,7 +2537,7 @@ export default function App() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
@@ -2502,7 +2597,10 @@ export default function App() {
       const baseConversation =
         activeConversation?.assistantId === activeAssistant.id
           ? activeConversation
-          : createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+          : attachDraftWorkspace(
+              createConversation(activeAssistant, assistantDefaultProvider, activeProjectId),
+              draftWorkspace
+            )
       const userMessage = createMessage('user', localTaskPlan.request, pendingAttachments)
       const successCount = result.artifacts.filter((artifact) => artifact.success).length
       const resultLines = result.artifacts.map((artifact) => {
@@ -2535,6 +2633,7 @@ export default function App() {
       selectConversation(nextConversation.id)
       setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
       void window.gllm.saveConversation(nextConversation)
+      if (!activeConversation && draftWorkspace) setDraftWorkspace(undefined)
       setPendingAttachments([])
       setDraft('')
     } catch (error) {
@@ -2679,6 +2778,7 @@ export default function App() {
     setPendingQuoteRefs([])
     setPendingKnowledgeRefs([])
     beginConversationRun(nextConversation.id)
+    if (newConversationDraftRef.current?.id === nextConversation.id) newConversationDraftRef.current = null
     selectConversation(nextConversation.id)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     void window.gllm.saveConversation(nextConversation)
@@ -2701,13 +2801,21 @@ export default function App() {
       messages: nextConversation.messages,
       settings,
       reasoningEffort: nextConversation.reasoningEffort,
-      webSearchEnabled
+      ...getWebSearchRequestSettings(webSearchMode, nextConversation)
     })
   }
 
   function stopGenerating() {
     if (!isStreaming || !activeConversation) return
     window.gllm.cancelResponse(activeConversation.id)
+    const stoppedConversation = stopConversationWebSearch(activeConversation)
+    if (stoppedConversation !== activeConversation) {
+      streamingConversationDraftsRef.current[activeConversation.id] = stoppedConversation
+      setConversations((current) => current.map((conversation) =>
+        conversation.id === stoppedConversation.id ? stoppedConversation : conversation
+      ))
+      void window.gllm.saveConversation(stoppedConversation)
+    }
     discardConversationRun(activeConversation.id)
   }
 
@@ -3190,7 +3298,14 @@ export default function App() {
                                 onContextMenu={(event) => openImageAttachmentMenu(event, attachment)}
                               >
                                 {attachment.kind === 'image' && attachment.dataUrl ? (
-                                  <img alt="" src={attachment.dataUrl} />
+                                  <button
+                                    aria-label={t('app.imagePreview')}
+                                    className="attachment-image-preview"
+                                    onClick={() => setImagePreview({ dataUrl: attachment.dataUrl!, name: attachment.name })}
+                                    type="button"
+                                  >
+                                    <img alt={attachment.name} src={attachment.dataUrl} />
+                                  </button>
                                 ) : attachment.kind === 'image' ? (
                                   <ImagePlus size={14} />
                                 ) : (
@@ -3288,6 +3403,18 @@ export default function App() {
                             <span>↑{formatTokenUnit(messageTokens.input)}</span>
                             <span>↓{formatTokenUnit(messageTokens.output)}</span>
                           </span>
+                          {message.contextSavings && (
+                            <span
+                              className="message-context-saving"
+                              title={t('app.contextSavingsDetail', {
+                                original: formatTokenUnit(message.contextSavings.originalCharacters),
+                                sent: formatTokenUnit(message.contextSavings.sentCharacters),
+                                items: message.contextSavings.compactedItems
+                              })}
+                            >
+                              {t('app.contextSavings', { percent: message.contextSavings.savedPercent })}
+                            </span>
+                          )}
                         </div>
                       </div>}
                     </div>
@@ -3300,16 +3427,14 @@ export default function App() {
                   <div className="message-stack">
                     <div className="message-bubble pending-response-bubble">
                       {currentWorkspace ? (
-                        <WorkspaceActivityLog activities={workspaceActivities} running />
+                        <WorkspaceActivityLog
+                          activities={workspaceActivities}
+                          model={conversationProvider.defaultModel}
+                          running
+                          startedAt={activeRunStartedAt}
+                        />
                       ) : (
-                        <div className="pending-response-content">
-                          <span className="typing-dots" aria-hidden="true">
-                            <i />
-                            <i />
-                            <i />
-                          </span>
-                          <span>{t('app.waitingForModel', { model: conversationProvider.defaultModel })}</span>
-                        </div>
+                        <ModelResponseWait model={conversationProvider.defaultModel} startedAt={activeRunStartedAt} />
                       )}
                     </div>
                   </div>
@@ -3348,6 +3473,7 @@ export default function App() {
               </button>
             </div>
           )}
+          {imagePreview && <ImagePreviewDialog image={imagePreview} onClose={() => setImagePreview(null)} />}
           {workspaceArtifactMenu && (
             <div
               className="selection-context-menu workspace-artifact-context-menu"
@@ -3380,65 +3506,6 @@ export default function App() {
               sendMessage()
             }}
           >
-            <div className="composer-toolbar">
-              <div className="composer-tools">
-                <button
-                  className={pendingAttachments.some((attachment) => attachment.kind === 'file') ? 'active' : ''}
-                  disabled={isPickingAttachment}
-                  title={t('app.uploadAttachmentDetailed')}
-                  type="button"
-                  onClick={() => void pickComposerAttachments('file')}
-                >
-                  <Paperclip size={16} />
-                </button>
-                <button
-                  className={pendingAttachments.some((attachment) => attachment.kind === 'image') ? 'active' : ''}
-                  disabled={isPickingAttachment}
-                  title={t('app.captureScreenshot')}
-                  type="button"
-                  onClick={() => void captureComposerScreenshot()}
-                >
-                  <ImagePlus size={16} />
-                </button>
-                <button
-                  className={currentWorkspace ? 'active' : ''}
-                  title={t('app.workspaceFolder')}
-                  type="button"
-                  onClick={() => void bindConversationWorkspace()}
-                >
-                  <FolderOpen size={16} />
-                </button>
-                <button
-                  className={knowledgeOpen || pendingKnowledgeRefs.length > 0 ? 'active' : ''}
-                  title={t('app.knowledgeBase')}
-                  type="button"
-                  onClick={() => setKnowledgeOpen(true)}
-                >
-                  <BookOpen size={16} />
-                </button>
-                <button
-                  className={webSearchEnabled ? 'active' : ''}
-                  title={t('app.webSearch')}
-                  type="button"
-                  onClick={() => {
-                    setWebSearchEnabled((enabled) => {
-                      showToolNotice(enabled ? t('app.webSearchDisabled') : t('app.webSearchEnabled'))
-                      return !enabled
-                    })
-                  }}
-                >
-                  <Globe2 size={16} />
-                </button>
-                <button
-                  className={toolCenterOpen || tools.some((tool) => tool.enabled) ? 'active' : ''}
-                  title={t('app.extensions')}
-                  type="button"
-                  onClick={() => setToolCenterOpen(true)}
-                >
-                  <Wrench size={16} />
-                </button>
-              </div>
-            </div>
             {currentWorkspace && (
               <WorkspaceBar
                 workspace={currentWorkspace}
@@ -3509,7 +3576,14 @@ export default function App() {
                     onContextMenu={(event) => openImageAttachmentMenu(event, attachment)}
                   >
                     {attachment.kind === 'image' && attachment.dataUrl ? (
-                      <img alt="" src={attachment.dataUrl} />
+                      <button
+                        aria-label={t('app.imagePreview')}
+                        className="attachment-image-preview"
+                        onClick={() => setImagePreview({ dataUrl: attachment.dataUrl!, name: attachment.name })}
+                        type="button"
+                      >
+                        <img alt={attachment.name} src={attachment.dataUrl} />
+                      </button>
                     ) : attachment.kind === 'image' ? (
                       <ImagePlus size={14} />
                     ) : (
@@ -3551,9 +3625,61 @@ export default function App() {
                 placeholder={needsApiKey ? t('app.configureApiKey') : t('app.messageAssistant', { assistant: activeAssistantDisplay.name })}
                 rows={1}
               />
+            </div>
+            <div className="composer-toolbar">
+              <div className="composer-tools">
+                <button
+                  className={pendingAttachments.some((attachment) => attachment.kind === 'file') ? 'active' : ''}
+                  disabled={isPickingAttachment}
+                  title={t('app.uploadAttachmentDetailed')}
+                  type="button"
+                  onClick={() => void pickComposerAttachments('file')}
+                >
+                  <Paperclip size={16} />
+                </button>
+                <button
+                  className={pendingAttachments.some((attachment) => attachment.kind === 'image') ? 'active' : ''}
+                  disabled={isPickingAttachment}
+                  title={t('app.captureScreenshot')}
+                  type="button"
+                  onClick={() => void captureComposerScreenshot()}
+                >
+                  <ImagePlus size={16} />
+                </button>
+                <button
+                  className={currentWorkspace ? 'active' : ''}
+                  title={t('app.workspaceFolder')}
+                  type="button"
+                  onClick={() => void bindConversationWorkspace()}
+                >
+                  <FolderOpen size={16} />
+                </button>
+                <button
+                  className={knowledgeOpen || pendingKnowledgeRefs.length > 0 ? 'active' : ''}
+                  title={t('app.knowledgeBase')}
+                  type="button"
+                  onClick={() => setKnowledgeOpen(true)}
+                >
+                  <BookOpen size={16} />
+                </button>
+                <WebSearchModePicker
+                  disabled={isStreaming}
+                  mode={webSearchMode}
+                  onChange={changeActiveConversationWebSearchMode}
+                />
+                <button
+                  className={toolCenterOpen || tools.some((tool) => tool.enabled) ? 'active' : ''}
+                  title={t('app.extensions')}
+                  type="button"
+                  onClick={() => setToolCenterOpen(true)}
+                >
+                  <Wrench size={16} />
+                </button>
+              </div>
               <div className="composer-input-actions">
                 <ModelPickerMenu
                   className="composer-model-picker"
+                  compactTrigger
                   provider={conversationProvider}
                   value={conversationProvider.defaultModel}
                   variant="dropdown"
@@ -5874,6 +6000,15 @@ function SettingsPanel({
     }
   }
 
+  async function openLogDirectory() {
+    setDataLocationStatus('')
+    try {
+      await window.gllm.openLogDirectory()
+    } catch (error) {
+      setDataLocationStatus(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   async function chooseDataDirectory() {
     const confirmed = window.confirm(t('storage.confirmChoose'))
     if (!confirmed) return
@@ -6517,6 +6652,10 @@ function SettingsPanel({
                 <button onClick={openDataDirectory} type="button">
                   <FolderOpen size={15} />
                   {t('storage.openDirectory')}
+                </button>
+                <button onClick={openLogDirectory} type="button">
+                  <FileText size={15} />
+                  {t('storage.openLogs')}
                 </button>
                 <button disabled={isChangingDataLocation} onClick={chooseDataDirectory} type="button">
                   <Database size={15} />

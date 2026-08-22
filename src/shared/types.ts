@@ -7,6 +7,7 @@
 export type Role = 'system' | 'user' | 'assistant'
 export type MessageSendShortcut = 'enter' | 'ctrl-enter'
 export type ReasoningEffort = 'default' | 'low' | 'medium' | 'high'
+export type WebSearchMode = 'auto' | 'on' | 'off'
 export type AppTheme = 'auto' | 'light' | 'dark' | 'gold'
 export type FloatingMascotSkin = 'blue' | 'gold'
 export type FloatingMascotAppearance = 'auto' | FloatingMascotSkin
@@ -33,7 +34,16 @@ export interface ChatMessage {
   tokenCount?: number
   inputTokens?: number
   outputTokens?: number
+  contextSavings?: ContextSavings
   createdAt: number
+}
+
+export interface ContextSavings {
+  originalCharacters: number
+  sentCharacters: number
+  savedCharacters: number
+  savedPercent: number
+  compactedItems: number
 }
 
 export type AttachmentKind = 'file' | 'image'
@@ -166,7 +176,7 @@ export interface WebResearchAudit {
 }
 
 export interface WebSearchActivity {
-  status: 'planning' | 'searching' | 'completed' | 'failed'
+  status: 'planning' | 'searching' | 'completed' | 'failed' | 'stopped'
   query: string
   intent?: string
   queries?: string[]
@@ -220,6 +230,7 @@ export interface Conversation {
   modelProviderId?: string
   modelId?: string
   reasoningEffort?: ReasoningEffort
+  webSearchMode?: WebSearchMode
   workspace?: ConversationWorkspace
   projectMemory?: ConversationProjectMemory
   pinnedAt?: number
@@ -450,6 +461,8 @@ export interface WorkspaceAgentRequest {
   messages: ChatMessage[]
   settings: AppSettings
   reasoningEffort?: ReasoningEffort
+  webSearchMode?: WebSearchMode
+  webSearchEnabled?: boolean
   projectMemory?: ConversationProjectMemory
 }
 
@@ -463,6 +476,7 @@ export interface WorkspaceAgentResult {
   content: string
   activities: WorkspaceToolActivity[]
   changedFiles: string[]
+  contextSavings?: ContextSavings
 }
 
 export interface AssistantSuggestion {
@@ -486,6 +500,7 @@ export interface AppSettings {
   language: import('./i18n').AppLanguage
   timeZone: string
   theme: AppTheme
+  webSearchMode: WebSearchMode
   temperature: number
   enableTemperature: boolean
   maxTokens: number
@@ -534,6 +549,7 @@ export interface ChatRequest {
   messages: ChatMessage[]
   settings: AppSettings
   reasoningEffort?: ReasoningEffort
+  webSearchMode?: WebSearchMode
   webSearchEnabled?: boolean
   purpose?: 'chat' | 'translation'
   targetMessageId?: string
@@ -549,11 +565,13 @@ export interface ChatChunk {
     outputTokens: number
     totalTokens: number
   }
+  contextSavings?: ContextSavings
   purpose?: 'chat' | 'translation'
   targetMessageId?: string
   done?: boolean
   error?: string
   warning?: string
+  cancelled?: boolean
   finishReason?: string
   isTruncated?: boolean
 }

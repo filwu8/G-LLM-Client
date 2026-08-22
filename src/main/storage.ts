@@ -600,6 +600,7 @@ export const defaultSettings: AppSettings = {
   language: 'system',
   timeZone: 'system',
   theme: 'auto',
+  webSearchMode: 'off',
   temperature: 1,
   enableTemperature: false,
   maxTokens: 4096,
@@ -791,6 +792,29 @@ function sanitizeModels(models: ProviderModel[] = []): ProviderModel[] {
 function sanitizeTokenCount(value: unknown): number | undefined {
   const tokenCount = Number(value)
   return Number.isFinite(tokenCount) && tokenCount >= 0 ? Math.round(tokenCount) : undefined
+}
+
+function sanitizeContextSavings(value: ChatMessage['contextSavings']): ChatMessage['contextSavings'] {
+  if (!value) return undefined
+  const originalCharacters = sanitizeTokenCount(value.originalCharacters)
+  const sentCharacters = sanitizeTokenCount(value.sentCharacters)
+  const savedCharacters = sanitizeTokenCount(value.savedCharacters)
+  const compactedItems = sanitizeTokenCount(value.compactedItems)
+  if (
+    originalCharacters === undefined ||
+    sentCharacters === undefined ||
+    savedCharacters === undefined ||
+    compactedItems === undefined ||
+    originalCharacters === 0 ||
+    savedCharacters === 0
+  ) return undefined
+  return {
+    originalCharacters,
+    sentCharacters,
+    savedCharacters,
+    savedPercent: Math.max(0, Math.min(100, Math.round(Number(value.savedPercent) || 0))),
+    compactedItems
+  }
 }
 
 function sanitizeAssistantAvatar(value: unknown): string | undefined {
@@ -1017,6 +1041,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     tokenCount: sanitizeTokenCount(message.tokenCount),
     inputTokens: sanitizeTokenCount(message.inputTokens),
     outputTokens: sanitizeTokenCount(message.outputTokens),
+    contextSavings: sanitizeContextSavings(message.contextSavings),
     createdAt: Number.isFinite(message.createdAt) ? Number(message.createdAt) : Date.now()
   }
 }
@@ -1087,6 +1112,9 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
     modelProviderId: conversation.modelProviderId?.trim() || undefined,
     modelId: conversation.modelId?.trim() || undefined,
     reasoningEffort: sanitizeReasoningEffort(conversation.reasoningEffort),
+    webSearchMode: ['auto', 'on', 'off'].includes(conversation.webSearchMode ?? '')
+      ? conversation.webSearchMode
+      : 'off',
     workspace,
     projectMemory,
     pinnedAt: Number.isFinite(conversation.pinnedAt) && Number(conversation.pinnedAt) > 0
@@ -1246,6 +1274,10 @@ export function getSettings(): AppSettings {
     language: sanitizeAppLanguage(saved.language),
     timeZone: sanitizeTimeZone(saved.timeZone),
     theme: sanitizeAppTheme(saved.theme),
+    webSearchMode:
+      saved.webSearchMode === 'auto' || saved.webSearchMode === 'on' || saved.webSearchMode === 'off'
+        ? saved.webSearchMode
+        : defaultSettings.webSearchMode,
     temperature: Number.isFinite(saved.temperature)
       ? Math.min(2, Math.max(0, Number(saved.temperature)))
       : defaultSettings.temperature,
@@ -1282,6 +1314,10 @@ export function setSettings(settings: AppSettings): AppSettings {
     language: sanitizeAppLanguage(settings.language),
     timeZone: sanitizeTimeZone(settings.timeZone),
     theme: sanitizeAppTheme(settings.theme),
+    webSearchMode:
+      settings.webSearchMode === 'auto' || settings.webSearchMode === 'on' || settings.webSearchMode === 'off'
+        ? settings.webSearchMode
+        : defaultSettings.webSearchMode,
     temperature: Number.isFinite(settings.temperature)
       ? Math.min(2, Math.max(0, Number(settings.temperature)))
       : defaultSettings.temperature,

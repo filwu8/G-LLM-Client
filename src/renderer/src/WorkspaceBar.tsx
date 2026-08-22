@@ -5,7 +5,7 @@
  */
 
 import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
-import { useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
@@ -18,6 +18,43 @@ function approvalText(mode: WorkspaceApprovalMode, t: ReturnType<typeof useTrans
   if (mode === 'full') return { label: t('workspace.approvalFull'), description: t('workspace.approvalFullDescription') }
   if (mode === 'auto') return { label: t('workspace.approvalAuto'), description: t('workspace.approvalAutoDescription') }
   return { label: t('workspace.approvalAsk'), description: t('workspace.approvalAskDescription') }
+}
+
+function useElapsedSeconds(running: boolean, startedAt?: number): number {
+  const fallbackStartedAt = useRef(Date.now())
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!running) return
+    const update = () => setNow(Date.now())
+    update()
+    const timer = window.setInterval(update, 1_000)
+    return () => window.clearInterval(timer)
+  }, [running, startedAt])
+
+  return Math.max(0, Math.floor((now - (startedAt ?? fallbackStartedAt.current)) / 1_000))
+}
+
+function formatElapsedDuration(seconds: number, language: string): string {
+  if (seconds < 60) return language.startsWith('zh') ? `${seconds} 秒` : `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return language.startsWith('zh') ? `${minutes} 分 ${remainder} 秒` : `${minutes}m ${remainder}s`
+}
+
+export function ModelResponseWait({ model, startedAt }: { model: string; startedAt?: number }) {
+  const { t, i18n } = useTranslation()
+  const elapsedSeconds = useElapsedSeconds(true, startedAt)
+  const duration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
+  return (
+    <div className="pending-response-content">
+      <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
+      <span className="pending-response-copy">
+        <span>{t('app.waitingForModel', { model })}</span>
+        <small>{t('workspace.waitingElapsed', { duration })}</small>
+      </span>
+    </div>
+  )
 }
 
 export function WorkspaceApprovalDialog({ rootPath, currentMode, onSelect, onCancel }: {
@@ -138,22 +175,29 @@ export function WorkspaceBar({ workspace, onUnbind, onApprovalModeChange }: {
   )
 }
 
-export function WorkspaceActivityLog({ activities, changedFiles, running = false, artifactRoot, onArtifactOpen, onArtifactContextMenu }: {
+export function WorkspaceActivityLog({ activities, changedFiles, running = false, model, startedAt, artifactRoot, onArtifactOpen, onArtifactContextMenu }: {
   activities: WorkspaceToolActivity[]
   changedFiles?: string[]
   running?: boolean
+  model?: string
+  startedAt?: number
   artifactRoot?: string
   onArtifactOpen?: (rootPath: string, relativePath: string) => void
   onArtifactContextMenu?: (event: ReactMouseEvent, rootPath: string, relativePath: string) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const elapsedSeconds = useElapsedSeconds(running, startedAt)
+  const duration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
   return (
     <div className="workspace-message-activities">
       <div className="workspace-message-activities-title">
         {running && <LoaderCircle className="spin" size={14} />}
         <strong>{running ? (activities.length > 0 ? t('workspace.operating') : t('workspace.understanding')) : activities.length > 0 ? t('workspace.activityLog') : t('workspace.generatedFiles')}</strong>
+        {running && <small>{t('workspace.elapsed', { duration })}</small>}
       </div>
-      {activities.length === 0 && running && <small>{t('workspace.readingContext')}</small>}
+      {activities.length === 0 && running && (
+        <small>{model ? t('app.waitingForModel', { model }) : t('workspace.readingContext')}</small>
+      )}
       {activities.map((activity) => (
         <div className={`workspace-message-activity ${activity.status}`} key={activity.id} title={activity.detail}>
           {activity.status === 'running' ? <LoaderCircle className="spin" size={14} /> : activity.status === 'completed' ? <CircleCheck size={14} /> : <XCircle size={14} />}

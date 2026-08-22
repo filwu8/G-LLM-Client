@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import type { Conversation } from '@shared/types'
+import type { Conversation, ConversationWorkspace, WebSearchActivity } from '@shared/types'
 
 export type ConversationRunStatus = 'running' | 'completed' | 'error'
 
@@ -15,6 +15,62 @@ export interface ConversationRunState {
 }
 
 export type ConversationRunStates = Record<string, ConversationRunState>
+
+export function stopPendingWebSearch(activity?: WebSearchActivity): WebSearchActivity | undefined {
+  if (!activity || !['planning', 'searching'].includes(activity.status)) return activity
+  return {
+    ...activity,
+    status: 'stopped',
+    activeQueries: [],
+    error: 'stopped'
+  }
+}
+
+export function stopConversationWebSearch(conversation: Conversation): Conversation {
+  let changed = false
+  const messages = conversation.messages.map((message) => {
+    const webSearch = stopPendingWebSearch(message.webSearch)
+    if (webSearch === message.webSearch) return message
+    changed = true
+    return { ...message, webSearch }
+  })
+  return changed ? { ...conversation, messages, updatedAt: Date.now() } : conversation
+}
+
+/** A just-created, untouched conversation is UI draft state rather than
+ * meaningful history. It can be safely reused or collapsed in the sidebar. */
+export function isPristineConversationDraft(conversation: Conversation): boolean {
+  return conversation.messages.length === 0 &&
+    !conversation.workspace &&
+    !conversation.projectMemory &&
+    !conversation.pinnedAt &&
+    (conversation.reasoningEffort === undefined || conversation.reasoningEffort === 'default') &&
+    conversation.updatedAt === conversation.createdAt
+}
+
+export function collapsePristineConversationDrafts(
+  conversations: Conversation[],
+  activeConversationId?: string | null
+): Conversation[] {
+  const drafts = conversations.filter(isPristineConversationDraft)
+  if (drafts.length === 0) return conversations
+
+  const activeDraftId = drafts.find((conversation) => conversation.id === activeConversationId)?.id
+  return conversations.filter((conversation) =>
+    !isPristineConversationDraft(conversation) || conversation.id === activeDraftId
+  )
+}
+
+/** Preserve a workspace authorized before the first message when another
+ * action (such as changing model or reasoning effort) materializes the draft
+ * into a saved conversation. */
+export function attachDraftWorkspace(
+  conversation: Conversation,
+  draftWorkspace?: ConversationWorkspace
+): Conversation {
+  if (!draftWorkspace || conversation.workspace) return conversation
+  return { ...conversation, workspace: draftWorkspace }
+}
 
 export function syncConversationUpdateIntoStreamingDrafts(
   drafts: Record<string, Conversation>,

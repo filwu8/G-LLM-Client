@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import type { WebResearchConflict, WebSearchResult } from '../shared/types'
+import type { WebResearchAudit, WebResearchConflict, WebSearchResult } from '../shared/types'
 import {
   extractResearchKeywords,
   extractNamedSearchEntities,
@@ -404,6 +404,37 @@ export function selectEvidencePassage(result: WebSearchResult, plan: ResearchPla
   const fallback = [result.snippet, result.excerpt].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
   const selected = (sentences.length > 0 ? sentences.join(' ') : fallback).slice(0, maxCharacters)
   return selected
+}
+
+/**
+ * Preserve a useful, fully attributable response when an upstream model twice
+ * returns an empty body or an internal classification label.
+ */
+export function buildResearchRecoveryAnswer(
+  results: WebSearchResult[],
+  plan: ResearchPlan,
+  audit: WebResearchAudit
+): string {
+  if (results.length === 0) {
+    return [
+      '本次模型没有生成有效正文，客户端也没有检索到足够相关的公开证据。',
+      '',
+      `已检查 ${audit.candidateCount} 个候选结果，但没有可安全采用的来源。建议补充更明确的名称、网址或限定条件后重试；复杂联网任务可改用更稳定的模型。`
+    ].join('\n')
+  }
+
+  const evidence = results.slice(0, 4).map((result, index) => {
+    const title = result.title.replace(/\s+/g, ' ').trim().slice(0, 100) || `来源 ${index + 1}`
+    const passage = selectEvidencePassage(result, plan, 220).replace(/\s+/g, ' ').trim()
+    return `- [${title}](${result.url})${passage ? `：${passage}` : ''}`
+  })
+  return [
+    '模型连续两次没有生成有效正文。客户端已保留本次检索到的证据，避免整次请求无结果：',
+    '',
+    ...evidence,
+    '',
+    `当前证据覆盖 ${audit.coveredQuestionCount}/${audit.totalQuestionCount} 个研究问题、采用 ${audit.acceptedCount}/${audit.candidateCount} 个候选来源。以上是检索证据摘要，不等同于模型完成的综合结论；需要完整分析时可直接重发或切换更稳定的模型。`
+  ].join('\n')
 }
 
 const abnormalResearchLabels = [

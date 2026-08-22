@@ -12,6 +12,7 @@ import type {
   AssistantSuggestionRequest,
   ChatMessage,
   ChatRequest,
+  ContextSavings,
   ConversationSearchRequest,
   ConversationSearchResponse,
   ConversationSearchResult,
@@ -43,10 +44,12 @@ import {
   extractSearchDomains,
   extractRequiredSearchEntities,
   sanitizePublicSearchQuery,
+  shouldUseModelSearchPlanner,
   type ResearchPlan,
   type SearchPlanInput
 } from './webSearchPolicy'
 import {
+  buildResearchRecoveryAnswer,
   governWebResearch,
   isAbnormalWebResearchAnswer,
   isPotentialAbnormalWebResearchAnswer,
@@ -54,6 +57,7 @@ import {
   type ResearchGovernanceResult
 } from './webResearch'
 import {
+  extractSameSitePageLinks,
   isBlockedGoogleSearchHtml,
   parseDuckDuckGoSearchResults,
   parseGoogleSearchResults
@@ -63,19 +67,32 @@ import {
   streamChatResponseEvents,
   type ChatStreamEvent as ParsedChatStreamEvent
 } from './chatStreamParser'
+import {
+  compactContextText,
+  CONTEXT_COMPRESSION_CHARACTER_THRESHOLD,
+  getMessageContextCharacterLength,
+  getRoleLabel,
+  prepareConversationContext
+} from './conversationContext'
+
+export { prepareConversationContext } from './conversationContext'
+export type { PreparedConversationContext } from './conversationContext'
 
 interface ChatStreamEvent extends ParsedChatStreamEvent {
   webSearch?: WebSearchActivity
+  contextSavings?: ContextSavings
+}
+
+export interface ChatDiagnosticEvent {
+  stage: 'web_plan' | 'web_research' | 'research_answer'
+  outcome: 'completed' | 'fallback' | 'failed' | 'retrying'
+  details?: Record<string, string | number | boolean | undefined>
 }
 
 const quoteReferencePrefix = 'quote_'
-const recentContextMessageCount = 24
-const contextCompressionMessageThreshold = 32
-const contextCompressionCharacterThreshold = 48_000
-const compressedHistoryMaxCharacters = 14_000
-const compressedHistoryMessageCharacterLimit = 900
 const conversationSearchCatalogLimit = 160
 const conversationSearchTextLimit = 120_000
+const recoverableModelStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
 
 function requestSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs)
@@ -100,12 +117,6 @@ type OpenAiMessageContent =
 interface OpenAiMessage {
   role: 'system' | 'user' | 'assistant'
   content: OpenAiMessageContent
-}
-
-export interface PreparedConversationContext {
-  messages: ChatMessage[]
-  compressedHistory?: string
-  omittedMessageCount: number
 }
 
 interface ImageGenerationItem {
@@ -143,111 +154,6 @@ function normalizeSearchHost(value: string): string {
     return hostname.replace(/^www\./, '')
   } catch {
     return ''
-  }
-}
-
-function getRoleLabel(role: ChatMessage['role']): string {
-  if (role === 'assistant') return '助手'
-  if (role === 'system') return '系统'
-  return '用户'
-}
-
-function normalizeContextText(value: string): string {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function compactContextText(value: string, maxLength: number): string {
-  const normalized = normalizeContextText(value)
-  if (normalized.length <= maxLength) return normalized
-
-  const headLength = Math.max(120, Math.floor(maxLength * 0.7))
-  const tailLength = Math.max(80, maxLength - headLength - 24)
-  return `${normalized.slice(0, headLength)} ... ${normalized.slice(-tailLength)}`
-}
-
-function getMessageContextCharacterLength(message: ChatMessage): number {
-  const attachmentLength = (message.attachments ?? []).reduce((sum, attachment) => sum + (attachment.text?.length ?? 0), 0)
-  const referenceLength = (message.knowledgeRefs ?? []).reduce((sum, reference) => sum + reference.content.length, 0)
-  return message.content.length + attachmentLength + referenceLength + (message.translation?.length ?? 0)
-}
-
-function shouldCompressContext(messages: ChatMessage[]): boolean {
-  if (messages.length > contextCompressionMessageThreshold) return true
-
-  const totalCharacters = messages.reduce((sum, message) => sum + getMessageContextCharacterLength(message), 0)
-  return totalCharacters > contextCompressionCharacterThreshold
-}
-
-function summarizeContextMessage(message: ChatMessage, index: number): string {
-  const parts = [
-    `${index + 1}. ${formatLocalDateTime(message.createdAt)}｜${getRoleLabel(message.role)}`,
-    compactContextText(message.content || '[空消息]', compressedHistoryMessageCharacterLimit)
-  ]
-
-  const attachments = (message.attachments ?? [])
-    .map((attachment) => `${attachment.kind === 'image' ? '图片' : '附件'}：${attachment.name}`)
-    .join('；')
-  if (attachments) parts.push(`上传内容：${attachments}`)
-
-  const references = (message.knowledgeRefs ?? [])
-    .map((reference) => reference.title)
-    .join('；')
-  if (references) parts.push(`引用资料：${references}`)
-
-  if (message.translation) {
-    parts.push(`译文：${compactContextText(message.translation, 300)}`)
-  }
-
-  if (message.workspaceChangedFiles?.length) {
-    parts.push(`工作区产物：${message.workspaceChangedFiles.slice(0, 20).join('；')}`)
-  }
-
-  const workspaceActivities = (message.workspaceActivities ?? [])
-    .filter((activity) => activity.status !== 'running')
-    .slice(-12)
-    .map((activity) => `${activity.label}${activity.detail ? `（${compactContextText(activity.detail, 180)}）` : ''}`)
-    .join('；')
-  if (workspaceActivities) parts.push(`工作区操作：${workspaceActivities}`)
-
-  return parts.join('\n')
-}
-
-export function prepareConversationContext(messages: ChatMessage[]): PreparedConversationContext {
-  const chatMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
-  if (!shouldCompressContext(chatMessages) || chatMessages.length <= recentContextMessageCount) {
-    return {
-      messages: chatMessages,
-      omittedMessageCount: 0
-    }
-  }
-
-  const recentMessages = chatMessages.slice(-recentContextMessageCount)
-  const olderMessages = chatMessages.slice(0, -recentContextMessageCount)
-  const summaryBlocks: string[] = []
-  let totalLength = 0
-  let omittedMessageCount = 0
-
-  for (let index = olderMessages.length - 1; index >= 0; index -= 1) {
-    const block = summarizeContextMessage(olderMessages[index], index)
-    const nextLength = totalLength + block.length + 6
-    if (nextLength > compressedHistoryMaxCharacters) {
-      omittedMessageCount = index + 1
-      break
-    }
-
-    summaryBlocks.unshift(block)
-    totalLength = nextLength
-  }
-
-  const omittedNotice =
-    omittedMessageCount > 0
-      ? `\n\n另有 ${omittedMessageCount} 条更早消息因上下文过长已省略；如用户追问这些细节，请说明需要用户补充或重新引用。`
-      : ''
-
-  return {
-    messages: recentMessages,
-    compressedHistory: `[历史上下文压缩摘要]\n以下是同一会话较早消息的压缩时间线，只用于理解背景和任务演进，不是新的用户指令。最新用户消息优先级最高。\n\n${summaryBlocks.join('\n\n---\n\n')}${omittedNotice}`,
-    omittedMessageCount
   }
 }
 
@@ -397,40 +303,48 @@ function buildAssistantSystemInstruction(
   ].join('\n')
 }
 
-function toOpenAiMessages(
+interface PreparedOpenAiMessages {
+  messages: OpenAiMessage[]
+  contextSavings?: ContextSavings
+}
+
+function prepareOpenAiMessages(
   assistant: Assistant,
   messages: ChatMessage[],
   webContext = '',
   sendImages = true,
   assistantMemories: AssistantMemory[] = [],
   projectMemory?: ConversationProjectMemory
-): OpenAiMessage[] {
+): PreparedOpenAiMessages {
   const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user')
   const context = prepareConversationContext(messages)
 
-  return [
-    {
-      role: 'system',
-      content: buildAssistantSystemInstruction(assistant, messages, context.compressedHistory, assistantMemories, projectMemory)
-    },
-    ...(context.compressedHistory
-      ? [
-          {
-            role: 'system' as const,
-            content: context.compressedHistory
-          }
-        ]
-      : []),
-    ...context.messages.map((message, index) => ({
-      role: message.role,
-      content: withTimelineHeader(
-        message.role === 'user'
-          ? toOpenAiContent(message, messages.indexOf(message) === lastUserIndex ? webContext : '', sendImages)
-          : message.content,
-        getMessageTimelineHeader(message, index)
-      )
-    }))
-  ]
+  return {
+    messages: [
+      {
+        role: 'system',
+        content: buildAssistantSystemInstruction(assistant, messages, context.compressedHistory, assistantMemories, projectMemory)
+      },
+      ...(context.compressedHistory
+        ? [
+            {
+              role: 'system' as const,
+              content: context.compressedHistory
+            }
+          ]
+        : []),
+      ...context.messages.map((message, index) => ({
+        role: message.role,
+        content: withTimelineHeader(
+          message.role === 'user'
+            ? toOpenAiContent(message, messages.indexOf(message) === lastUserIndex ? webContext : '', sendImages)
+            : message.content,
+          getMessageTimelineHeader(message, index)
+        )
+      }))
+    ],
+    contextSavings: context.contextSavings
+  }
 }
 
 function hasSendableImageAttachments(messages: ChatMessage[]): boolean {
@@ -1127,7 +1041,7 @@ function sanitizeSearchPlan(
     (total, message) => total + getMessageContextCharacterLength(message),
     prepared.compressedHistory?.length ?? 0
   )
-  const availableCharacters = Math.max(2_200, contextCompressionCharacterThreshold - 6_000 - conversationCharacters)
+  const availableCharacters = Math.max(2_200, CONTEXT_COMPRESSION_CHARACTER_THRESHOLD - 6_000 - conversationCharacters)
   return {
     ...researchPlan,
     budget: {
@@ -1146,6 +1060,9 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
   const fallbackQuery = getResearchFallbackQuery(request.messages)
   const context = getSearchPlanningContext(request.messages)
   if (!context) return sanitizeSearchPlan(null, fallbackQuery, { mode: 'fallback', error: '没有可用于规划的对话上下文' }, request.messages)
+  if (!shouldUseModelSearchPlanner(fallbackQuery)) {
+    return sanitizeSearchPlan(null, fallbackQuery, { mode: 'fallback' }, request.messages)
+  }
 
   try {
     const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
@@ -1176,7 +1093,7 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
           stream: false,
           ...(attempt === 0 ? { response_format: { type: 'json_object' } } : {})
         }),
-        signal: requestSignal(signal, 18_000)
+        signal: requestSignal(signal, 10_000)
       })
 
       if (!response.ok) {
@@ -1190,6 +1107,7 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
       const parsed = extractJsonObject<SearchPlanInput>(content)
       if (parsed) return sanitizeSearchPlan(parsed, fallbackQuery, { mode: 'model' }, request.messages)
       lastError = new Error('规划模型返回的内容不是有效 JSON')
+      break
     }
 
     return sanitizeSearchPlan(null, fallbackQuery, { mode: 'fallback', error: getPlanningFailureMessage(lastError) }, request.messages)
@@ -1199,8 +1117,14 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
   }
 }
 
-async function fetchPageExcerpt(url: string, maxCharacters: number, signal?: AbortSignal): Promise<string> {
-  if (!/^https?:\/\//i.test(url)) return ''
+interface PageSnapshot {
+  title: string
+  excerpt: string
+  links: Array<{ title: string; url: string }>
+}
+
+async function fetchPageSnapshot(url: string, maxCharacters: number, signal?: AbortSignal): Promise<PageSnapshot> {
+  if (!/^https?:\/\//i.test(url)) throw new Error('网页地址无效')
 
   const response = await fetch(url, {
     headers: {
@@ -1209,35 +1133,67 @@ async function fetchPageExcerpt(url: string, maxCharacters: number, signal?: Abo
     signal: requestSignal(signal, 8000)
   })
   const contentType = response.headers.get('content-type') ?? ''
-  if (!response.ok || !/text\/html|text\/plain|application\/json/i.test(contentType)) return ''
+  if (!response.ok || !/text\/html|text\/plain|application\/json/i.test(contentType)) {
+    throw new Error(`网页读取失败：HTTP ${response.status}`)
+  }
 
   const html = await response.text()
+  const finalUrl = response.url || url
+  const requestedDomain = new URL(finalUrl).hostname.replace(/^www\./, '')
+  const title = stripHtml(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '').slice(0, 120)
   const readable = html
     .replace(/<(?:nav|footer|aside|form|noscript)[^>]*>[\s\S]*?<\/(?:nav|footer|aside|form|noscript)>/gi, ' ')
     .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, ' ')
-  return stripHtml(readable).slice(0, maxCharacters)
+  return {
+    title,
+    excerpt: stripHtml(readable).slice(0, maxCharacters),
+    links: /text\/html/i.test(contentType)
+      ? extractSameSitePageLinks(html, finalUrl, requestedDomain, 5)
+      : []
+  }
+}
+
+async function fetchPageExcerpt(url: string, maxCharacters: number, signal?: AbortSignal): Promise<string> {
+  return (await fetchPageSnapshot(url, maxCharacters, signal)).excerpt
 }
 
 async function fetchRequestedWebsiteResults(query: string, plan: ResearchPlan, signal?: AbortSignal): Promise<WebSearchResult[]> {
-  const results: Array<WebSearchResult | null> = await Promise.all(extractSearchDomains(query).slice(0, plan.budget.maxQueries).map(async (domain) => {
+  const batches = await Promise.all(extractSearchDomains(query).slice(0, plan.budget.maxQueries).map(async (domain) => {
     const url = `https://${domain}/`
-    const excerpt = await fetchPageExcerpt(url, plan.budget.maxExcerptCharacters, signal).catch(() => {
+    const snapshot = await fetchPageSnapshot(url, plan.budget.maxExcerptCharacters, signal).catch(() => {
       signal?.throwIfAborted()
-      return ''
+      return undefined
     })
-    if (excerpt.length < 80) return null
+    if (!snapshot || snapshot.excerpt.length < 80) return []
 
-    return {
-      title: `${domain} 网站`,
+    const homepage: WebSearchResult = {
+      title: snapshot.title || `${domain} 网站`,
       url,
-      snippet: excerpt.slice(0, 320),
-      excerpt,
+      snippet: snapshot.excerpt.slice(0, 320),
+      excerpt: snapshot.excerpt,
       source: domain,
       sourceDomain: domain
     }
+    const internalPageLimit = Math.max(0, Math.min(3, plan.budget.maxSourcesPerDomain) - 1)
+    const internalPages = await Promise.all(snapshot.links.slice(0, internalPageLimit).map(async (link): Promise<WebSearchResult | undefined> => {
+      const page = await fetchPageSnapshot(link.url, plan.budget.maxExcerptCharacters, signal).catch(() => {
+        signal?.throwIfAborted()
+        return undefined
+      })
+      if (!page || page.excerpt.length < 80) return undefined
+      return {
+        title: page.title || link.title,
+        url: link.url,
+        snippet: page.excerpt.slice(0, 320),
+        excerpt: page.excerpt,
+        source: domain,
+        sourceDomain: domain
+      }
+    }))
+    return [homepage, ...internalPages.filter((item): item is WebSearchResult => item !== undefined)]
   }))
 
-  return results.filter((result): result is WebSearchResult => result !== null)
+  return batches.flat()
 }
 
 async function searchWeb(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
@@ -1300,6 +1256,9 @@ interface GoogleSearchResponse {
 interface SearchEngineSession {
   attempted: Set<string>
   succeeded: Set<string>
+  availability: Map<string, boolean>
+  probes: Map<string, Promise<WebSearchResult[]>>
+  probeQueries: Map<string, string>
   googleAvailable?: boolean
   googleProbe?: Promise<GoogleSearchResponse>
   googleProbeQuery?: string
@@ -1349,16 +1308,39 @@ async function searchGoogleWithCircuit(
 
 async function trackSearchEngine(
   engine: string,
+  query: string,
   session: SearchEngineSession,
   search: () => Promise<WebSearchResult[]>,
   signal?: AbortSignal
 ): Promise<WebSearchResult[]> {
   session.attempted.add(engine)
+  if (session.availability.get(engine) === false) return []
   try {
-    const results = await search()
+    let results: WebSearchResult[]
+    if (!session.availability.has(engine)) {
+      let probe = session.probes.get(engine)
+      if (!probe) {
+        session.probeQueries.set(engine, query)
+        probe = search().then((items) => {
+          session.availability.set(engine, true)
+          return items
+        }).catch((error) => {
+          session.availability.set(engine, false)
+          throw error
+        })
+        session.probes.set(engine, probe)
+      }
+      const probeResults = await probe
+      if (session.probeQueries.get(engine) === query) results = probeResults
+      else if (session.availability.get(engine) === false) return []
+      else results = await search()
+    } else {
+      results = await search()
+    }
     session.succeeded.add(engine)
     return results
   } catch {
+    session.availability.set(engine, false)
     signal?.throwIfAborted()
     return []
   }
@@ -1444,6 +1426,19 @@ function interleaveSearchBatches(batches: WebSearchResult[][], limit: number): W
   return merged
 }
 
+export async function searchWebForWorkspace(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  const boundedQuery = query.trim().slice(0, 500)
+  if (!boundedQuery) return []
+
+  const [bing, duckDuckGo, google] = await Promise.all([
+    searchWeb(boundedQuery, signal).catch(() => []),
+    searchDuckDuckGo(boundedQuery, signal).catch(() => []),
+    searchGoogle(boundedQuery, signal).then((result) => result.results).catch(() => [])
+  ])
+  signal?.throwIfAborted()
+  return interleaveSearchBatches([bing, duckDuckGo, google], 8)
+}
+
 interface WebResearchProgress {
   queries: string[]
   activeQueries: string[]
@@ -1494,11 +1489,11 @@ async function executeSearchQueries(
       })
       const [newsResults, webResults, googleResults, duckDuckGoResults] = await Promise.all([
         observe(includeNews
-          ? trackSearchEngine('Google News', engineSession, () => searchNews(query, signal), signal)
+          ? trackSearchEngine('Google News', query, engineSession, () => searchNews(query, signal), signal)
           : Promise.resolve([])),
-        observe(trackSearchEngine('Bing', engineSession, () => searchWeb(query, signal), signal)),
+        observe(trackSearchEngine('Bing', query, engineSession, () => searchWeb(query, signal), signal)),
         observe(trackGoogleSearchEngine(query, engineSession, signal)),
-        observe(trackSearchEngine('DuckDuckGo', engineSession, () => searchDuckDuckGo(query, signal), signal))
+        observe(trackSearchEngine('DuckDuckGo', query, engineSession, () => searchDuckDuckGo(query, signal), signal))
       ])
       batches[index] = interleaveSearchBatches([newsResults, webResults, googleResults, duckDuckGoResults], 16)
       progress.completed?.(query, batches[index])
@@ -1570,7 +1565,10 @@ async function searchWebWithPlan(
   const includeNews = shouldSearchNews(plan)
   const engineSession: SearchEngineSession = {
     attempted: new Set<string>(),
-    succeeded: new Set<string>()
+    succeeded: new Set<string>(),
+    availability: new Map<string, boolean>(),
+    probes: new Map<string, Promise<WebSearchResult[]>>(),
+    probeQueries: new Map<string, string>()
   }
   const executedQueries: string[] = []
   const completedQueries: string[] = []
@@ -1978,7 +1976,11 @@ async function* streamValidatedResearchResponse(
   }
 }
 
-export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
+export async function* streamGllmChat(
+  request: ChatRequest,
+  signal?: AbortSignal,
+  onDiagnostic?: (event: ChatDiagnosticEvent) => void
+): AsyncGenerator<ChatStreamEvent> {
   assertProviderReady(request.provider, request.settings.language)
   signal?.throwIfAborted()
 
@@ -1988,6 +1990,7 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
   }
 
   let webContext = ''
+  let researchRecoveryAnswer = ''
   if (request.webSearchEnabled && request.purpose !== 'translation') {
     const fallbackQuery = getLastUserQuery(request.messages)
     if (fallbackQuery) {
@@ -2001,6 +2004,15 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
       }
 
       const plan = await planWebSearch(request, signal)
+      onDiagnostic?.({
+        stage: 'web_plan',
+        outcome: plan.plannerMode === 'fallback' ? 'fallback' : 'completed',
+        details: {
+          depth: plan.depth,
+          taskType: plan.taskType,
+          reason: plan.plannerError ? (plan.plannerError.includes('timeout') ? 'timeout' : 'planner_error') : undefined
+        }
+      })
       const planningAudit: WebResearchAudit = {
         taskType: plan.taskType,
         depth: plan.depth,
@@ -2061,8 +2073,19 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
         }
         if (!researchResult) throw new Error('联网研究没有返回结果')
         const { results, audit, executedQueries } = researchResult
+        onDiagnostic?.({
+          stage: 'web_research',
+          outcome: 'completed',
+          details: {
+            queries: executedQueries.length,
+            candidates: audit.candidateCount,
+            accepted: audit.acceptedCount,
+            unavailableEngines: audit.unavailableSearchEngines?.length ?? 0
+          }
+        })
         const publicResults = toPublicWebSearchResults(results)
         webContext = formatWebContext(results, plan, audit)
+        researchRecoveryAnswer = buildResearchRecoveryAnswer(results, plan, audit)
         yield {
           webSearch: {
             status: 'completed',
@@ -2079,7 +2102,19 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
       } catch (error) {
         signal?.throwIfAborted()
         const message = error instanceof Error ? error.message : String(error)
+        onDiagnostic?.({
+          stage: 'web_research',
+          outcome: 'failed',
+          details: { reason: error instanceof Error ? error.name : 'unknown' }
+        })
         webContext = `\n\n[联网搜索资料]\n本次联网搜索没有成功：${message}。请明确告诉用户搜索失败，并基于已有上下文给出可核验的分析框架。`
+        if (latestProgress) {
+          researchRecoveryAnswer = buildResearchRecoveryAnswer(
+            latestProgress.results,
+            plan,
+            latestProgress.audit
+          )
+        }
         yield {
           webSearch: {
             status: 'failed',
@@ -2104,21 +2139,26 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
     request.reasoningEffort && request.reasoningEffort !== 'default'
     ? request.reasoningEffort
     : undefined
-  const buildRequestBody = (sendImages: boolean, includeReasoningEffort = true) => ({
-    model: request.provider.defaultModel,
-    messages: toOpenAiMessages(
+  let contextSavings: ContextSavings | undefined
+  const buildRequestBody = (sendImages: boolean, includeReasoningEffort = true) => {
+    const preparedMessages = prepareOpenAiMessages(
       request.assistant,
       request.messages,
       webContext,
       sendImages,
       request.assistantMemories ?? [],
       request.projectMemory
-    ),
-    ...(request.settings.enableTemperature ? { temperature: request.settings.temperature } : {}),
-    ...(request.settings.enableMaxTokens ? { max_tokens: request.settings.maxTokens } : {}),
-    ...(includeReasoningEffort && configuredReasoningEffort ? { reasoning_effort: configuredReasoningEffort } : {}),
-    stream: true
-  })
+    )
+    contextSavings = preparedMessages.contextSavings
+    return {
+      model: request.provider.defaultModel,
+      messages: preparedMessages.messages,
+      ...(request.settings.enableTemperature ? { temperature: request.settings.temperature } : {}),
+      ...(request.settings.enableMaxTokens ? { max_tokens: request.settings.maxTokens } : {}),
+      ...(includeReasoningEffort && configuredReasoningEffort ? { reasoning_effort: configuredReasoningEffort } : {}),
+      stream: true
+    }
+  }
   const hasImages = hasSendableImageAttachments(request.messages)
   let includeReasoningEffort = true
   let requestBody = buildRequestBody(true)
@@ -2155,20 +2195,35 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
 
   if (!response.ok || !response.body) {
     const detail = await response.text().catch(() => '')
+    if (researchRecoveryAnswer && (!response.body || recoverableModelStatuses.has(response.status))) {
+      onDiagnostic?.({
+        stage: 'research_answer',
+        outcome: 'fallback',
+        details: { reason: response.body ? 'answer_http_error' : 'answer_empty_body', status: response.status }
+      })
+      yield { content: researchRecoveryAnswer, contextSavings }
+      return
+    }
     throw new Error(`${request.provider.name} 请求失败：${response.status} ${detail}`.trim())
   }
 
   const shouldValidateResearchAnswer = request.webSearchEnabled && request.purpose !== 'translation' && Boolean(webContext)
   if (!shouldValidateResearchAnswer) {
-    for await (const event of streamChatResponseEvents(response, signal)) yield event
+    for await (const event of streamChatResponseEvents(response, signal)) yield { ...event, contextSavings }
     return
   }
 
   try {
-    for await (const event of streamValidatedResearchResponse(response, signal)) yield event
+    for await (const event of streamValidatedResearchResponse(response, signal)) yield { ...event, contextSavings }
     return
   } catch (error) {
     if (!(error instanceof AbnormalResearchResponseError)) throw error
+
+    onDiagnostic?.({
+      stage: 'research_answer',
+      outcome: 'retrying',
+      details: { reason: 'empty_or_internal_classification' }
+    })
 
     const retryMessages: OpenAiMessage[] = [
       ...requestBody.messages,
@@ -2185,13 +2240,36 @@ export async function* streamGllmChat(request: ChatRequest, signal?: AbortSignal
     )
     if (!retryResponse.ok || !retryResponse.body) {
       const detail = await retryResponse.text().catch(() => '')
+      onDiagnostic?.({
+        stage: 'research_answer',
+        outcome: researchRecoveryAnswer ? 'fallback' : 'failed',
+        details: { reason: 'retry_http_error', status: retryResponse.status }
+      })
+      if (researchRecoveryAnswer && (!retryResponse.body || recoverableModelStatuses.has(retryResponse.status))) {
+        yield { content: researchRecoveryAnswer, contextSavings }
+        return
+      }
       throw new Error(`${request.provider.name} 研究回答重试失败：${retryResponse.status} ${detail}`.trim())
     }
     try {
-      for await (const event of streamValidatedResearchResponse(retryResponse, signal)) yield event
+      for await (const event of streamValidatedResearchResponse(retryResponse, signal)) yield { ...event, contextSavings }
+      onDiagnostic?.({
+        stage: 'research_answer',
+        outcome: 'completed',
+        details: { recoveredAfterRetry: true }
+      })
       return
     } catch (retryError) {
       if (!(retryError instanceof AbnormalResearchResponseError)) throw retryError
+      onDiagnostic?.({
+        stage: 'research_answer',
+        outcome: researchRecoveryAnswer ? 'fallback' : 'failed',
+        details: { reason: 'retry_empty_or_internal_classification' }
+      })
+      if (researchRecoveryAnswer) {
+        yield { content: researchRecoveryAnswer, contextSavings }
+        return
+      }
       throw new Error(`${request.provider.name} 连续返回内部安全分类或空内容，未生成研究回答。请切换模型后重试。`)
     }
   }

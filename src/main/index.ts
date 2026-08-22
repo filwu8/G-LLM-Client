@@ -33,6 +33,7 @@ import type {
   AppSettings,
   AppUpdateInfo,
   ChatActivityEvent,
+  ContextSavings,
   ChatRequest,
   Conversation,
   ConversationChangeEvent,
@@ -52,6 +53,7 @@ import {
   resolveProviderModelId,
   shouldRefreshProviderModels
 } from '../shared/providers'
+import { ActiveResponseRegistry } from './activeResponse'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
 import {
@@ -63,6 +65,7 @@ import {
 } from './deepLink'
 import { exchangeGllmHandoff, resolveGllmHandoffExchangeUrl } from './deepLinkHandoff'
 import { mainT } from './i18n'
+import { redactMainLogText } from './logRedaction'
 import {
   checkProviderConnection,
   fetchProviderModels,
@@ -146,12 +149,7 @@ let autoUpdateManager: AutoUpdateManager | null = null
 let activeAssistantId = 'general'
 let mainHiddenMode: 'none' | 'tray' | 'floating' = 'none'
 const conversationMemoryUpdates = new Set<string>()
-interface ActiveResponse {
-  conversationId: string
-  controller: AbortController
-}
-
-const activeResponses = new Map<string, ActiveResponse>()
+const activeResponses = new ActiveResponseRegistry()
 const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
 const providerModelCatalogRefreshes = new Map<string, Promise<ApiProvider>>()
 
@@ -227,21 +225,19 @@ function registerActiveResponse(
   conversationId: string,
   requestKey = 'main'
 ): { key: string; controller: AbortController } {
-  const key = `${kind}:${conversationId}:${requestKey}`
-  activeResponses.get(key)?.controller.abort()
-  const controller = new AbortController()
-  activeResponses.set(key, { conversationId, controller })
-  return { key, controller }
+  return activeResponses.register(kind, conversationId, requestKey)
 }
 
 function releaseActiveResponse(key: string, controller: AbortController): void {
-  if (activeResponses.get(key)?.controller === controller) activeResponses.delete(key)
+  activeResponses.release({ key, controller })
+}
+
+function isCurrentActiveResponse(key: string, controller: AbortController): boolean {
+  return activeResponses.isCurrent({ key, controller })
 }
 
 function cancelActiveResponse(conversationId: string): void {
-  for (const active of activeResponses.values()) {
-    if (active.conversationId === conversationId) active.controller.abort()
-  }
+  activeResponses.cancelConversation(conversationId)
 }
 
 async function maybeUpdateProjectMemory(conversation: Conversation): Promise<void> {
@@ -368,9 +364,13 @@ function getAppBuildCode(): string {
   }
 }
 
+function getMainLogDirectory(): string {
+  return join(app.getPath('appData'), 'G-LLM', 'logs')
+}
+
 function writeMainLog(message: string, error?: unknown): void {
   try {
-    const logDirectory = join(app.getPath('appData'), 'G-LLM', 'logs')
+    const logDirectory = getMainLogDirectory()
     mkdirSync(logDirectory, { recursive: true })
     const detail =
       error instanceof Error
@@ -379,7 +379,9 @@ function writeMainLog(message: string, error?: unknown): void {
           ? ''
           : String(error)
 
-    appendFileSync(join(logDirectory, 'main.log'), `[${new Date().toISOString()}] ${message}${detail ? `\n${detail}` : ''}\n`)
+    const safeMessage = redactMainLogText(message)
+    const safeDetail = detail ? redactMainLogText(detail) : ''
+    appendFileSync(join(logDirectory, 'main.log'), `[${new Date().toISOString()}] ${safeMessage}${safeDetail ? `\n${safeDetail}` : ''}\n`)
   } catch {
     // Logging must never crash the app.
   }
@@ -1425,7 +1427,10 @@ function getAppStateSnapshot() {
 }
 
 async function captureScreenshotForWindow(owner: BrowserWindow | null): Promise<PreparedAttachment | null> {
-  const shouldHideOwner = process.platform === 'win32' && owner && !owner.isDestroyed() && owner.isVisible()
+  const shouldHideOwner = (process.platform === 'win32' || process.platform === 'darwin')
+    && owner
+    && !owner.isDestroyed()
+    && owner.isVisible()
 
   if (shouldHideOwner) {
     owner.hide()
@@ -1534,6 +1539,12 @@ app.whenReady().then(() => {
   ipcMain.handle('storage:get-data-location', () => getDataLocationInfo())
   ipcMain.handle('storage:open-data-directory', async () => {
     const result = await shell.openPath(getDataLocationInfo().activePath)
+    if (result) throw new Error(result)
+  })
+  ipcMain.handle('app:open-log-directory', async () => {
+    const logDirectory = getMainLogDirectory()
+    mkdirSync(logDirectory, { recursive: true })
+    const result = await shell.openPath(logDirectory)
     if (result) throw new Error(result)
   })
   ipcMain.handle('storage:choose-data-directory', async (event) => {
@@ -1802,7 +1813,11 @@ app.whenReady().then(() => {
     pending.resolve(Boolean(approved))
   })
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
+    const requestStartedAt = Date.now()
     const active = registerActiveResponse('workspace', request.conversationId)
+    writeMainLog(
+      `Workspace request started: conversation=${request.conversationId}, provider=${request.provider.id}, model=${request.provider.defaultModel}, messages=${request.messages.length}, webSearchMode=${request.webSearchMode ?? 'legacy'}, webSearch=${Boolean(request.webSearchEnabled)}.`
+    )
     broadcastChatActivity({ conversationId: request.conversationId, active: true })
     try {
       const { runWorkspaceAgent } = await import('./workspaceAgent')
@@ -1827,15 +1842,32 @@ app.whenReady().then(() => {
         },
         active.controller.signal
       )
-      broadcastChatActivity({ conversationId: request.conversationId, active: false })
+      if (isCurrentActiveResponse(active.key, active.controller)) {
+        broadcastChatActivity({ conversationId: request.conversationId, active: false })
+      }
+      writeMainLog(
+        `Workspace request completed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, changedFiles=${result.changedFiles.length}.`
+      )
       return result
     } catch (error) {
       if (active.controller.signal.aborted) {
-        broadcastChatActivity({ conversationId: request.conversationId, active: false })
+        const isCurrent = isCurrentActiveResponse(active.key, active.controller)
+        if (isCurrent) {
+          broadcastChatActivity({ conversationId: request.conversationId, active: false })
+        }
+        writeMainLog(
+          `Workspace request ${isCurrent ? 'cancelled' : 'replaced'}: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}.`
+        )
         throw new Error('任务已停止')
       }
       const message = error instanceof Error ? error.message : String(error)
-      broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
+      if (isCurrentActiveResponse(active.key, active.controller)) {
+        broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
+      }
+      writeMainLog(
+        `Workspace request failed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, category=${getErrorCategory(error)}.`,
+        error
+      )
       throw error
     } finally {
       releaseActiveResponse(active.key, active.controller)
@@ -1851,6 +1883,7 @@ app.whenReady().then(() => {
   ipcMain.on('response:cancel', (_, conversationId: string) => cancelActiveResponse(conversationId))
 
   ipcMain.on('chat:stream', async (event, request) => {
+    const requestStartedAt = Date.now()
     const active = registerActiveResponse(
       'chat',
       request.conversationId,
@@ -1866,9 +1899,13 @@ app.whenReady().then(() => {
     let totalTokens = 0
     let finishReason = ''
     let isTruncated = false
+    let contextSavings: ContextSavings | undefined
     let effectiveRequest: ChatRequest = request
     let fallbackWarning = ''
     recordThemeRequestUsage(isOfficialGllmApiProvider(request.provider))
+    writeMainLog(
+      `Chat request started: conversation=${request.conversationId}, provider=${request.provider.id}, model=${request.provider.defaultModel}, messages=${request.messages.length}, webSearchMode=${request.webSearchMode ?? 'legacy'}, webSearch=${Boolean(request.webSearchEnabled)}, purpose=${request.purpose ?? 'chat'}.`
+    )
     broadcastChatActivity({ conversationId: request.conversationId, active: true })
 
     try {
@@ -1885,7 +1922,11 @@ app.whenReady().then(() => {
       let modelFallbackRetried = false
       while (true) {
         try {
-          for await (const chunk of streamGllmChat(effectiveRequest, active.controller.signal)) {
+          for await (const chunk of streamGllmChat(effectiveRequest, active.controller.signal, (diagnostic) => {
+            writeMainLog(
+              `Chat diagnostic: conversation=${request.conversationId}, stage=${diagnostic.stage}, outcome=${diagnostic.outcome}, details=${JSON.stringify(diagnostic.details ?? {})}.`
+            )
+          })) {
             if (chunk.usage) {
               inputTokens = chunk.usage.inputTokens
               outputTokens = chunk.usage.outputTokens
@@ -1893,6 +1934,7 @@ app.whenReady().then(() => {
             }
             if (chunk.finishReason) finishReason = chunk.finishReason
             if (chunk.isTruncated) isTruncated = true
+            if (chunk.contextSavings) contextSavings = chunk.contextSavings
             event.sender.send('chat:chunk', {
               ...chunkBase,
               content: chunk.content ?? '',
@@ -1929,6 +1971,10 @@ app.whenReady().then(() => {
         finish_reason: finishReason || 'unknown',
         truncated: isTruncated
       })
+      if (!isCurrentActiveResponse(active.key, active.controller)) return
+      writeMainLog(
+        `Chat request completed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, inputTokens=${inputTokens}, outputTokens=${outputTokens}, finishReason=${finishReason || 'unknown'}.`
+      )
       broadcastChatActivity({ conversationId: request.conversationId, active: false })
       event.sender.send('chat:chunk', {
         ...chunkBase,
@@ -1936,19 +1982,27 @@ app.whenReady().then(() => {
         done: true,
         finishReason: finishReason || undefined,
         isTruncated,
+        contextSavings,
         warning: [fallbackWarning, isTruncated ? buildTruncationWarning(effectiveRequest, finishReason) : '']
           .filter(Boolean)
           .join('\n') || undefined
       })
     } catch (error) {
       if (active.controller.signal.aborted) {
-        broadcastChatActivity({ conversationId: request.conversationId, active: false })
-        event.sender.send('chat:chunk', {
-          ...chunkBase,
-          content: '',
-          done: true,
-          warning: mainT('workspace.generationStopped', request.settings.language)
-        })
+        const isCurrent = isCurrentActiveResponse(active.key, active.controller)
+        if (isCurrent) {
+          broadcastChatActivity({ conversationId: request.conversationId, active: false })
+          event.sender.send('chat:chunk', {
+            ...chunkBase,
+            content: '',
+            done: true,
+            cancelled: true,
+            warning: mainT('workspace.generationStopped', request.settings.language)
+          })
+        }
+        writeMainLog(
+          `Chat request ${isCurrent ? 'cancelled' : 'replaced'}: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}.`
+        )
         return
       }
       const message = error instanceof Error ? error.message : String(error)
@@ -1956,8 +2010,14 @@ app.whenReady().then(() => {
         ...getChatTelemetryProperties(effectiveRequest),
         error_category: getErrorCategory(error)
       })
-      broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
-      event.sender.send('chat:chunk', { ...chunkBase, content: '', done: true, error: message })
+      if (isCurrentActiveResponse(active.key, active.controller)) {
+        broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
+        event.sender.send('chat:chunk', { ...chunkBase, content: '', done: true, error: message })
+      }
+      writeMainLog(
+        `Chat request failed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, category=${getErrorCategory(error)}.`,
+        error
+      )
     } finally {
       releaseActiveResponse(active.key, active.controller)
     }

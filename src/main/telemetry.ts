@@ -33,6 +33,7 @@ const TELEMETRY_ALLOWED_PROPERTIES = new Set([
   'requires_api_key',
   'model_count',
   'purpose',
+  'web_search_mode',
   'web_search_enabled',
   'has_knowledge_refs',
   'has_assistant_memory',
@@ -99,6 +100,7 @@ export function getChatTelemetryProperties(request: ChatRequest): TelemetryPrope
   return {
     ...getProviderTelemetryProperties(request.provider),
     purpose: request.purpose ?? 'chat',
+    web_search_mode: request.webSearchMode ?? (request.webSearchEnabled ? 'on' : 'off'),
     web_search_enabled: Boolean(request.webSearchEnabled),
     has_knowledge_refs: Boolean(lastUserMessage?.knowledgeRefs?.length),
     has_assistant_memory: Boolean(request.assistantMemories?.some((memory) => memory.enabled)),
