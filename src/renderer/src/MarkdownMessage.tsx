@@ -7,6 +7,7 @@
 import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { stabilizeAdjacentStrongDelimiters } from './markdownStrongBoundary'
 
 const MARKDOWN_DOCUMENT_FENCE_LANGUAGES = new Set(['markdown', 'md', 'mdx', 'gfm', 'commonmark'])
 const PLAIN_TEXT_FENCE_LANGUAGES = new Set(['text', 'txt', 'plain', 'plaintext'])
@@ -49,7 +50,7 @@ export function normalizeMarkdownForDisplay(input: string): string {
     expanded.push(fenceMarker)
   }
 
-  return normalizeMarkdownTableSeparators(expanded).join('\n')
+  return stabilizeAdjacentStrongDelimiters(normalizeMarkdownTableSeparators(expanded).join('\n'))
 }
 
 function unwrapMarkdownDocumentFence(input: string): string {

@@ -15,6 +15,8 @@ export interface WorkspaceToolCall {
 export interface WorkspaceModelMessage {
   content?: string | null
   tool_calls?: WorkspaceToolCall[]
+  reasoningCharacters?: number
+  finishReason?: string | null
 }
 
 type ReadWorkspaceStreamChunk = (
@@ -33,12 +35,15 @@ interface WorkspaceStreamPayload {
   choices?: Array<{
     delta?: {
       content?: unknown
+      reasoning_content?: unknown
       tool_calls?: WorkspaceStreamToolCall[]
     }
     message?: {
       content?: unknown
+      reasoning_content?: unknown
       tool_calls?: WorkspaceStreamToolCall[]
     }
+    finish_reason?: unknown
   }>
 }
 
@@ -82,6 +87,8 @@ function appendStreamFragment(current: string, fragment: string): string {
 export class WorkspaceModelStreamParser {
   private readonly toolCalls = new Map<number, WorkspaceToolCall>()
   private content = ''
+  private reasoningCharacters = 0
+  private finishReason: string | null = null
   private buffer = ''
   private isFinished = false
 
@@ -108,10 +115,12 @@ export class WorkspaceModelStreamParser {
       .map(([, call]) => call)
       .filter((call) => call.function.name)
 
-    if (!this.content && calls.length === 0) return undefined
+    if (!this.content && calls.length === 0 && this.reasoningCharacters === 0) return undefined
     return {
       content: this.content || null,
-      tool_calls: calls.length > 0 ? calls : undefined
+      tool_calls: calls.length > 0 ? calls : undefined,
+      reasoningCharacters: this.reasoningCharacters,
+      finishReason: this.finishReason
     }
   }
 
@@ -173,6 +182,8 @@ export class WorkspaceModelStreamParser {
     for (const choice of payload.choices ?? []) {
       const message = choice.delta ?? choice.message
       this.content += extractTextContent(message?.content)
+      this.reasoningCharacters += extractTextContent(message?.reasoning_content).length
+      if (typeof choice.finish_reason === 'string') this.finishReason = choice.finish_reason
 
       for (const part of message?.tool_calls ?? []) {
         const index = Number.isInteger(part.index) ? Number(part.index) : this.resolveToolCallIndex(part.id)

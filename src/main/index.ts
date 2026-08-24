@@ -22,7 +22,7 @@ import {
   type Point,
   type Rectangle
 } from 'electron'
-import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
@@ -54,6 +54,7 @@ import {
   shouldRefreshProviderModels
 } from '../shared/providers'
 import { ActiveResponseRegistry } from './activeResponse'
+import { AgentRunLedger } from './agentRunLedger'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
 import {
@@ -150,6 +151,7 @@ let activeAssistantId = 'general'
 let mainHiddenMode: 'none' | 'tray' | 'floating' = 'none'
 const conversationMemoryUpdates = new Set<string>()
 const activeResponses = new ActiveResponseRegistry()
+let agentRunLedger: AgentRunLedger | null = null
 const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
 const providerModelCatalogRefreshes = new Map<string, Promise<ApiProvider>>()
 
@@ -368,6 +370,11 @@ function getMainLogDirectory(): string {
   return join(app.getPath('appData'), 'G-LLM', 'logs')
 }
 
+function getAgentRunLedger(): AgentRunLedger {
+  agentRunLedger ??= new AgentRunLedger(getMainLogDirectory())
+  return agentRunLedger
+}
+
 function writeMainLog(message: string, error?: unknown): void {
   try {
     const logDirectory = getMainLogDirectory()
@@ -385,6 +392,32 @@ function writeMainLog(message: string, error?: unknown): void {
   } catch {
     // Logging must never crash the app.
   }
+}
+
+function exportDiagnosticReport(outputPath: string): void {
+  const logPath = join(getMainLogDirectory(), 'main.log')
+  let mainLogTail: string[] = []
+  try {
+    mainLogTail = readFileSync(logPath, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .slice(-500)
+      .map((line) => redactMainLogText(line))
+  } catch {
+    // The structured run ledger remains useful when main.log does not exist yet.
+  }
+  writeFileSync(outputPath, JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    app: {
+      version: app.getVersion(),
+      buildCode: getAppBuildCode(),
+      platform: process.platform,
+      arch: process.arch
+    },
+    agentRuns: getAgentRunLedger().snapshot(),
+    mainLogTail
+  }, null, 2), 'utf8')
 }
 
 function buildTruncationWarning(request: ChatRequest, finishReason: string): string {
@@ -1495,6 +1528,11 @@ app.whenReady().then(() => {
   registerDataResourceProtocol()
   setupLinuxAppImageDeepLinkProtocol()
 
+  const interruptedRuns = getAgentRunLedger().recoverInterruptedRuns()
+  if (interruptedRuns.length > 0) {
+    writeMainLog(`Recovered ${interruptedRuns.length} interrupted agent run(s) from the previous app session.`)
+  }
+
   if (startupDeepLinkResult.kind === 'invalid') {
     writeMainLog('Rejected invalid G-LLM deep link from startup arguments.')
   }
@@ -1546,6 +1584,22 @@ app.whenReady().then(() => {
     mkdirSync(logDirectory, { recursive: true })
     const result = await shell.openPath(logDirectory)
     if (result) throw new Error(result)
+  })
+  ipcMain.handle('app:export-diagnostics', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const language = getSettings().language
+    const options: Electron.SaveDialogOptions = {
+      title: mainT('native.exportDiagnostics', language),
+      buttonLabel: mainT('native.exportDiagnosticsButton', language),
+      defaultPath: `G-LLM-Diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [
+        { name: mainT('native.diagnosticReport', language), extensions: ['json'] }
+      ]
+    }
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    exportDiagnosticReport(result.filePath)
+    return result.filePath
   })
   ipcMain.handle('storage:choose-data-directory', async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
@@ -1814,6 +1868,19 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
     const requestStartedAt = Date.now()
+    const runLedger = getAgentRunLedger()
+    const run = runLedger.start({
+      kind: 'workspace',
+      conversationId: request.conversationId,
+      providerId: request.provider.id,
+      modelId: request.provider.defaultModel,
+      details: {
+        messageCount: request.messages.length,
+        webSearch: Boolean(request.webSearchEnabled),
+        webSearchMode: request.webSearchMode ?? 'legacy'
+      }
+    })
+    const activityStates = new Map<string, string>()
     const active = registerActiveResponse('workspace', request.conversationId)
     writeMainLog(
       `Workspace request started: conversation=${request.conversationId}, provider=${request.provider.id}, model=${request.provider.defaultModel}, messages=${request.messages.length}, webSearchMode=${request.webSearchMode ?? 'legacy'}, webSearch=${Boolean(request.webSearchEnabled)}.`
@@ -1824,14 +1891,35 @@ app.whenReady().then(() => {
       const prepared = await prepareProviderRequestModel(request)
       const result = await runWorkspaceAgent(
         prepared.request,
-        (progress) => event.sender.send('workspace-agent:progress', progress),
+        (progress) => {
+          event.sender.send('workspace-agent:progress', progress)
+          if (progress.activity.tool === 'model_request_retry') return
+          const stateKey = `${progress.activity.status}:${progress.activity.detail ?? ''}`
+          if (activityStates.get(progress.activity.id) === stateKey) return
+          activityStates.set(progress.activity.id, stateKey)
+          const type = progress.activity.status === 'running'
+            ? 'tool_started'
+            : progress.activity.status === 'completed'
+              ? 'tool_completed'
+              : 'tool_failed'
+          runLedger.record(run.id, type, 'running_tool', {
+            tool: progress.activity.tool,
+            label: progress.activity.label
+          })
+        },
         async (approval) => {
           const id = randomUUID()
           const prompt: WorkspaceApprovalPrompt = { id, conversationId: request.conversationId, ...approval }
+          runLedger.record(run.id, 'approval_waiting', 'waiting_approval', {
+            tool: approval.tool,
+            canWrite: approval.canWrite,
+            isScript: approval.isScript
+          })
           return await new Promise<boolean>((resolvePromise) => {
             const finish = (approved: boolean) => {
               pendingWorkspaceApprovals.delete(id)
               active.controller.signal.removeEventListener('abort', handleAbort)
+              runLedger.record(run.id, 'approval_resolved', 'running_tool', { approved })
               resolvePromise(approved)
             }
             const handleAbort = () => finish(false)
@@ -1840,7 +1928,13 @@ app.whenReady().then(() => {
             event.sender.send('workspace-agent:approval-requested', prompt)
           })
         },
-        active.controller.signal
+        active.controller.signal,
+        (runtimeEvent) => runLedger.record(
+          run.id,
+          runtimeEvent.type,
+          runtimeEvent.status,
+          runtimeEvent.details
+        )
       )
       if (isCurrentActiveResponse(active.key, active.controller)) {
         broadcastChatActivity({ conversationId: request.conversationId, active: false })
@@ -1848,6 +1942,11 @@ app.whenReady().then(() => {
       writeMainLog(
         `Workspace request completed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, changedFiles=${result.changedFiles.length}.`
       )
+      runLedger.record(run.id, 'run_succeeded', 'succeeded', {
+        durationMs: Date.now() - requestStartedAt,
+        changedFiles: result.changedFiles.length,
+        savedCharacters: result.contextSavings?.savedCharacters ?? 0
+      })
       return result
     } catch (error) {
       if (active.controller.signal.aborted) {
@@ -1858,6 +1957,10 @@ app.whenReady().then(() => {
         writeMainLog(
           `Workspace request ${isCurrent ? 'cancelled' : 'replaced'}: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}.`
         )
+        runLedger.record(run.id, 'run_stopped', 'stopped', {
+          reason: isCurrent ? 'cancelled' : 'replaced',
+          durationMs: Date.now() - requestStartedAt
+        })
         throw new Error('任务已停止')
       }
       const message = error instanceof Error ? error.message : String(error)
@@ -1868,6 +1971,11 @@ app.whenReady().then(() => {
         `Workspace request failed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, category=${getErrorCategory(error)}.`,
         error
       )
+      runLedger.record(run.id, 'run_failed', 'failed', {
+        durationMs: Date.now() - requestStartedAt,
+        errorCategory: getErrorCategory(error),
+        error: message
+      })
       throw error
     } finally {
       releaseActiveResponse(active.key, active.controller)
@@ -1884,10 +1992,28 @@ app.whenReady().then(() => {
 
   ipcMain.on('chat:stream', async (event, request) => {
     const requestStartedAt = Date.now()
+    const requestKey = `${request.purpose ?? 'reply'}:${request.targetMessageId ?? 'main'}`
+    const runLedger = getAgentRunLedger()
+    const run = runLedger.start({
+      kind: 'chat',
+      conversationId: request.conversationId,
+      requestKey,
+      providerId: request.provider.id,
+      modelId: request.provider.defaultModel,
+      details: {
+        messageCount: request.messages.length,
+        purpose: request.purpose ?? 'chat',
+        webSearch: Boolean(request.webSearchEnabled),
+        webSearchMode: request.webSearchMode ?? 'legacy'
+      }
+    })
+    runLedger.record(run.id, 'context_prepared', 'planning', {
+      messages: request.messages.length
+    })
     const active = registerActiveResponse(
       'chat',
       request.conversationId,
-      `${request.purpose ?? 'reply'}:${request.targetMessageId ?? 'main'}`
+      requestKey
     )
     const chunkBase = {
       conversationId: request.conversationId,
@@ -1902,6 +2028,7 @@ app.whenReady().then(() => {
     let contextSavings: ContextSavings | undefined
     let effectiveRequest: ChatRequest = request
     let fallbackWarning = ''
+    let modelAttempt = 0
     recordThemeRequestUsage(isOfficialGllmApiProvider(request.provider))
     writeMainLog(
       `Chat request started: conversation=${request.conversationId}, provider=${request.provider.id}, model=${request.provider.defaultModel}, messages=${request.messages.length}, webSearchMode=${request.webSearchMode ?? 'legacy'}, webSearch=${Boolean(request.webSearchEnabled)}, purpose=${request.purpose ?? 'chat'}.`
@@ -1922,6 +2049,11 @@ app.whenReady().then(() => {
       let modelFallbackRetried = false
       while (true) {
         try {
+          modelAttempt += 1
+          runLedger.record(run.id, 'model_request_started', 'running_model', {
+            attempt: modelAttempt,
+            model: effectiveRequest.provider.defaultModel
+          })
           for await (const chunk of streamGllmChat(effectiveRequest, active.controller.signal, (diagnostic) => {
             writeMainLog(
               `Chat diagnostic: conversation=${request.conversationId}, stage=${diagnostic.stage}, outcome=${diagnostic.outcome}, details=${JSON.stringify(diagnostic.details ?? {})}.`
@@ -1957,6 +2089,12 @@ app.whenReady().then(() => {
 
           effectiveRequest = refreshed.request
           modelFallbackRetried = true
+          runLedger.record(run.id, 'model_retrying', 'retrying', {
+            attempt: modelAttempt + 1,
+            reason: 'model_unavailable',
+            previousModel: failedModel,
+            fallbackModel: effectiveRequest.provider.defaultModel
+          })
           fallbackWarning = mainT('main.provider.modelUnavailableFallback', request.settings.language, {
             model: failedModel,
             fallback: effectiveRequest.provider.defaultModel
@@ -1971,10 +2109,29 @@ app.whenReady().then(() => {
         finish_reason: finishReason || 'unknown',
         truncated: isTruncated
       })
-      if (!isCurrentActiveResponse(active.key, active.controller)) return
+      runLedger.record(run.id, 'model_request_completed', 'planning', {
+        attempt: modelAttempt,
+        finishReason: finishReason || 'unknown'
+      })
+      if (!isCurrentActiveResponse(active.key, active.controller)) {
+        runLedger.record(run.id, 'run_stopped', 'stopped', {
+          reason: 'replaced',
+          durationMs: Date.now() - requestStartedAt
+        })
+        return
+      }
       writeMainLog(
         `Chat request completed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, inputTokens=${inputTokens}, outputTokens=${outputTokens}, finishReason=${finishReason || 'unknown'}.`
       )
+      runLedger.record(run.id, 'run_succeeded', 'succeeded', {
+        durationMs: Date.now() - requestStartedAt,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        finishReason: finishReason || 'unknown',
+        truncated: isTruncated,
+        savedCharacters: contextSavings?.savedCharacters ?? 0
+      })
       broadcastChatActivity({ conversationId: request.conversationId, active: false })
       event.sender.send('chat:chunk', {
         ...chunkBase,
@@ -2003,6 +2160,10 @@ app.whenReady().then(() => {
         writeMainLog(
           `Chat request ${isCurrent ? 'cancelled' : 'replaced'}: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}.`
         )
+        runLedger.record(run.id, 'run_stopped', 'stopped', {
+          reason: isCurrent ? 'cancelled' : 'replaced',
+          durationMs: Date.now() - requestStartedAt
+        })
         return
       }
       const message = error instanceof Error ? error.message : String(error)
@@ -2018,6 +2179,15 @@ app.whenReady().then(() => {
         `Chat request failed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, category=${getErrorCategory(error)}.`,
         error
       )
+      runLedger.record(run.id, 'model_request_failed', 'planning', {
+        attempt: modelAttempt,
+        errorCategory: getErrorCategory(error)
+      })
+      runLedger.record(run.id, 'run_failed', 'failed', {
+        durationMs: Date.now() - requestStartedAt,
+        errorCategory: getErrorCategory(error),
+        error: message
+      })
     } finally {
       releaseActiveResponse(active.key, active.controller)
     }

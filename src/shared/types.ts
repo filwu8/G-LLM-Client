@@ -479,6 +479,84 @@ export interface WorkspaceAgentResult {
   contextSavings?: ContextSavings
 }
 
+export type AgentRunKind = 'chat' | 'workspace'
+
+export type AgentRunStatus =
+  | 'queued'
+  | 'planning'
+  | 'running_model'
+  | 'running_tool'
+  | 'waiting_approval'
+  | 'verifying'
+  | 'retrying'
+  | 'stopped'
+  | 'succeeded'
+  | 'failed'
+  | 'interrupted'
+
+export type AgentRunEventType =
+  | 'run_started'
+  | 'context_prepared'
+  | 'model_request_started'
+  | 'model_request_completed'
+  | 'model_request_failed'
+  | 'model_retrying'
+  | 'tool_started'
+  | 'tool_completed'
+  | 'tool_failed'
+  | 'approval_waiting'
+  | 'approval_resolved'
+  | 'verification_started'
+  | 'verification_passed'
+  | 'verification_failed'
+  | 'run_stopped'
+  | 'run_succeeded'
+  | 'run_failed'
+  | 'run_interrupted'
+
+export interface AgentRunEvent {
+  id: string
+  runId: string
+  conversationId: string
+  sequence: number
+  type: AgentRunEventType
+  status: AgentRunStatus
+  at: number
+  details?: Record<string, string | number | boolean | null>
+}
+
+export interface AgentRunRecord {
+  id: string
+  kind: AgentRunKind
+  conversationId: string
+  requestKey: string
+  providerId: string
+  modelId: string
+  status: AgentRunStatus
+  startedAt: number
+  updatedAt: number
+  finishedAt?: number
+  lastEventType: AgentRunEventType
+  eventCount: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  changedFiles?: number
+  errorCategory?: string
+}
+
+export interface AgentRunSnapshot {
+  version: 1
+  updatedAt: number
+  runs: AgentRunRecord[]
+}
+
+export interface WorkspaceAgentRuntimeEvent {
+  type: AgentRunEventType
+  status: AgentRunStatus
+  details?: Record<string, string | number | boolean | null>
+}
+
 export interface AssistantSuggestion {
   name: string
   title: string

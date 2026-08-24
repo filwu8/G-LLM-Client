@@ -625,15 +625,8 @@ function formatWorkspaceError(value: string): string {
   const normalized = value
     .replace(/^Error invoking remote method 'workspace-agent:run':\s*Error:\s*/i, '')
     .trim()
-  const status = normalized.match(/(?:请求失败：|HTTP\s*)(429|500|502|503|504|524)\b/i)?.[1]
-  if (/<!doctype\s+html|<html[\s>]/i.test(normalized)) {
-    if (status === '429') return rendererI18n.t('workspaceErrors.status429')
-    if (status === '502') return rendererI18n.t('workspaceErrors.status502')
-    if (status === '503') return rendererI18n.t('workspaceErrors.status503')
-    if (status === '504') return rendererI18n.t('workspaceErrors.status504')
-    if (status === '524') return rendererI18n.t('workspaceErrors.status524')
-    return rendererI18n.t('workspaceErrors.htmlResponse')
-  }
+  const presentation = getChatErrorPresentation(normalized)
+  if (presentation.automaticallyRetryable || /<!doctype\s+html|<html[\s>]/i.test(normalized)) return presentation.userMessage
   return normalized || rendererI18n.t('workspaceErrors.unknown')
 }
 
@@ -6009,6 +6002,18 @@ function SettingsPanel({
     }
   }
 
+  async function exportDiagnostics() {
+    setDataLocationStatus('')
+    try {
+      const path = await window.gllm.exportDiagnostics()
+      setDataLocationStatus(path
+        ? t('storage.diagnosticsExported', { path })
+        : t('storage.diagnosticsExportCancelled'))
+    } catch (error) {
+      setDataLocationStatus(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   async function chooseDataDirectory() {
     const confirmed = window.confirm(t('storage.confirmChoose'))
     if (!confirmed) return
@@ -6656,6 +6661,10 @@ function SettingsPanel({
                 <button onClick={openLogDirectory} type="button">
                   <FileText size={15} />
                   {t('storage.openLogs')}
+                </button>
+                <button onClick={exportDiagnostics} type="button">
+                  <Download size={15} />
+                  {t('storage.exportDiagnostics')}
                 </button>
                 <button disabled={isChangingDataLocation} onClick={chooseDataDirectory} type="button">
                   <Database size={15} />

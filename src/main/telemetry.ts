@@ -112,7 +112,7 @@ export function getChatTelemetryProperties(request: ChatRequest): TelemetryPrope
 
 export function getErrorCategory(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
-  if (/api key|apikey|unauthorized|401|403|密钥|鉴权|认证/.test(message)) return 'auth'
+  if (/api key|apikey|unauthorized|\b401\b|\b403\b|密钥|鉴权|认证/.test(message)) return 'auth'
   if (/429|rate limit|quota|余额|限额/.test(message)) return 'rate_limit'
   if (/network|fetch failed|timeout|econn|dns|socket|网络/.test(message)) return 'network'
   if (/model|unsupported|not found|404|模型|不支持|400|422|provider|请求失败|upstream|上游/.test(message)) {

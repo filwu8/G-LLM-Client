@@ -118,6 +118,7 @@ const api = {
   getDataLocation: (): Promise<DataLocationInfo> => ipcRenderer.invoke('storage:get-data-location'),
   openDataDirectory: (): Promise<void> => ipcRenderer.invoke('storage:open-data-directory'),
   openLogDirectory: (): Promise<void> => ipcRenderer.invoke('app:open-log-directory'),
+  exportDiagnostics: (): Promise<string | null> => ipcRenderer.invoke('app:export-diagnostics'),
   chooseDataDirectory: (): Promise<DataLocationChangeResult | null> => ipcRenderer.invoke('storage:choose-data-directory'),
   chooseExistingDataDirectory: (): Promise<DataLocationChangeResult | null> =>
     ipcRenderer.invoke('storage:choose-existing-data-directory'),

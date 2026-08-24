@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.9](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.10](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.9](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.9), released on 2026-08-22.
 
@@ -23,6 +23,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.10 Model Stability, Document Delivery, and Diagnostics
+
+- Workspace model requests now retry temporary network and upstream failures and correctly handle responses that contain only reasoning, omit a final answer, or never perform the required file operation.
+- Busy, timeout, and upstream-routing failures now use clear guidance to switch models and retry instead of exposing opaque gateway JSON.
+- Added native PDF generation and artifact-contract verification for the requested Word/PDF format, filename, single final file, and editable Word-table requirements.
+- Regular chat and workspace tasks now keep a local structured run history; Settings can export a credential-redacted diagnostic report covering retries, tools, verification, tokens, and terminal states.
+- Fixed unrendered Markdown emphasis when Chinese or English text touches a closing bold delimiter, without confusing multiple bold spans in the same paragraph.
 
 ## V2.0.9 Stability, Documents, and Cross-Platform Experience
 
@@ -114,6 +122,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Attachments and visual inputs including files, images, pasted clipboard content, system screenshots, and image copy to the system clipboard.
 - Local file tasks that compress images or PDFs to a requested byte limit with approval, PDF rasterization warnings, non-destructive output, and per-file verification.
 - Conversation workspaces that grant a single conversation controlled access to inspect, search, create, and modify files. Large text is read in ranges, while completed older tool payloads become verifiable summaries and the newest read result remains verbatim.
+- Agent runtime persistence for both regular chat and workspace tasks, recording model requests, retries, tools, approvals, artifact verification, and terminal states locally. An app restart marks unfinished runs as interrupted instead of leaving a false running state.
 - Progressive multi-engine retrieval through Google, Bing, DuckDuckGo, and Google News, with query planning, source deduplication, evidence evaluation, and auditing before highly relevant material is organized into the conversation context.
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
@@ -133,7 +142,7 @@ The client includes the following resident desktop behavior:
 - Quick Chat and the main window share message actions, full timestamps, time zones, and token usage details.
 - The screenshot button hides the current app window before entering the Windows screenshot flow.
 - Single-instance protection is enabled. Launching the shortcut again brings the existing app to the front instead of starting another process.
-- Main-process logs are written to `%APPDATA%/G-LLM/logs/main.log` for startup and crash diagnostics.
+- Main-process logs are written to `%APPDATA%/G-LLM/logs/main.log`. Settings can also export a credential-redacted JSON diagnostic report with recent structured run timelines, token usage, retries, and failure categories.
 
 > V2.0.6 is the first Windows automatic-update bridge release and must be installed manually once. Later Windows releases can update inside the client. Current packages still do not use commercial platform-signing certificates.
 

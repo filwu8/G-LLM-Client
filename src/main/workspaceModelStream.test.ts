@@ -51,6 +51,18 @@ test('continues to accept standard blank-line SSE events', () => {
   assert.equal(parser.result()?.content, 'standard SSE')
 })
 
+test('retains metadata when a reasoning model returns no final content', () => {
+  const parser = new WorkspaceModelStreamParser()
+  parser.push(`${data({ choices: [{ delta: { reasoning_content: 'only reasoning' }, finish_reason: 'length' }] })}\ndata: [DONE]\n`)
+
+  assert.deepEqual(parser.result(), {
+    content: null,
+    tool_calls: undefined,
+    reasoningCharacters: 14,
+    finishReason: 'length'
+  })
+})
+
 test('returns at single-line DONE without waiting for the connection to close', async () => {
   let canceled = false
   const encoder = new TextEncoder()
