@@ -8,6 +8,7 @@ import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useSta
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { stabilizeAdjacentStrongDelimiters } from './markdownStrongBoundary'
+import { stabilizeStreamingMarkdown } from './streamingMarkdown'
 
 const MARKDOWN_DOCUMENT_FENCE_LANGUAGES = new Set(['markdown', 'md', 'mdx', 'gfm', 'commonmark'])
 const PLAIN_TEXT_FENCE_LANGUAGES = new Set(['text', 'txt', 'plain', 'plaintext'])
@@ -334,8 +335,11 @@ function markdownUrlTransform(value: string, key: string): string {
   return ''
 }
 
-function MarkdownMessageComponent({ content }: { content: string }) {
-  const normalizedContent = useMemo(() => normalizeMarkdownForDisplay(content), [content])
+function MarkdownMessageComponent({ content, streaming = false }: { content: string; streaming?: boolean }) {
+  const normalizedContent = useMemo(
+    () => normalizeMarkdownForDisplay(streaming ? stabilizeStreamingMarkdown(content) : content),
+    [content, streaming]
+  )
 
   return (
     <ReactMarkdown

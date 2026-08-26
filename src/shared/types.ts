@@ -241,6 +241,12 @@ export interface Conversation {
   updatedAt: number
 }
 
+export interface MainConversationOpenRequest {
+  conversationId: string
+  projectId?: string
+  assistantId?: string
+}
+
 export interface ConversationSearchSource {
   conversationId: string
   projectId: string

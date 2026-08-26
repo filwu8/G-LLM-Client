@@ -77,6 +77,8 @@ import { useTranslation } from 'react-i18next'
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
+import { findMainConversationTarget } from '@shared/conversationHandoff'
+import type { MainConversationOpenRequest } from '@shared/types'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   acknowledgeConversationRun,
@@ -966,6 +968,8 @@ export default function App() {
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
   const newConversationDraftRef = useRef<{ id: string; assistantId: string; projectId?: string } | null>(null)
+  const appStateLoadedRef = useRef(false)
+  const pendingMainConversationOpenRequestRef = useRef<MainConversationOpenRequest | null>(null)
 
   const composerSessionKey = getComposerSessionKey(activeConversationId, activeProjectId, activeAssistantId)
   const draft = composerDrafts[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
@@ -1213,6 +1217,24 @@ export default function App() {
     }
   }
 
+  async function openRequestedMainConversation(request: MainConversationOpenRequest) {
+    let state = await window.gllm.getState()
+    if (request.projectId && state.activeProjectId !== request.projectId) {
+      state = await window.gllm.setActiveProjectId(request.projectId)
+    }
+
+    if (pendingMainConversationOpenRequestRef.current?.conversationId !== request.conversationId) return
+    const target = findMainConversationTarget(state.conversations, request)
+    if (!target) return
+
+    applyAppState(state)
+    setDraftWorkspace(undefined)
+    setActiveAssistantId(target.assistantId)
+    selectConversation(target.id)
+    pendingMainConversationOpenRequestRef.current = null
+    window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
+  }
+
   async function checkThemeEntitlement(): Promise<ThemeEntitlementResult> {
     const result = await window.gllm.checkThemeEntitlement()
     setGoldThemeEntitled(result.eligible)
@@ -1230,11 +1252,21 @@ export default function App() {
       const nextProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
       const provider = getProviderById(state.settings.activeProviderId, nextProviders)
       applyAppState(state, { selectFirstConversation: true })
+      appStateLoadedRef.current = true
+      const pendingRequest = pendingMainConversationOpenRequestRef.current
+      if (pendingRequest) void openRequestedMainConversation(pendingRequest)
       if (!state.settings.setupCompleted) {
         setAgreementOpen(true)
       } else if (provider.requiresApiKey && !provider.apiKey.trim()) {
         setSettingsOpen(true)
       }
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.gllm.onMainConversationOpenRequested((request) => {
+      pendingMainConversationOpenRequestRef.current = request
+      if (appStateLoadedRef.current) void openRequestedMainConversation(request)
     })
   }, [])
 

@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.10](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.11](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.10](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.10)，发布于 2026-08-24。
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.11 快速对话稳定性与会话衔接
+
+- 修复快速对话等待模型响应时，状态文案被旧动画样式压成逐字竖排的问题，并稳定流式 Markdown 中尚未闭合的粗体、删除线和行内代码显示。
+- 快速对话正文使用与主窗口一致的 Markdown 布局，减少窄窗口开始回复时的跳行和排版变化。
+- Windows 快速对话新增始终可用、预留空间且在深色和金色主题下清晰可见的纵向滚动条。
+- 从快速对话打开主窗口时，会先保存当前内容并携带空间、助手和会话标识，主窗口准确打开同一会话及上下文。
 
 ## V2.0.10 模型稳定性、文档交付与诊断
 

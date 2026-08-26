@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.10](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.11](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.10](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.10), released on 2026-08-24.
 
@@ -23,6 +23,13 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.11 Quick Chat Stability and Conversation Handoff
+
+- Fixed Quick Chat's waiting status being squeezed into a one-character-wide vertical column by a legacy animation selector, and stabilized unfinished bold, strikethrough, and inline-code markers during streaming.
+- Quick Chat now uses the same Markdown content layout as the main window, reducing early line jumps and reflow in the narrow conversation view.
+- Windows Quick Chat now provides an always-available vertical scrollbar with reserved space and visible contrast in dark and gold themes.
+- Opening the main window from Quick Chat first saves the current content and hands off the exact space, assistant, and conversation IDs so the same context remains selected.
 
 ## V2.0.10 Model Stability, Document Delivery, and Diagnostics
 

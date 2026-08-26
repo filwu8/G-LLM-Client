@@ -35,6 +35,7 @@ import type {
   LocalTaskPlan,
   LocalTaskProgress,
   LocalTaskResult,
+  MainConversationOpenRequest,
   PreparedAttachment,
   Project,
   ProviderCheckResult,
@@ -48,6 +49,8 @@ import type {
 
 let pendingDeepLinkHandoffStatus: DeepLinkHandoffStatusEvent | null = null
 const deepLinkHandoffStatusListeners = new Set<(status: DeepLinkHandoffStatusEvent) => void>()
+let pendingMainConversationOpenRequest: MainConversationOpenRequest | null = null
+const mainConversationOpenListeners = new Set<(request: MainConversationOpenRequest) => void>()
 
 ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatusEvent) => {
   if (deepLinkHandoffStatusListeners.size === 0) {
@@ -55,6 +58,14 @@ ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatu
     return
   }
   for (const listener of deepLinkHandoffStatusListeners) listener(status)
+})
+
+ipcRenderer.on('conversation:open-in-main', (_event, request: MainConversationOpenRequest) => {
+  if (mainConversationOpenListeners.size === 0) {
+    pendingMainConversationOpenRequest = request
+    return
+  }
+  for (const listener of mainConversationOpenListeners) listener(request)
 })
 
 const api = {
@@ -127,7 +138,8 @@ const api = {
   importDataArchive: (): Promise<DataArchiveResult | null> => ipcRenderer.invoke('storage:import-data-archive'),
   relaunchApp: (): Promise<void> => ipcRenderer.invoke('app:relaunch'),
   quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
-  showMainWindow: (): Promise<void> => ipcRenderer.invoke('app:show-main-window'),
+  showMainWindow: (request?: MainConversationOpenRequest): Promise<void> =>
+    ipcRenderer.invoke('app:show-main-window', request),
   showQuickPanel: (): Promise<void> => ipcRenderer.invoke('app:show-quick-panel'),
   hideQuickPanel: (): Promise<void> => ipcRenderer.invoke('app:hide-quick-panel'),
   showFloatingLogoMenu: (): Promise<void> => ipcRenderer.invoke('app:show-floating-logo-menu'),
@@ -165,6 +177,17 @@ const api = {
       })
     }
     return () => deepLinkHandoffStatusListeners.delete(listener)
+  },
+  onMainConversationOpenRequested: (listener: (request: MainConversationOpenRequest) => void): (() => void) => {
+    mainConversationOpenListeners.add(listener)
+    if (pendingMainConversationOpenRequest) {
+      const pending = pendingMainConversationOpenRequest
+      pendingMainConversationOpenRequest = null
+      queueMicrotask(() => {
+        if (mainConversationOpenListeners.has(listener)) listener(pending)
+      })
+    }
+    return () => mainConversationOpenListeners.delete(listener)
   },
   onActiveAssistantChanged: (listener: (id: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id)

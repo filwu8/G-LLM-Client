@@ -40,6 +40,7 @@ import { useTranslation } from 'react-i18next'
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
+import { createMainConversationOpenRequest } from '@shared/conversationHandoff'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import { replaceUserMessageBranch } from './conversationEditing'
 import { attachDraftWorkspace, stopConversationWebSearch, stopPendingWebSearch } from './conversationRuntime'
@@ -618,7 +619,22 @@ export default function QuickChat() {
   }
 
   async function openMainWindow() {
-    await window.gllm.showMainWindow()
+    const current = conversationRef.current
+    let target = current
+    if (current) {
+      try {
+        const saved = await window.gllm.saveConversation(current)
+        target = saved
+        conversationRef.current = saved
+        setConversation(saved)
+        setConversations((items) => [saved, ...items.filter((item) => item.id !== saved.id)])
+      } catch {
+        // The conversation was already persisted before streaming started. A
+        // transient save failure should not prevent the user opening main UI.
+      }
+    }
+
+    await window.gllm.showMainWindow(target ? createMainConversationOpenRequest(target) : undefined)
     await window.gllm.hideQuickPanel()
   }
 
@@ -1268,7 +1284,7 @@ export default function QuickChat() {
         </div>
       </header>
 
-      <main className="quick-content" ref={messagesRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
+      <main className={`quick-content ${isWindows ? 'windows-scrollbar' : ''}`} ref={messagesRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
         {messages.length === 0 ? (
           <section className="quick-empty">
             <p><span>{t('quickChat.greeting')}</span></p>
@@ -1284,11 +1300,14 @@ export default function QuickChat() {
         ) : (
           messages.map((message, messageIndex) => {
             const isEditing = editingMessageId === message.id
-            const isReasoningInProgress = Boolean(
-              message.reasoningContent &&
+            const isMessageStreaming = Boolean(
               isStreaming &&
               messageIndex === messages.length - 1 &&
               message.role === 'assistant'
+            )
+            const isReasoningInProgress = Boolean(
+              message.reasoningContent &&
+              isMessageStreaming
             )
             const messageTimestamp = formatMessageTimestamp(
               message.createdAt,
@@ -1313,7 +1332,7 @@ export default function QuickChat() {
                         <span className="typing-dots compact" aria-hidden="true"><i /><i /><i /></span>
                       </div>
                       <div className="message-reasoning-content markdown-body">
-                        <MarkdownMessage content={message.reasoningContent} />
+                        <MarkdownMessage content={message.reasoningContent} streaming />
                       </div>
                     </div>
                   ) : (
@@ -1360,7 +1379,12 @@ export default function QuickChat() {
                     </div>
                   </div>
                 ) : (message.content || !message.reasoningContent) && (
-                  <MarkdownMessage content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')} />
+                  <div className="quick-message-content markdown-body">
+                    <MarkdownMessage
+                      content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')}
+                      streaming={isMessageStreaming}
+                    />
+                  </div>
                 )}
                 {message.attachments && message.attachments.length > 0 && (
                   <div className="message-attachments quick-message-attachments">

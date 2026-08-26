@@ -41,10 +41,12 @@ import type {
   FloatingMascotHintEvent,
   FloatingMascotSkin,
   LegalDocument,
+  MainConversationOpenRequest,
   PreparedAttachment,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
+import { normalizeMainConversationOpenRequest } from '../shared/conversationHandoff'
 import {
   DEFAULT_PROVIDER,
   DEFAULT_PROVIDER_ID,
@@ -710,6 +712,18 @@ function createWindow(): BrowserWindow {
   lastMainWindowBounds = mainWindow.getBounds()
   if (process.platform === 'darwin') app.focus({ steal: true })
   return mainWindow
+}
+
+function showMainWindowForConversation(requestValue?: unknown): void {
+  const window = createWindow()
+  const request = normalizeMainConversationOpenRequest(requestValue)
+  if (!request) return
+
+  const notify = () => {
+    if (!window.isDestroyed()) window.webContents.send('conversation:open-in-main', request)
+  }
+  if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', notify)
+  else notify()
 }
 
 function getFloatingLogoBounds(): Rectangle {
@@ -1683,8 +1697,8 @@ app.whenReady().then(() => {
   ipcMain.handle('app:quit', () => {
     quitApp()
   })
-  ipcMain.handle('app:show-main-window', () => {
-    createWindow()
+  ipcMain.handle('app:show-main-window', (_, request?: MainConversationOpenRequest) => {
+    showMainWindowForConversation(request)
   })
   ipcMain.handle('app:show-quick-panel', () => {
     showQuickWindow(floatingLogoWindow?.getBounds())
