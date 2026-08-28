@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.11](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.12](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.11](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.11), released on 2026-08-26.
 
@@ -23,6 +23,13 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.12 Cross-Platform Icons and Quick Chat Search Progress
+
+- The Windows tray icon now uses the same complete monochrome logo as the macOS menu bar and automatically selects a black or white version based on the actual system taskbar appearance.
+- Native 16–64 pixel Windows icon frames improve edge quality at different DPI scales, while a slightly larger visual footprint keeps the logo from appearing undersized beside other tray icons.
+- macOS now uses a dedicated Dock icon with a safe-area inset, correcting the oversized appearance on older MacBooks while retaining a balanced size on newer devices.
+- Quick Chat now shows search planning, query progress, results, and sources just like the main window, without a duplicate thinking placeholder while research is active.
 
 ## V2.0.11 Quick Chat Stability and Conversation Handoff
 

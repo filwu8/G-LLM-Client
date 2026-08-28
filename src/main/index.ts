@@ -23,7 +23,7 @@ import {
   type Rectangle
 } from 'electron'
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -128,16 +128,15 @@ function getAppIconPath(): string {
   return is.dev ? join(process.cwd(), 'resources/app-icon.png') : join(process.resourcesPath, 'resources/app-icon.png')
 }
 
-function getWindowsShortcutIconPath(): string {
-  return is.dev ? join(process.cwd(), 'build/icon.ico') : join(process.resourcesPath, 'resources/icon.ico')
-}
+function getTrayIconPath(useDarkBackground = false): string {
+  if (process.platform === 'win32') {
+    const filename = useDarkBackground ? 'tray-icon-win-dark.ico' : 'tray-icon-win-light.ico'
+    return is.dev ? join(process.cwd(), 'resources', filename) : join(process.resourcesPath, 'resources', filename)
+  }
 
-function getTrayIconPath(): string {
-  return process.platform === 'win32'
-    ? getWindowsShortcutIconPath()
-    : is.dev
-      ? join(process.cwd(), 'resources/tray-icon-template.png')
-      : join(process.resourcesPath, 'resources/tray-icon-template.png')
+  return is.dev
+    ? join(process.cwd(), 'resources/tray-icon-template.png')
+    : join(process.resourcesPath, 'resources/tray-icon-template.png')
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -1374,14 +1373,38 @@ function handleTrayClick(anchorBounds?: Rectangle): void {
   toggleQuickWindow(anchorBounds)
 }
 
+function windowsUsesDarkTaskbar(): boolean {
+  if (process.platform !== 'win32') return false
+
+  try {
+    const result = execFileSync(
+      'reg.exe',
+      ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'SystemUsesLightTheme'],
+      { encoding: 'utf8', windowsHide: true }
+    )
+    const value = result.match(/SystemUsesLightTheme\s+REG_DWORD\s+0x([0-9a-f]+)/i)?.[1]
+    if (value) return Number.parseInt(value, 16) === 0
+  } catch {
+    // Fall back to Electron's system theme when the registry value is unavailable.
+  }
+
+  return nativeTheme.shouldUseDarkColors
+}
+
+function createTrayIcon(_settings: Pick<AppSettings, 'theme'>) {
+  const useDarkBackground = windowsUsesDarkTaskbar()
+  const sourceIcon = nativeImage.createFromPath(getTrayIconPath(useDarkBackground))
+  if (process.platform !== 'darwin') return sourceIcon
+
+  const icon = sourceIcon.resize({ height: 19, quality: 'best' })
+  icon.setTemplateImage(true)
+  return icon
+}
+
 function setupTray(): void {
   if (!['darwin', 'win32'].includes(process.platform) || tray) return
 
-  const icon = nativeImage.createFromPath(getTrayIconPath()).resize(
-    process.platform === 'darwin' ? { height: 19, quality: 'best' } : { width: 16, height: 16, quality: 'best' }
-  )
-  if (process.platform === 'darwin') icon.setTemplateImage(true)
-  tray = new Tray(icon)
+  tray = new Tray(createTrayIcon(getSettings()))
   tray.setToolTip(mainT('quickChat.title', getSettings().language))
   tray.on('click', (_, bounds) => handleTrayClick(bounds))
   tray.on('right-click', () => {
@@ -1412,6 +1435,7 @@ function broadcastSettingsChange(settings: AppSettings): void {
   if (quickWindow && !quickWindow.isDestroyed()) quickWindow.setTitle(mainT('quickChat.title', settings.language))
   if (tray) {
     tray.setToolTip(mainT('quickChat.title', settings.language))
+    if (process.platform === 'win32') tray.setImage(createTrayIcon(settings))
   }
 }
 
@@ -1524,6 +1548,7 @@ if (gotSingleInstanceLock) {
 nativeTheme.on('updated', () => {
   const settings = getSettings()
   if (settings.theme === 'auto') applyNativeWindowColors(settings)
+  if (process.platform === 'win32' && tray) tray.setImage(createTrayIcon(settings))
 })
 
 process.on('uncaughtException', (error) => {

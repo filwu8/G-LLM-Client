@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.11](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.12](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.11](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.11)，发布于 2026-08-26。
 
@@ -23,6 +23,13 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.12 跨平台图标与快速对话搜索过程
+
+- Windows 托盘图标改为与 macOS 菜单栏一致的完整单色 Logo，并根据系统任务栏的实际深浅色自动选择黑色或白色版本。
+- Windows 图标包含 16–64 像素原生帧，改善高 DPI 下的边缘毛刺，同时略微增大视觉尺寸，减少相对其他托盘图标显得过小的问题。
+- macOS 使用带安全留白的独立 Dock 图标，修正旧款 MacBook 上图标明显偏大的现象，并保持新款设备上的正常观感。
+- 小窗口聊天现在同步展示搜索规划、查询进度、结果与来源；搜索期间不再重复显示额外的“思考中”占位。
 
 ## V2.0.11 快速对话稳定性与会话衔接
 

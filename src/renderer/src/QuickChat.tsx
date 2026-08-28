@@ -66,6 +66,7 @@ import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
 import { WebSearchModePicker } from './WebSearchModePicker'
+import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
 import { DEFAULT_PROVIDER, getProviderById, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
@@ -1323,6 +1324,7 @@ export default function QuickChat() {
               onContextMenu={(event) => openSelectionContextMenu(event, message)}
             >
               <div className="quick-message-bubble">
+                {message.webSearch && <WebSearchActivityCard activity={message.webSearch} />}
                 {message.reasoningContent && (
                   isReasoningInProgress ? (
                     <div className="message-reasoning running">
@@ -1378,7 +1380,7 @@ export default function QuickChat() {
                       </button>
                     </div>
                   </div>
-                ) : (message.content || !message.reasoningContent) && (
+                ) : (message.content.trim() || !message.webSearch) && (
                   <div className="quick-message-content markdown-body">
                     <MarkdownMessage
                       content={message.content || (message.role === 'assistant' ? t('app.thinking') : '')}
