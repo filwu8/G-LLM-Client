@@ -50,7 +50,7 @@ export function ModelResponseWait({ model, startedAt }: { model: string; started
     <div className="pending-response-content">
       <span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>
       <span className="pending-response-copy">
-        <span>{t('app.waitingForModel', { model })}</span>
+        <span className="model-wait-shimmer">{t('app.waitingForModel', { model })}</span>
         <small>{t('workspace.waitingElapsed', { duration })}</small>
       </span>
     </div>

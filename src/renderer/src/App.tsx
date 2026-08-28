@@ -135,6 +135,8 @@ import {
   PROVIDER_TEMPLATES,
   createProviderFromTemplate,
   getProviderById,
+  isLocalNetworkApiBaseUrl,
+  isProviderApiKeyMissing,
   resolveProviderModelId
 } from '@shared/providers'
 import {
@@ -982,7 +984,7 @@ export default function App() {
     [activeConversation, assistantDefaultProvider, providers]
   )
   const activeReasoningEffort = activeConversation?.reasoningEffort ?? 'default'
-  const needsApiKey = Boolean(settings && conversationProvider.requiresApiKey && !conversationProvider.apiKey.trim())
+  const needsApiKey = Boolean(settings && isProviderApiKeyMissing(conversationProvider))
   const activeConversationTranslationSignature = activeConversation?.messages
     .map((message) => message.translation?.length ?? 0)
     .join('|')
@@ -1127,7 +1129,7 @@ export default function App() {
       if (pendingRequest) void openRequestedMainConversation(pendingRequest)
       if (!state.settings.setupCompleted) {
         setAgreementOpen(true)
-      } else if (provider.requiresApiKey && !provider.apiKey.trim()) {
+      } else if (isProviderApiKeyMissing(provider)) {
         setSettingsOpen(true)
       }
     })
@@ -2730,7 +2732,7 @@ export default function App() {
     setAgreementOpen(false)
 
     const provider = getProviderById(saved.activeProviderId, providers)
-    if (provider.requiresApiKey && !provider.apiKey.trim()) {
+    if (isProviderApiKeyMissing(provider)) {
       setSettingsOpen(true)
     }
   }
@@ -3070,11 +3072,14 @@ export default function App() {
               {activeConversation.messages.map((message, messageIndex) => {
                 const isTranslating = translatingMessageIds.includes(message.id)
                 const isEditing = editingMessageId === message.id
-                const isReasoningInProgress = Boolean(
-                  message.reasoningContent &&
+                const isMessageStreaming = Boolean(
                   isStreaming &&
                   messageIndex === activeConversation.messages.length - 1 &&
                   message.role === 'assistant'
+                )
+                const isReasoningInProgress = Boolean(
+                  message.reasoningContent &&
+                  isMessageStreaming
                 )
                 const messageTokens = estimateMessageTokenUsage(message)
                 const messageTimestamp = formatMessageTimestamp(
@@ -3092,7 +3097,14 @@ export default function App() {
                   >
                     <div className="message-stack">
                       <div className="message-bubble">
-                        {message.webSearch && <WebSearchActivityCard activity={message.webSearch} />}
+                        {message.webSearch && (
+                          <WebSearchActivityCard
+                            activity={message.webSearch}
+                            model={conversationProvider.defaultModel}
+                            running={isMessageStreaming && !message.content.trim() && !message.reasoningContent}
+                            startedAt={activeRunStartedAt}
+                          />
+                        )}
                         {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0) && (
                           <WorkspaceActivityLog
                             activities={message.workspaceActivities ?? []}
@@ -4728,7 +4740,7 @@ function AddAssistantDialog({
   const selectedModel = modelId.trim() || selectedProvider.defaultModel.trim()
   const aiGenerateUnavailableReason = !selectedModel
     ? t('addAssistant.selectModel')
-    : selectedProvider.requiresApiKey && !selectedProvider.apiKey.trim()
+    : isProviderApiKeyMissing(selectedProvider)
       ? t('addAssistant.apiKeyRequired', { provider: selectedProvider.name })
       : ''
   const canGenerateAssistant = !isWorking && Boolean(keyword.trim()) && !aiGenerateUnavailableReason
@@ -5480,6 +5492,7 @@ function AddProviderDialog({
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
+  const [authRequirementEdited, setAuthRequirementEdited] = useState(false)
   const selectedTemplate = PROVIDER_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? PROVIDER_TEMPLATES[0]
   const normalizedQuery = query.trim().toLowerCase()
   const modelOptions = getModelOptions(draft)
@@ -5506,6 +5519,7 @@ function AddProviderDialog({
     }
     setSelectedTemplateId(templateId)
     setDraft(provider)
+    setAuthRequirementEdited(false)
     setStatus('')
   }
 
@@ -5600,7 +5614,16 @@ function AddProviderDialog({
               <span>API Base URL</span>
               <input
                 value={draft.apiBaseUrl}
-                onChange={(event) => setDraft({ ...draft, apiBaseUrl: event.target.value })}
+                onChange={(event) => {
+                  const apiBaseUrl = event.target.value
+                  setDraft({
+                    ...draft,
+                    apiBaseUrl,
+                    requiresApiKey: authRequirementEdited
+                      ? draft.requiresApiKey
+                      : selectedTemplate.requiresApiKey && !isLocalNetworkApiBaseUrl(apiBaseUrl)
+                  })
+                }}
               />
             </label>
 
@@ -5630,7 +5653,10 @@ function AddProviderDialog({
               <input
                 checked={draft.requiresApiKey}
                 type="checkbox"
-                onChange={(event) => setDraft({ ...draft, requiresApiKey: event.target.checked })}
+                onChange={(event) => {
+                  setAuthRequirementEdited(true)
+                  setDraft({ ...draft, requiresApiKey: event.target.checked })
+                }}
               />
             </label>
 
@@ -5707,7 +5733,7 @@ function SettingsPanel({
   const [dataArchiveNeedsRestart, setDataArchiveNeedsRestart] = useState(false)
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>(initialTab)
-  const providerNeedsKey = providerDraft.requiresApiKey && !providerDraft.apiKey.trim()
+  const providerNeedsKey = isProviderApiKeyMissing(providerDraft)
   const modelOptions = getModelOptions(providerDraft)
   const providerSaved = providers.some((provider) => provider.id === providerDraft.id)
   const savedProvider = providers.find((provider) => provider.id === providerDraft.id) ?? null
@@ -6149,7 +6175,16 @@ function SettingsPanel({
                 <span>API Base URL</span>
                 <input
                   value={providerDraft.apiBaseUrl}
-                  onChange={(event) => setProviderDraft({ ...providerDraft, apiBaseUrl: event.target.value })}
+                  onChange={(event) => {
+                    const apiBaseUrl = event.target.value
+                    setProviderDraft({
+                      ...providerDraft,
+                      apiBaseUrl,
+                      requiresApiKey: !providerDraft.apiKey.trim() && isLocalNetworkApiBaseUrl(apiBaseUrl)
+                        ? false
+                        : providerDraft.requiresApiKey
+                    })
+                  }}
                 />
               </label>
 

@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.12](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.13](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.12](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.12), released on 2026-08-28.
 
@@ -23,6 +23,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.13 Self-Hosted Models, Workspace Agent, and Update Reliability
+
+- Local and LAN OpenAI-compatible services can connect without an API key or send a custom or placeholder Bearer token; strict compatible servers receive exactly one leading `system` message.
+- The workspace agent now recognizes development, build, packaging, and deployment requests. When a reasoning model exhausts its output budget without an answer or tool call, the client switches to direct tool execution and retries automatically.
+- When no maximum-output limit is enabled, workspace requests no longer force `max_tokens: 4096`; self-hosted services can use the output budget appropriate for their model.
+- After research finishes, the main window and Quick Chat show an animated, elapsed-time status while the model composes its answer, so a slow response no longer looks frozen.
+- Windows automatic updates now download the full installer and retry transient network failures without showing 100% prematurely. JSZip is bundled into the main process to prevent packaged workspace tasks from failing to load it from ASAR.
 
 ## V2.0.12 Cross-Platform Icons and Quick Chat Search Progress
 

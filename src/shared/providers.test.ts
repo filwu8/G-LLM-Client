@@ -10,6 +10,8 @@ import test from 'node:test'
 import {
   PROVIDER_MODEL_CATALOG_TTL_MS,
   applyFetchedProviderModels,
+  isLocalNetworkApiBaseUrl,
+  isProviderApiKeyMissing,
   resolveProviderModelId,
   shouldRefreshProviderModels
 } from './providers.ts'
@@ -76,4 +78,27 @@ test('only stale official G-LLM catalogs with credentials are refreshed automati
   assert.equal(shouldRefreshProviderModels(stale, now), true)
   assert.equal(shouldRefreshProviderModels(createProvider({ apiKey: '', modelsUpdatedAt: 0 }), now), false)
   assert.equal(shouldRefreshProviderModels(custom, now), false)
+})
+
+test('detects local and private-network API endpoints', () => {
+  assert.equal(isLocalNetworkApiBaseUrl('http://localhost:11434/v1'), true)
+  assert.equal(isLocalNetworkApiBaseUrl('http://127.0.0.1:1234/v1'), true)
+  assert.equal(isLocalNetworkApiBaseUrl('http://192.168.88.202:6001/v1'), true)
+  assert.equal(isLocalNetworkApiBaseUrl('http://172.20.1.8/v1'), true)
+  assert.equal(isLocalNetworkApiBaseUrl('http://model-server.lan/v1'), true)
+  assert.equal(isLocalNetworkApiBaseUrl('https://api.openai.com/v1'), false)
+  assert.equal(isLocalNetworkApiBaseUrl('not a url'), false)
+})
+
+test('legacy local providers can connect without an API key', () => {
+  assert.equal(isProviderApiKeyMissing(createProvider({
+    apiBaseUrl: 'http://192.168.88.202:6001/v1',
+    apiKey: '',
+    requiresApiKey: true
+  })), false)
+  assert.equal(isProviderApiKeyMissing(createProvider({
+    apiBaseUrl: 'https://api.example.com/v1',
+    apiKey: '',
+    requiresApiKey: true
+  })), true)
 })

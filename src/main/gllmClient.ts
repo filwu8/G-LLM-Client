@@ -37,6 +37,7 @@ import {
   normalizeModelCapabilities
 } from '../shared/modelCapabilities'
 import { supportsReasoningEffort } from '../shared/featureFlags'
+import { isProviderApiKeyMissing } from '../shared/providers'
 import { saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
 import {
@@ -74,6 +75,7 @@ import {
   getRoleLabel,
   prepareConversationContext
 } from './conversationContext'
+import { normalizeOpenAiSystemMessages } from './workspaceContext'
 
 export { prepareConversationContext } from './conversationContext'
 export type { PreparedConversationContext } from './conversationContext'
@@ -320,7 +322,7 @@ function prepareOpenAiMessages(
   const context = prepareConversationContext(messages)
 
   return {
-    messages: [
+    messages: normalizeOpenAiSystemMessages([
       {
         role: 'system',
         content: buildAssistantSystemInstruction(assistant, messages, context.compressedHistory, assistantMemories, projectMemory)
@@ -342,7 +344,7 @@ function prepareOpenAiMessages(
           getMessageTimelineHeader(message, index)
         )
       }))
-    ],
+    ]),
     contextSavings: context.contextSavings
   }
 }
@@ -397,7 +399,7 @@ async function fetchStreamingModelResponse(
 }
 
 function assertProviderReady(provider: ApiProvider, language: AppLanguage = 'system'): void {
-  if (provider.requiresApiKey && !provider.apiKey.trim()) {
+  if (isProviderApiKeyMissing(provider)) {
     throw new Error(mainT('main.provider.apiKeyRequired', language, { provider: provider.name }))
   }
 }
@@ -1066,7 +1068,7 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
 
   try {
     const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
-    const messages = [
+    const messages: OpenAiMessage[] = [
       {
         role: 'system',
         content:
@@ -1085,9 +1087,9 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
         headers: getProviderHeaders(request.provider),
         body: JSON.stringify({
           model: request.provider.defaultModel,
-          messages: attempt === 0
+          messages: normalizeOpenAiSystemMessages(attempt === 0
             ? messages
-            : [...messages, { role: 'system', content: '上一次结果无法解析。请只返回一个完整、有效、无代码围栏的 JSON 对象。' }],
+            : [...messages, { role: 'system' as const, content: '上一次结果无法解析。请只返回一个完整、有效、无代码围栏的 JSON 对象。' }]),
           temperature: 0.1,
           max_tokens: 850,
           stream: false,
@@ -1771,7 +1773,7 @@ export async function generateAssistantSuggestion(request: AssistantSuggestionRe
   const language = request.settings.language
   if (!keyword) return fallbackAssistantSuggestion('', language)
 
-  if (request.provider.requiresApiKey && !request.provider.apiKey.trim()) {
+  if (isProviderApiKeyMissing(request.provider)) {
     return fallbackAssistantSuggestion(keyword, language)
   }
 
@@ -1826,7 +1828,7 @@ export async function searchConversations(
 
   if (!query) return { mode: 'recent', results: localResults, searchedCount }
   if (sources.length === 0) return { mode: 'local', results: [], searchedCount }
-  if (request.provider.requiresApiKey && !request.provider.apiKey.trim()) {
+  if (isProviderApiKeyMissing(request.provider)) {
     return { mode: 'local', results: localResults, searchedCount }
   }
   if (!request.provider.defaultModel.trim()) return { mode: 'local', results: localResults, searchedCount }
@@ -2225,13 +2227,13 @@ export async function* streamGllmChat(
       details: { reason: 'empty_or_internal_classification' }
     })
 
-    const retryMessages: OpenAiMessage[] = [
+    const retryMessages = normalizeOpenAiSystemMessages<OpenAiMessage>([
       ...requestBody.messages,
       {
         role: 'system',
         content: '上一响应只返回了内部安全分类或空内容，没有回答用户。现在请基于已提供的联网研究证据直接完成用户问题；不要输出安全分类标签，不要虚构未提供的来源。'
       }
-    ]
+    ])
     const retryResponse = await fetchStreamingModelResponse(
       endpoint,
       request.provider,

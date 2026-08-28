@@ -68,7 +68,7 @@ import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, Works
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
-import { DEFAULT_PROVIDER, getProviderById, resolveProviderModelId } from '@shared/providers'
+import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import type {
   ApiProvider,
@@ -330,7 +330,7 @@ export default function QuickChat() {
     }),
     [activeModelId, provider]
   )
-  const needsApiKey = Boolean(settings && selectedProvider.requiresApiKey && !selectedProvider.apiKey.trim())
+  const needsApiKey = Boolean(settings && isProviderApiKeyMissing(selectedProvider))
   const messageSendShortcut = settings?.messageSendShortcut ?? 'enter'
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
   const messages = conversation?.messages ?? []
@@ -1324,7 +1324,13 @@ export default function QuickChat() {
               onContextMenu={(event) => openSelectionContextMenu(event, message)}
             >
               <div className="quick-message-bubble">
-                {message.webSearch && <WebSearchActivityCard activity={message.webSearch} />}
+                {message.webSearch && (
+                  <WebSearchActivityCard
+                    activity={message.webSearch}
+                    model={selectedProvider.defaultModel}
+                    running={isMessageStreaming && !message.content.trim() && !message.reasoningContent}
+                  />
+                )}
                 {message.reasoningContent && (
                   isReasoningInProgress ? (
                     <div className="message-reasoning running">

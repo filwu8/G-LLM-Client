@@ -10,6 +10,48 @@ import { inferModelCapabilities, inferModelType } from './modelCapabilities.ts'
 export const DEFAULT_PROVIDER_ID = 'provider_gllm'
 export const PROVIDER_MODEL_CATALOG_TTL_MS = 6 * 60 * 60 * 1000
 
+export function isLocalNetworkApiBaseUrl(value: string): boolean {
+  let hostname: string
+  try {
+    hostname = new URL(value.trim()).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  } catch {
+    return false
+  }
+
+  if (!hostname) return false
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.lan') ||
+    !hostname.includes('.')
+  ) return true
+
+  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number)
+    if (octets.some((octet) => octet > 255)) return false
+    const [first, second] = octets
+    return first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168)
+  }
+
+  if (hostname === '::1') return true
+  const firstIpv6Group = hostname.split(':', 1)[0]
+  const firstIpv6Value = Number.parseInt(firstIpv6Group, 16)
+  return Number.isFinite(firstIpv6Value) && (
+    (firstIpv6Value >= 0xfc00 && firstIpv6Value <= 0xfdff) ||
+    (firstIpv6Value >= 0xfe80 && firstIpv6Value <= 0xfebf)
+  )
+}
+
+export function isProviderApiKeyMissing(provider: Pick<ApiProvider, 'apiBaseUrl' | 'apiKey' | 'requiresApiKey'>): boolean {
+  return provider.requiresApiKey && !provider.apiKey.trim() && !isLocalNetworkApiBaseUrl(provider.apiBaseUrl)
+}
+
 export function isOfficialGllmApiProvider(provider: ApiProvider): boolean {
   try {
     const url = new URL(provider.apiBaseUrl)

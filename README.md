@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.12](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.13](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.12](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.12)，发布于 2026-08-28。
 
@@ -23,6 +23,14 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.13 自部署模型、工作区 Agent 与自动更新稳定性
+
+- 本机及局域网 OpenAI-compatible 服务支持无密钥连接，也允许发送自定义或占位 Bearer Token；严格兼容服务只会收到位于首条的单一 `system` 消息。
+- 工作区 Agent 能识别开发、构建、打包和部署等实际操作请求；推理模型只输出思考并达到额度上限时，会切换为直接工具执行策略自动恢复。
+- 未启用最大输出词元限制时，工作区不再固定发送 `max_tokens: 4096`，由自部署服务按模型能力决定输出预算。
+- 搜索完成而模型仍在组织答案时，主窗口与快速对话会显示带光影动画和实时耗时的持续运行状态，避免误以为客户端卡死。
+- Windows 自动更新改用完整安装包下载并重试临时网络故障，下载完成前不会提前显示 100%；主进程同时内联 JSZip，修复安装包内工作区任务无法加载依赖的问题。
 
 ## V2.0.12 跨平台图标与快速对话搜索过程
 

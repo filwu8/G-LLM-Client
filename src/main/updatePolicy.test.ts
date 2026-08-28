@@ -7,7 +7,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeDownloadProgress, normalizeReleaseNotes, supportsAutomaticUpdate } from './updatePolicy.ts'
+import {
+  isRetryableUpdateDownloadError,
+  normalizeActiveDownloadProgress,
+  normalizeDownloadProgress,
+  normalizeReleaseNotes,
+  supportsAutomaticUpdate
+} from './updatePolicy.ts'
 
 test('unsigned automatic installation is enabled only for packaged Windows builds', () => {
   assert.equal(supportsAutomaticUpdate(true, 'win32'), true)
@@ -31,4 +37,15 @@ test('download progress is finite and clamped', () => {
   assert.equal(normalizeDownloadProgress(-1), 0)
   assert.equal(normalizeDownloadProgress(101), 100)
   assert.equal(normalizeDownloadProgress(Number.NaN), 0)
+  assert.equal(normalizeActiveDownloadProgress(42.26), 42.3)
+  assert.equal(normalizeActiveDownloadProgress(100), 99.9)
+  assert.equal(normalizeActiveDownloadProgress(101), 99.9)
+})
+
+test('only transient update download failures are retried', () => {
+  assert.equal(isRetryableUpdateDownloadError(new Error('net::ERR_CONNECTION_CLOSED')), true)
+  assert.equal(isRetryableUpdateDownloadError(new Error('read ECONNRESET')), true)
+  assert.equal(isRetryableUpdateDownloadError(new Error('HTTP 503 Service Unavailable')), true)
+  assert.equal(isRetryableUpdateDownloadError(new Error('sha512 checksum mismatch')), false)
+  assert.equal(isRetryableUpdateDownloadError(new Error('Update is not signed')), false)
 })

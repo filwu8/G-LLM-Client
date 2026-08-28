@@ -6,6 +6,7 @@
 
 import { Globe2 } from 'lucide-react'
 import type { CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { WebSearchActivity } from '@shared/types'
@@ -24,8 +25,35 @@ function formatSearchResultDate(timestamp?: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-export function WebSearchActivityCard({ activity }: { activity: WebSearchActivity }) {
-  const { t } = useTranslation()
+function useElapsedSeconds(running: boolean, startedAt?: number): number {
+  const mountedAt = useRef(Date.now())
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!running) return
+    const update = () => setNow(Date.now())
+    update()
+    const timer = window.setInterval(update, 1_000)
+    return () => window.clearInterval(timer)
+  }, [running, startedAt])
+
+  return Math.max(0, Math.floor((now - (startedAt ?? mountedAt.current)) / 1_000))
+}
+
+function formatElapsedDuration(seconds: number, language: string): string {
+  if (seconds < 60) return language.startsWith('zh') ? `${seconds} 秒` : `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return language.startsWith('zh') ? `${minutes} 分 ${remainder} 秒` : `${minutes}m ${remainder}s`
+}
+
+export function WebSearchActivityCard({ activity, model, running = false, startedAt }: {
+  activity: WebSearchActivity
+  model?: string
+  running?: boolean
+  startedAt?: number
+}) {
+  const { t, i18n } = useTranslation()
   const isPlanning = activity.status === 'planning'
   const isSearching = activity.status === 'searching'
   const isFailed = activity.status === 'failed'
@@ -36,6 +64,9 @@ export function WebSearchActivityCard({ activity }: { activity: WebSearchActivit
     : 0
   const activeQueries = new Set(activity.activeQueries ?? [])
   const completedQueries = new Set(activity.completedQueries ?? [])
+  const isSynthesizing = running && activity.status === 'completed'
+  const elapsedSeconds = useElapsedSeconds(isSynthesizing, startedAt)
+  const elapsedDuration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
   const title = isPlanning
     ? t('webActivity.planning')
     : isSearching
@@ -133,6 +164,13 @@ export function WebSearchActivityCard({ activity }: { activity: WebSearchActivit
               </div>
             </a>
           ))}
+        </div>
+      )}
+      {isSynthesizing && (
+        <div className="web-search-synthesis-status" aria-live="polite" role="status">
+          <span className="web-search-synthesis-shimmer">{t('webActivity.synthesizing')}</span>
+          <span className="typing-dots compact" aria-hidden="true"><i /><i /><i /></span>
+          <small>{t('webActivity.synthesizingElapsed', { duration: elapsedDuration, model: model || 'AI' })}</small>
         </div>
       )}
     </div>

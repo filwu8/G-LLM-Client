@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  normalizeOpenAiSystemMessages,
   prepareWorkspaceMessagesForRequest,
   type WorkspaceContextMessage
 } from './workspaceContext.ts'
@@ -65,4 +66,29 @@ test('does not change a small transcript', () => {
 
   assert.deepEqual(prepared.messages, messages)
   assert.equal(prepared.contextSavings, undefined)
+})
+
+test('merges all system instructions into the first message for strict compatible APIs', () => {
+  const messages: WorkspaceContextMessage[] = [
+    { role: 'system', content: 'core instructions' },
+    { role: 'user', content: 'build an app' },
+    { role: 'system', content: 'workspace state' },
+    { role: 'assistant', content: 'working' },
+    { role: 'system', content: 'web observations' }
+  ]
+
+  const normalized = normalizeOpenAiSystemMessages(messages)
+
+  assert.deepEqual(normalized.map((message) => message.role), ['system', 'user', 'assistant'])
+  assert.equal(normalized[0].content, 'core instructions\n\n---\n\nworkspace state\n\n---\n\nweb observations')
+  assert.equal(messages.length, 5)
+})
+
+test('moves a lone misplaced system instruction to the beginning', () => {
+  const messages: WorkspaceContextMessage[] = [
+    { role: 'user', content: 'retry' },
+    { role: 'system', content: 'return valid JSON' }
+  ]
+
+  assert.deepEqual(normalizeOpenAiSystemMessages(messages).map((message) => message.role), ['system', 'user'])
 })

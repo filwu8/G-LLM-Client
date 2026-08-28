@@ -34,6 +34,12 @@ import {
 } from './workspaceModelStream'
 import { prepareWorkspaceMessagesForRequest } from './workspaceContext'
 import {
+  getReasoningLengthRecoveryPrompt,
+  getWorkspaceMaxTokenOption,
+  isReasoningOnlyLengthOutcome,
+  isWorkspaceActionRequest
+} from './workspaceRequestPolicy'
+import {
   applyWorkspaceFileMutation,
   resolveDocumentEnrichmentOutput,
   type WorkspaceFileMutation
@@ -881,7 +887,7 @@ async function runWorkspaceAgentUnlocked(
     }
   }
   const latestUserRequest = request.messages.slice().reverse().find((message) => message.role === 'user')?.content ?? ''
-  const actionRequested = /压缩|生成|创建|新建|修改|改成|替换|重命名|移动|整理|处理|转换|合并|拆分|写入|保存|编写|实现|修复|批量|compress|generate|create|modify|replace|rename|move|organize|process|convert|merge|split|write|save|implement|fix|batch/i.test(latestUserRequest)
+  const actionRequested = isWorkspaceActionRequest(latestUserRequest)
   const conversationContext = prepareConversationContext(request.messages)
   onRuntimeEvent?.({
     type: 'context_prepared',
@@ -1064,7 +1070,7 @@ async function runWorkspaceAgentUnlocked(
         ...(reasoningEffortSupported && configuredReasoningEffort ? { reasoning_effort: configuredReasoningEffort } : {}),
         stream: true,
         temperature: request.settings.enableTemperature ? Math.min(request.settings.temperature, 0.4) : 0.2,
-        max_tokens: request.settings.enableMaxTokens ? request.settings.maxTokens : 4096
+        ...getWorkspaceMaxTokenOption(request.settings)
       }, isArtifactSummaryRequest ? 1 : 3)
       if (!result.response.ok && nativeToolMode && [400, 404, 422].includes(result.response.status)) {
         nativeToolMode = false
@@ -1078,7 +1084,7 @@ async function runWorkspaceAgentUnlocked(
           ...(reasoningEffortSupported && configuredReasoningEffort ? { reasoning_effort: configuredReasoningEffort } : {}),
           stream: true,
           temperature: 0.1,
-          max_tokens: request.settings.enableMaxTokens ? request.settings.maxTokens : 4096
+          ...getWorkspaceMaxTokenOption(request.settings)
         }, isArtifactSummaryRequest ? 1 : 3)
       }
       if (!result.response.ok) throw new Error(mainT('main.workspace.modelStageFailed', language, { error: await safeResponseError(result.response, request) }))
@@ -1116,9 +1122,41 @@ async function runWorkspaceAgentUnlocked(
         calls = [{ id: `fallback_${randomUUID()}`, type: 'function', function: { name: instruction.tool, arguments: JSON.stringify(instruction.arguments ?? {}) } }]
       }
     }
-    messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: calls })
+    if (calls.length > 0 || message.content?.trim()) {
+      messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: calls })
+    }
     if (calls.length === 0) {
       const finalContent = message.content?.trim() ?? ''
+      const reasoningOnlyLength = isReasoningOnlyLengthOutcome({
+        content: message.content,
+        toolCallCount: calls.length,
+        reasoningCharacters: message.reasoningCharacters,
+        finishReason: message.finishReason
+      })
+      if (reasoningOnlyLength && changedFiles.size > 0) {
+        return completeVerifiedArtifacts(true)
+      }
+      if (reasoningOnlyLength && turn === 0) {
+        const recoveryActivity: WorkspaceToolActivity = {
+          id: `reasoning_recovery_${randomUUID()}`,
+          tool: 'model_reasoning_recovery',
+          label: mainT('main.workspace.reasoningRecovery', language),
+          status: 'completed',
+          detail: mainT('main.workspace.reasoningRecoveryDetail', language, {
+            count: message.reasoningCharacters ?? 0
+          })
+        }
+        activities.push(recoveryActivity)
+        onProgress?.({ conversationId: request.conversationId, activity: { ...recoveryActivity } })
+        messages.push({
+          role: 'user',
+          content: getReasoningLengthRecoveryPrompt(request.provider.defaultModel, actionRequested)
+        })
+        continue
+      }
+      if (reasoningOnlyLength) {
+        throw new Error(mainT('main.workspace.noFinalAfterRecovery', language))
+      }
       if (!finalContent && (!actionRequested || turn >= 2)) {
         throw new Error(mainT('main.workspace.noFinalModelResponse', language))
       }

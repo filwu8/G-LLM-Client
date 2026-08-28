@@ -72,6 +72,38 @@ function characterLength(messages: WorkspaceContextMessage[]): number {
   return JSON.stringify(messages).length
 }
 
+function systemContentToText(content: unknown): string {
+  if (typeof content === 'string') return content.trim()
+  if (content == null) return ''
+  try {
+    return JSON.stringify(content)
+  } catch {
+    return String(content)
+  }
+}
+
+/**
+ * Some OpenAI-compatible servers only accept one system message and require it
+ * to be the first item. Preserve every system instruction while collapsing
+ * them into that broadly compatible shape.
+ */
+export function normalizeOpenAiSystemMessages<T extends WorkspaceContextMessage>(messages: T[]): T[] {
+  const systemMessages = messages.filter((message) => message.role === 'system')
+  if (systemMessages.length === 0) return messages
+  if (systemMessages.length === 1 && messages[0] === systemMessages[0]) return messages
+
+  const content = systemMessages
+    .map((message) => systemContentToText(message.content))
+    .filter(Boolean)
+    .join('\n\n---\n\n')
+  const mergedSystemMessage = {
+    ...systemMessages[0],
+    content
+  } as T
+
+  return [mergedSystemMessage, ...messages.filter((message) => message.role !== 'system')]
+}
+
 /**
  * Build a request-only copy of the workspace transcript. The latest tool
  * result batch stays exact so the model can act on fresh reads. Older large
@@ -80,11 +112,12 @@ function characterLength(messages: WorkspaceContextMessage[]): number {
  */
 export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMessage>(messages: T[]): PreparedWorkspaceContext<T> {
   const originalCharacters = characterLength(messages)
-  const lastToolResultIndex = messages.findLastIndex((message) => message.role === 'tool')
+  const normalizedMessages = normalizeOpenAiSystemMessages(messages)
+  const lastToolResultIndex = normalizedMessages.findLastIndex((message) => message.role === 'tool')
   let latestToolCallIndex = -1
   if (lastToolResultIndex >= 0) {
     for (let index = lastToolResultIndex; index >= 0; index -= 1) {
-      if (messages[index].role === 'assistant' && messages[index].tool_calls?.length) {
+      if (normalizedMessages[index].role === 'assistant' && normalizedMessages[index].tool_calls?.length) {
         latestToolCallIndex = index
         break
       }
@@ -92,7 +125,7 @@ export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMes
   }
 
   let compactedItems = 0
-  const prepared = messages.map((message, index) => {
+  const prepared = normalizedMessages.map((message, index) => {
     let content = message.content
     if (
       message.role === 'tool' &&

@@ -12,11 +12,21 @@ import type { AppLanguage } from '../shared/i18n'
 import type { AppUpdateInfo } from '../shared/types'
 import { checkForAppUpdate, DOWNLOAD_PAGE_URL } from './appUpdate'
 import { mainT } from './i18n'
-import { normalizeDownloadProgress, normalizeReleaseNotes, supportsAutomaticUpdate } from './updatePolicy'
+import {
+  isRetryableUpdateDownloadError,
+  normalizeActiveDownloadProgress,
+  normalizeReleaseNotes,
+  supportsAutomaticUpdate
+} from './updatePolicy'
 
 const INITIAL_CHECK_DELAY_MS = 30_000
 const AUTOMATIC_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1_000
+const DOWNLOAD_RETRY_DELAYS_MS = [1_500, 4_000]
 const { autoUpdater } = electronUpdater
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
 
 interface AutoUpdateManagerOptions {
   getLanguage: () => AppLanguage
@@ -38,6 +48,7 @@ export class AutoUpdateManager {
   private state: AppUpdateInfo
   private checkPromise: Promise<AppUpdateInfo> | null = null
   private downloadPromise: Promise<AppUpdateInfo> | null = null
+  private managedDownloadActive = false
   private initialCheckTimer: ReturnType<typeof setTimeout> | null = null
   private intervalTimer: ReturnType<typeof setInterval> | null = null
 
@@ -53,7 +64,11 @@ export class AutoUpdateManager {
 
     if (!this.supported) return
 
-    autoUpdater.autoDownload = true
+    // The cached installer and blockmap can get out of sync after an elevated
+    // unsigned NSIS install. Always downloading the complete installer avoids
+    // reaching 100% with a reconstructed file that then fails its checksum.
+    autoUpdater.autoDownload = false
+    autoUpdater.disableDifferentialDownload = true
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.autoRunAppAfterInstall = true
     autoUpdater.allowPrerelease = false
@@ -82,6 +97,7 @@ export class AutoUpdateManager {
         status: 'available',
         message: mainT('main.update.available', this.options.getLanguage(), { version: info.version })
       })
+      void this.downloadUpdate()
     })
     autoUpdater.on('update-not-available', (info) => {
       this.publish({
@@ -103,7 +119,13 @@ export class AutoUpdateManager {
         message: mainT('main.update.downloadCancelled', this.options.getLanguage())
       })
     })
-    autoUpdater.on('error', (error) => this.handleError(error))
+    autoUpdater.on('error', (error) => {
+      if (this.managedDownloadActive) {
+        this.options.log('[auto-update] managed download attempt emitted an error.', error)
+        return
+      }
+      this.handleError(error)
+    })
   }
 
   getState(): AppUpdateInfo {
@@ -156,6 +178,7 @@ export class AutoUpdateManager {
     if (this.downloadPromise) return this.downloadPromise
 
     this.downloadPromise = (async () => {
+      this.managedDownloadActive = true
       this.publish({
         ...this.state,
         status: 'downloading',
@@ -163,13 +186,32 @@ export class AutoUpdateManager {
         transferredBytes: 0,
         message: mainT('main.update.downloading', this.options.getLanguage(), { progress: 0 })
       })
-      try {
-        await autoUpdater.downloadUpdate()
-      } catch (error) {
-        if (this.state.status !== 'error') this.handleError(error)
+      const maximumAttempts = DOWNLOAD_RETRY_DELAYS_MS.length + 1
+      for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+        try {
+          await autoUpdater.downloadUpdate()
+          break
+        } catch (error) {
+          const shouldRetry = attempt < maximumAttempts && isRetryableUpdateDownloadError(error)
+          this.options.log(`[auto-update] download attempt ${attempt}/${maximumAttempts} failed${shouldRetry ? '; retrying' : ''}.`, error)
+          if (!shouldRetry) {
+            this.handleError(error)
+            break
+          }
+
+          this.publish({
+            ...this.state,
+            status: 'downloading',
+            downloadProgress: 0,
+            transferredBytes: 0,
+            message: mainT('main.update.downloading', this.options.getLanguage(), { progress: 0 })
+          })
+          await wait(DOWNLOAD_RETRY_DELAYS_MS[attempt - 1])
+        }
       }
       return this.getState()
     })().finally(() => {
+      this.managedDownloadActive = false
       this.downloadPromise = null
     })
 
@@ -200,7 +242,7 @@ export class AutoUpdateManager {
   }
 
   private handleDownloadProgress(progress: ProgressInfo): void {
-    const normalizedProgress = normalizeDownloadProgress(progress.percent)
+    const normalizedProgress = normalizeActiveDownloadProgress(progress.percent)
     this.publish({
       ...this.state,
       updateAvailable: true,
