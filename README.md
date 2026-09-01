@@ -4,7 +4,7 @@
 
 当前代码版本：[V2.0.14](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.13](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.13)，发布于 2026-08-28。
+最近稳定发布：[V2.0.14](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.14)，发布于 2026-09-01。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
