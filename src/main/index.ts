@@ -2064,6 +2064,12 @@ app.whenReady().then(() => {
     const filePath = await resolveWorkspaceItem(rootPath, relativePath)
     shell.showItemInFolder(filePath)
   })
+  ipcMain.handle('workspace:open-directory', async (_, rootPath: string) => {
+    const { resolveWorkspaceItem } = await import('./workspaceAgent')
+    const directoryPath = await resolveWorkspaceItem(rootPath, '.')
+    const error = await shell.openPath(directoryPath)
+    if (error) throw new Error(error)
+  })
   ipcMain.handle('attachment:screenshot', (event) => captureScreenshotForWindow(BrowserWindow.fromWebContents(event.sender)))
   ipcMain.handle('clipboard:copy-image', (_, dataUrl: string) => copyImageDataUrlToClipboard(dataUrl))
   ipcMain.on('response:cancel', (_, conversationId: string) => cancelActiveResponse(conversationId))

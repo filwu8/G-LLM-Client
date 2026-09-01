@@ -15,6 +15,7 @@ import {
   isPristineConversationDraft,
   isConversationRunning,
   removeConversationRun,
+  resolveActiveConversation,
   startConversationRun,
   stopConversationWebSearch,
   stopPendingWebSearch,
@@ -139,6 +140,29 @@ test('does not replace an existing conversation workspace with stale draft state
   const staleWorkspace = { ...existingWorkspace, rootPath: '/workspace/stale' }
 
   assert.equal(attachDraftWorkspace(conversation, staleWorkspace), conversation)
+})
+
+test('keeps a submitted workspace conversation visible during persistence handoff', () => {
+  const workspace = {
+    rootPath: '/workspace/project',
+    displayName: 'project',
+    permission: 'read-write' as const,
+    approvalMode: 'auto' as const,
+    grantedAt: 10,
+    lastVerifiedAt: 10
+  }
+  const submitted: Conversation = {
+    id: 'conversation-running',
+    assistantId: 'assistant-a',
+    title: 'build the project',
+    messages: [{ id: 'message-user', role: 'user', content: 'build it', createdAt: 11 }],
+    workspace,
+    createdAt: 10,
+    updatedAt: 11
+  }
+
+  assert.equal(resolveActiveConversation([], submitted.id, { [submitted.id]: submitted }), submitted)
+  assert.equal(resolveActiveConversation([], submitted.id, { [submitted.id]: submitted })?.workspace, workspace)
 })
 
 test('tracks simultaneous model responses independently by conversation', () => {

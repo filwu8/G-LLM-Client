@@ -128,8 +128,9 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   )
 }
 
-export function WorkspaceBar({ workspace, onUnbind, onApprovalModeChange }: {
+export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange }: {
   workspace: ConversationWorkspace
+  onOpen?: () => void
   onUnbind: () => void
   onApprovalModeChange?: (mode: WorkspaceApprovalMode) => void
 }) {
@@ -145,7 +146,9 @@ export function WorkspaceBar({ workspace, onUnbind, onApprovalModeChange }: {
       <section className="workspace-bar">
         <div className="workspace-bar-head">
           <FolderOpen size={14} />
-          <div><small title={workspace.rootPath}>{workspace.rootPath}</small></div>
+          <button className="workspace-path-button" onClick={onOpen} title={t('workspace.openDirectory')} type="button">
+            <small>{workspace.rootPath}</small>
+          </button>
           <button
             aria-haspopup="dialog"
             className={`workspace-approval-trigger mode-${workspace.approvalMode ?? 'ask'}`}

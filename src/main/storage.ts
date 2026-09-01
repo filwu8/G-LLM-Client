@@ -1015,6 +1015,27 @@ function sanitizeAgentPlan(value: AgentExecutionPlan | undefined): AgentExecutio
   }
 }
 
+function sanitizeGoalTask(value: Conversation['goalTask']): Conversation['goalTask'] {
+  if (!value || typeof value !== 'object') return undefined
+  const statuses = ['running', 'paused', 'completed', 'failed', 'stopped'] as const
+  const now = Date.now()
+  return {
+    id: String(value.id ?? '').trim().slice(0, 100) || `goal_${now}`,
+    goal: String(value.goal ?? '').trim().slice(0, 2000),
+    acceptanceCriteria: String(value.acceptanceCriteria ?? '').trim().slice(0, 3000),
+    status: statuses.includes(value.status) ? value.status : 'paused',
+    maxSteps: Math.max(3, Math.min(14, Math.round(Number(value.maxSteps) || 8))),
+    maxDurationMinutes: Math.max(5, Math.min(240, Math.round(Number(value.maxDurationMinutes) || 60))),
+    runCount: Math.max(1, Math.min(100, Math.round(Number(value.runCount) || 1))),
+    startedAt: Number.isFinite(value.startedAt) ? Number(value.startedAt) : now,
+    lastRunStartedAt: Number.isFinite(value.lastRunStartedAt) ? Number(value.lastRunStartedAt) : now,
+    updatedAt: Number.isFinite(value.updatedAt) ? Number(value.updatedAt) : now,
+    completedAt: Number.isFinite(value.completedAt) ? Number(value.completedAt) : undefined,
+    lastPlan: sanitizeAgentPlan(value.lastPlan),
+    lastError: String(value.lastError ?? '').trim().slice(0, 1000) || undefined
+  }
+}
+
 function sanitizeMessage(message: ChatMessage): ChatMessage {
   const role = message.role === 'assistant' || message.role === 'user' || message.role === 'system' ? message.role : 'user'
   const content = String(message.content ?? '')
@@ -1145,6 +1166,7 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
       ? conversation.webSearchMode
       : 'off',
     workspace,
+    goalTask: sanitizeGoalTask(conversation.goalTask),
     projectMemory,
     pinnedAt: Number.isFinite(conversation.pinnedAt) && Number(conversation.pinnedAt) > 0
       ? Number(conversation.pinnedAt)

@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.15](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.16](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.15](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.15), released on 2026-09-01.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.16 Autonomous Goals and Workspace Delivery
+
+- Autonomous Goal mode captures a final objective, acceptance criteria, authorized folder, access policy, turn limit, and run-time limit, then lets the assistant plan, use tools, modify files, and verify the result.
+- Goal state and execution plans persist locally with the conversation. Work can be inspected and resumed after a limit is reached, the app restarts, or the user pauses it.
+- Codex-inspired controls clearly separate pause, resume, and cancel. Cancel stops the active run and removes the goal while preserving chat history, generated files, and workspace authorization.
+- The main window and Quick Chat now share a compact active-goal card, green step indicators, continuous activity feedback, live generated-file links, and a shortcut to open the workspace folder.
+- The regular stop control correctly pauses an active goal, preventing stopped execution from remaining labeled as running.
+- Model management adds search by model name or identifier for faster navigation through large catalogs.
 
 ## V2.0.15 On-Device Insights and Cross-Platform Settings UI
 

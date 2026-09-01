@@ -72,6 +72,18 @@ export function attachDraftWorkspace(
   return { ...conversation, workspace: draftWorkspace }
 }
 
+/** Keep the just-submitted conversation visible while React state and the
+ * persisted conversation event cross in flight. This is especially important
+ * for a workspace authorized before the first message. */
+export function resolveActiveConversation(
+  conversations: Conversation[],
+  conversationId: string | null,
+  runningDrafts: Record<string, Conversation>
+): Conversation | null {
+  if (!conversationId) return null
+  return conversations.find((conversation) => conversation.id === conversationId) ?? runningDrafts[conversationId] ?? null
+}
+
 export function syncConversationUpdateIntoStreamingDrafts(
   drafts: Record<string, Conversation>,
   conversation: Conversation

@@ -25,6 +25,7 @@ import type {
 import { supportsReasoningEffort } from '../shared/featureFlags'
 import { resolveImageGenerationModel } from '../shared/modelCapabilities'
 import { createWorkspacePlan, finishPlan, updatePlanStep } from '../shared/agentPlanning'
+import { GOAL_EXECUTION_TIME_LIMIT, normalizeGoalExecutionLimits } from '../shared/goalMode'
 import { authorizeAssistantDelegation, createDelegationContext } from '../shared/assistantDelegation'
 import { compressImageToTarget, renderPdfToTarget } from './localFileTasks'
 import { addDocxHeaderImage, createDocxDocument, inspectDocxBuffer } from './docxDocument'
@@ -982,9 +983,16 @@ async function runWorkspaceAgentUnlocked(
   onRuntimeEvent?: WorkspaceAgentRuntimeEventHandler
 ): Promise<WorkspaceAgentResult> {
   signal?.throwIfAborted()
-  const root = await realpath(request.workspace.rootPath)
   const language = request.settings.language
   const isEnglish = mainT('main.locale', language) === 'en-US'
+  const executionStartedAt = Date.now()
+  const { maxTurns, maxDurationMs } = normalizeGoalExecutionLimits(request.executionLimits)
+  const ensureWithinExecutionTime = () => {
+    if (Date.now() - executionStartedAt > maxDurationMs) {
+      throw new Error(`${GOAL_EXECUTION_TIME_LIMIT}: ${isEnglish ? 'The goal reached its maximum running time and was paused' : '目标已达到最长运行时间，任务已暂停'}`)
+    }
+  }
+  const root = await realpath(request.workspace.rootPath)
   const activities: WorkspaceToolActivity[] = []
   const changedFiles = new Set<string>()
   let totalOriginalContextCharacters = 0
@@ -1160,7 +1168,8 @@ async function runWorkspaceAgentUnlocked(
     : undefined
   let reasoningEffortSupported = Boolean(configuredReasoningEffort)
 
-  for (let turn = 0; turn < 14; turn += 1) {
+  for (let turn = 0; turn < maxTurns; turn += 1) {
+    ensureWithinExecutionTime()
     signal?.throwIfAborted()
     let retryActivity: WorkspaceToolActivity | null = null
     const requestModel = async (body: Record<string, unknown>, maxAttempts = 3): Promise<ModelResponse> => {
@@ -1336,6 +1345,7 @@ async function runWorkspaceAgentUnlocked(
     }
     let turnHadToolFailure = false
     for (const call of calls.slice(0, 6)) {
+      ensureWithinExecutionTime()
       const activity: WorkspaceToolActivity = { id: call.id || randomUUID(), tool: call.function.name, label: activityLabel(call.function.name, request), status: 'running' }
       activities.push(activity)
       onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
@@ -1390,6 +1400,7 @@ async function runWorkspaceAgentUnlocked(
         if (result.changedFile || (result.changedFiles?.length ?? 0) > 0 || (result.supersededFiles?.length ?? 0) > 0) {
           const candidateArtifacts = new Set(changedFiles)
           applyWorkspaceFileMutation(candidateArtifacts, result)
+          onProgress?.({ conversationId: request.conversationId, activity: { ...activity }, changedFiles: [...candidateArtifacts] })
           onRuntimeEvent?.({
             type: 'verification_started',
             status: 'verifying',
@@ -1427,13 +1438,17 @@ async function runWorkspaceAgentUnlocked(
           : error instanceof Error ? error.message : mainT('main.workspace.toolFailed', language, { tool: activity.label })
         messages.push({ role: 'tool', tool_call_id: call.id, content: `错误：${activity.detail}` })
       }
-      onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
+      onProgress?.({
+        conversationId: request.conversationId,
+        activity: { ...activity },
+        changedFiles: activity.status === 'completed' ? [...changedFiles] : undefined
+      })
     }
     if (changedFiles.size > 0 && !turnHadToolFailure) {
       try {
         return completeVerifiedArtifacts()
       } catch (error) {
-        if (turn >= 13) throw error
+        if (turn >= maxTurns - 1) throw error
         messages.push({
           role: 'user',
           content: `当前产物尚未满足用户最新的格式、文件名或数量要求：${error instanceof Error ? error.message : String(error)}。请继续使用专用工具修正，不要把中间文件当作最终交付。`

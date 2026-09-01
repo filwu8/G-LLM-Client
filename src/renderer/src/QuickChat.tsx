@@ -6,7 +6,6 @@
 
 import {
   ArrowDown,
-  ArrowUp,
   AtSign,
   BookOpen,
   Brain,
@@ -22,6 +21,7 @@ import {
   RefreshCw,
   Send,
   Square,
+  Target,
   Trash2,
   Wrench,
   X
@@ -62,6 +62,7 @@ import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialo
 import { localizeAssistant } from './localizedContent'
 import { MarkdownMessage } from './MarkdownMessage'
 import { ResponseDuration } from './ResponseDuration'
+import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
 import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
@@ -72,6 +73,7 @@ import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
 import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistantCapabilities'
 import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
+import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
 import type {
   ApiProvider,
   AppSettings,
@@ -83,6 +85,7 @@ import type {
   ChatRequest,
   Conversation,
   ConversationWorkspace,
+  GoalTask,
   KnowledgeReference,
   MessageRetryAttempt,
   PreparedAttachment,
@@ -302,6 +305,8 @@ export default function QuickChat() {
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
   const [workspaceApprovalPrompt, setWorkspaceApprovalPrompt] = useState<WorkspaceApprovalPrompt | null>(null)
   const [workspaceActivities, setWorkspaceActivities] = useState<WorkspaceToolActivity[]>([])
+  const [workspaceChangedFiles, setWorkspaceChangedFiles] = useState<string[]>([])
+  const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [autoFollowMessages, setAutoFollowMessages] = useState(true)
   const [isNearMessageBottom, setIsNearMessageBottom] = useState(true)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -312,6 +317,7 @@ export default function QuickChat() {
   const responseStartedAtRef = useRef<number | null>(null)
   const isStreamingRef = useRef(false)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
+  const workspaceChangedFilesRef = useRef<string[]>([])
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
 
@@ -443,6 +449,10 @@ export default function QuickChat() {
         workspaceActivitiesRef.current = next
         return next
       })
+      if (progress.changedFiles) {
+        workspaceChangedFilesRef.current = progress.changedFiles
+        setWorkspaceChangedFiles(progress.changedFiles)
+      }
     })
   }, [])
 
@@ -532,6 +542,8 @@ export default function QuickChat() {
     setDraftWorkspace(undefined)
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
+    setWorkspaceChangedFiles([])
+    workspaceChangedFilesRef.current = []
     window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
   }, [conversation?.id])
 
@@ -680,6 +692,8 @@ export default function QuickChat() {
     setDraftWorkspace(undefined)
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
+    setWorkspaceChangedFiles([])
+    workspaceChangedFilesRef.current = []
     setDraft('')
     setPendingQuoteRefs([])
     setPendingAttachments([])
@@ -757,6 +771,8 @@ export default function QuickChat() {
   async function unbindQuickWorkspace() {
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
+    setWorkspaceChangedFiles([])
+    workspaceChangedFilesRef.current = []
     if (!conversation) {
       setDraftWorkspace(undefined)
       return
@@ -772,6 +788,172 @@ export default function QuickChat() {
     }
   }
 
+  async function chooseQuickGoalWorkspace(): Promise<string | null> {
+    try {
+      return await window.gllm.chooseWorkspaceDirectory()
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t('workspace.bindFailed'))
+      return null
+    }
+  }
+
+  async function startQuickGoalMode(value: GoalSetupValue) {
+    if (!settings || isStreamingRef.current) return
+    if ((assistant.status ?? 'active') !== 'active') {
+      setStatus(t('assistantSettings.inactiveNotice'))
+      return
+    }
+    if (needsApiKey) {
+      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      return
+    }
+    const normalizePath = (path: string) => {
+      const normalized = path.replace(/[\\/]+$/, '').replace(/\\/g, '/')
+      return window.gllm.platform === 'linux' ? normalized : normalized.toLocaleLowerCase()
+    }
+    const conflict = conversations.find((item) =>
+      item.id !== conversation?.id &&
+      item.workspace?.permission === 'read-write' &&
+      normalizePath(item.workspace.rootPath) === normalizePath(value.rootPath)
+    )
+    if (conflict) {
+      setGoalSetupOpen(false)
+      setStatus(t('workspace.folderConflict', { conversation: conflict.title }))
+      return
+    }
+
+    const now = Date.now()
+    const workspace: ConversationWorkspace = {
+      rootPath: value.rootPath,
+      displayName: value.rootPath.split(/[\\/]/).filter(Boolean).at(-1) || t('workspace.defaultName'),
+      permission: 'read-write',
+      approvalMode: value.approvalMode,
+      grantedAt: currentWorkspace?.rootPath === value.rootPath ? currentWorkspace.grantedAt : now,
+      lastVerifiedAt: now
+    }
+    const goalTask: GoalTask = {
+      id: createId('goal'),
+      goal: value.goal,
+      acceptanceCriteria: value.acceptanceCriteria,
+      status: 'running',
+      maxSteps: value.maxSteps,
+      maxDurationMinutes: value.maxDurationMinutes,
+      runCount: 1,
+      startedAt: now,
+      lastRunStartedAt: now,
+      updatedAt: now
+    }
+    const baseConversation = conversation ?? createQuickConversation(assistant, value.goal.slice(0, 28))
+    const goalMessage = createMessage('user', t('goalMode.executionPrompt', {
+      goal: value.goal,
+      criteria: value.acceptanceCriteria,
+      steps: value.maxSteps,
+      minutes: value.maxDurationMinutes
+    }))
+    const nextConversation: Conversation = {
+      ...baseConversation,
+      workspace,
+      goalTask,
+      title: value.goal.slice(0, 28),
+      messages: [...baseConversation.messages, goalMessage],
+      modelProviderId: selectedProvider.id,
+      modelId: selectedProvider.defaultModel,
+      reasoningEffort: selectedReasoningEffort,
+      updatedAt: now
+    }
+
+    setGoalSetupOpen(false)
+    setDraftWorkspace(undefined)
+    setStatus('')
+    beginQuickResponse(now)
+    streamingConversationIdRef.current = nextConversation.id
+    setConversation(nextConversation)
+    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
+    conversationRef.current = nextConversation
+    void window.gllm.saveConversation(nextConversation)
+    await executeQuickWorkspaceConversation(nextConversation, workspace)
+  }
+
+  function setQuickGoalStatus(nextStatus: 'paused' | 'stopped') {
+    const current = conversationRef.current
+    if (!current?.goalTask) return
+    if (isStreamingRef.current) window.gllm.cancelResponse(current.id)
+    const updated: Conversation = {
+      ...current,
+      goalTask: {
+        ...current.goalTask,
+        status: nextStatus,
+        updatedAt: Date.now(),
+        completedAt: nextStatus === 'stopped' ? Date.now() : undefined
+      },
+      updatedAt: Date.now()
+    }
+    streamingConversationIdRef.current = null
+    responseStartedAtRef.current = null
+    updateStreaming(false)
+    setConversation(updated)
+    setConversations((items) => [updated, ...items.filter((item) => item.id !== updated.id)])
+    conversationRef.current = updated
+    void window.gllm.saveConversation(updated)
+    setStatus(t(nextStatus === 'paused' ? 'goalMode.pausedNotice' : 'goalMode.stoppedNotice'))
+  }
+
+  function clearQuickGoal() {
+    const current = conversationRef.current
+    if (!current?.goalTask || !window.confirm(t('goalMode.confirmClear'))) return
+    if (isStreamingRef.current) window.gllm.cancelResponse(current.id)
+    const updated: Conversation = {
+      ...current,
+      goalTask: undefined,
+      updatedAt: Date.now()
+    }
+    streamingConversationIdRef.current = null
+    responseStartedAtRef.current = null
+    updateStreaming(false)
+    setConversation(updated)
+    setConversations((items) => [updated, ...items.filter((item) => item.id !== updated.id)])
+    conversationRef.current = updated
+    void window.gllm.saveConversation(updated)
+    setStatus(t('goalMode.clearedNotice'))
+  }
+
+  async function resumeQuickGoal() {
+    const current = conversationRef.current
+    if (!settings || isStreamingRef.current || !current?.goalTask || !current.workspace) return
+    if ((assistant.status ?? 'active') !== 'active' || needsApiKey) {
+      setStatus(needsApiKey ? t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }) : t('assistantSettings.inactiveNotice'))
+      return
+    }
+    const now = Date.now()
+    const goalTask: GoalTask = {
+      ...current.goalTask,
+      status: 'running',
+      runCount: current.goalTask.runCount + 1,
+      lastRunStartedAt: now,
+      updatedAt: now,
+      completedAt: undefined,
+      lastError: undefined
+    }
+    const resumeMessage = createMessage('user', t('goalMode.resumePrompt', {
+      goal: goalTask.goal,
+      criteria: goalTask.acceptanceCriteria
+    }))
+    const updated: Conversation = {
+      ...current,
+      goalTask,
+      messages: [...current.messages, resumeMessage],
+      updatedAt: now
+    }
+    setStatus('')
+    beginQuickResponse(now)
+    streamingConversationIdRef.current = updated.id
+    setConversation(updated)
+    setConversations((items) => [updated, ...items.filter((item) => item.id !== updated.id)])
+    conversationRef.current = updated
+    void window.gllm.saveConversation(updated)
+    await executeQuickWorkspaceConversation(updated, current.workspace)
+  }
+
   async function executeQuickWorkspaceConversation(
     nextConversation: Conversation,
     workspace: ConversationWorkspace,
@@ -781,6 +963,8 @@ export default function QuickChat() {
     const responseStartedAt = responseStartedAtRef.current ?? nextConversation.messages.at(-1)?.createdAt ?? Date.now()
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
+    setWorkspaceChangedFiles([])
+    workspaceChangedFilesRef.current = []
     try {
       const result = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
@@ -794,7 +978,13 @@ export default function QuickChat() {
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.projectMemory
+        projectMemory: nextConversation.projectMemory,
+        executionLimits: nextConversation.goalTask
+          ? {
+              maxTurns: nextConversation.goalTask.maxSteps,
+              maxDurationMs: nextConversation.goalTask.maxDurationMinutes * 60_000
+            }
+          : undefined
       })
       const assistantMessage: ChatMessage = {
         ...createMessage('assistant', result.content),
@@ -811,6 +1001,16 @@ export default function QuickChat() {
       const completedConversation: Conversation = {
         ...nextConversation,
         workspace,
+        goalTask: nextConversation.goalTask
+          ? {
+              ...nextConversation.goalTask,
+              status: result.plan.status === 'succeeded' ? 'completed' : 'paused',
+              lastPlan: result.plan,
+              lastError: result.plan.status === 'succeeded' ? undefined : result.plan.verification,
+              updatedAt: Date.now(),
+              completedAt: result.plan.status === 'succeeded' ? Date.now() : undefined
+            }
+          : undefined,
         messages: nextMessages,
         totalTokens: nextMessages.reduce((sum, message) => sum + (message.tokenCount ?? 0), 0),
         updatedAt: Date.now()
@@ -826,18 +1026,20 @@ export default function QuickChat() {
         setStatus(t('workspace.generationStopped'))
         return
       }
-      const message = formatQuickWorkspaceError(rawMessage)
+      const reachedGoalTimeLimit = Boolean(nextConversation.goalTask && isGoalExecutionTimeLimitMessage(rawMessage))
+      const message = formatQuickWorkspaceError(rawMessage.replace(`${GOAL_EXECUTION_TIME_LIMIT}:`, '').trim())
       const attempt: MessageRetryAttempt = {
         attemptedAt: Date.now(),
         error: message,
         activities: workspaceActivitiesRef.current
       }
       const failedMessage: ChatMessage = {
-        ...createMessage('assistant', t('workspace.taskFailed', { message })),
+        ...createMessage('assistant', reachedGoalTimeLimit ? t('goalMode.timeLimitPaused', { message }) : t('workspace.taskFailed', { message })),
         responseStartedAt,
         responseCompletedAt: Date.now(),
-        error: message,
+        error: reachedGoalTimeLimit ? undefined : message,
         workspaceActivities: workspaceActivitiesRef.current,
+        workspaceChangedFiles: workspaceChangedFilesRef.current,
         workspaceArtifactRoot: workspace.rootPath,
         retryAttempts: [...retryAttempts, attempt]
       }
@@ -845,6 +1047,14 @@ export default function QuickChat() {
       const failedConversation: Conversation = {
         ...nextConversation,
         workspace,
+        goalTask: nextConversation.goalTask
+          ? {
+              ...nextConversation.goalTask,
+              status: reachedGoalTimeLimit ? 'paused' : 'failed',
+              lastError: message,
+              updatedAt: Date.now()
+            }
+          : undefined,
         messages: nextMessages,
         totalTokens: nextMessages.reduce((sum, item) => sum + (item.tokenCount ?? 0), 0),
         updatedAt: Date.now()
@@ -1192,13 +1402,24 @@ export default function QuickChat() {
           updatedAt: Date.now()
         }
       : stoppedWebSearchConversation
-    setConversation(stoppedConversation)
-    setConversations((current) => current.map((item) => item.id === stoppedConversation.id ? stoppedConversation : item))
-    conversationRef.current = stoppedConversation
-    void window.gllm.saveConversation(stoppedConversation)
+    const finalConversation: Conversation = stoppedConversation.goalTask
+      ? {
+          ...stoppedConversation,
+          goalTask: {
+            ...stoppedConversation.goalTask,
+            status: 'paused',
+            updatedAt: Date.now()
+          }
+        }
+      : stoppedConversation
+    setConversation(finalConversation)
+    setConversations((current) => current.map((item) => item.id === finalConversation.id ? finalConversation : item))
+    conversationRef.current = finalConversation
+    void window.gllm.saveConversation(finalConversation)
     streamingConversationIdRef.current = null
     responseStartedAtRef.current = null
     updateStreaming(false)
+    if (finalConversation.goalTask) setStatus(t('goalMode.pausedNotice'))
   }
 
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1570,7 +1791,14 @@ export default function QuickChat() {
           <article className="quick-message assistant">
             <div className={`quick-message-bubble ${currentWorkspace ? '' : 'quick-thinking'}`}>
               {currentWorkspace ? (
-                <WorkspaceActivityLog activities={workspaceActivities} model={selectedProvider.defaultModel} running />
+                <WorkspaceActivityLog
+                  activities={workspaceActivities}
+                  changedFiles={workspaceChangedFiles}
+                  artifactRoot={currentWorkspace.rootPath}
+                  model={selectedProvider.defaultModel}
+                  onArtifactOpen={(rootPath, relativePath) => void window.gllm.revealWorkspaceFile(rootPath, relativePath)}
+                  running
+                />
               ) : (
                 <ModelResponseWait model={selectedProvider.defaultModel} />
               )}
@@ -1630,6 +1858,14 @@ export default function QuickChat() {
           }}
         />
       )}
+      {goalSetupOpen && (
+        <GoalSetupDialog
+          currentWorkspace={currentWorkspace}
+          onChooseDirectory={chooseQuickGoalWorkspace}
+          onClose={() => setGoalSetupOpen(false)}
+          onStart={(value) => void startQuickGoalMode(value)}
+        />
+      )}
 
       <form
         className="quick-composer"
@@ -1638,9 +1874,22 @@ export default function QuickChat() {
           sendMessage()
         }}
       >
+        {conversation?.goalTask && (
+          <GoalTaskPanel
+            task={conversation.goalTask}
+            running={isStreaming}
+            onNewGoal={() => setGoalSetupOpen(true)}
+            onPause={() => setQuickGoalStatus('paused')}
+            onResume={() => void resumeQuickGoal()}
+            onClear={clearQuickGoal}
+          />
+        )}
         {currentWorkspace && (
           <WorkspaceBar
             workspace={currentWorkspace}
+            onOpen={() => void window.gllm.openWorkspaceDirectory(currentWorkspace.rootPath).catch((error) => {
+              setStatus(error instanceof Error ? error.message : t('workspace.openDirectoryFailed'))
+            })}
             onApprovalModeChange={(mode) => void changeQuickWorkspaceApproval(mode)}
             onUnbind={() => void unbindQuickWorkspace()}
           />
@@ -1693,8 +1942,20 @@ export default function QuickChat() {
             ))}
           </div>
         )}
-        <div className="quick-composer-toolbar">
-          <div className="quick-composer-tools">
+        <div className="quick-composer-input-row composer-input-row">
+          <textarea
+            ref={draftTextareaRef}
+            value={draft}
+            disabled={!settings}
+            rows={1}
+            placeholder={needsApiKey ? t('app.configureApiKey') : t('app.inputPlaceholder')}
+            onChange={(event) => setDraft(event.target.value)}
+            onPaste={(event) => void handleQuickPaste(event)}
+            onKeyDown={handleDraftKeyDown}
+          />
+        </div>
+        <div className="quick-composer-toolbar composer-toolbar">
+          <div className="quick-composer-tools composer-tools">
             <button
               className={pendingAttachments.length > 0 ? 'active' : ''}
               disabled={isPickingAttachment}
@@ -1715,6 +1976,15 @@ export default function QuickChat() {
             >
               <FolderOpen size={16} />
             </button>
+            <button
+              className={goalSetupOpen || Boolean(conversation?.goalTask) ? 'active' : ''}
+              disabled={isStreaming}
+              title={t('goalMode.title')}
+              type="button"
+              onClick={() => setGoalSetupOpen(true)}
+            >
+              <Target size={16} />
+            </button>
             <button title={t('quickChat.knowledge')} type="button" onClick={() => void openMainWindow()}>
               <BookOpen size={16} />
             </button>
@@ -1727,20 +1997,10 @@ export default function QuickChat() {
               <Wrench size={16} />
             </button>
           </div>
-        </div>
-        <textarea
-          ref={draftTextareaRef}
-          value={draft}
-          disabled={!settings}
-          rows={1}
-          placeholder={needsApiKey ? t('app.configureApiKey') : t('app.inputPlaceholder')}
-          onChange={(event) => setDraft(event.target.value)}
-          onPaste={(event) => void handleQuickPaste(event)}
-          onKeyDown={handleDraftKeyDown}
-        />
-        <div className="quick-composer-input-actions">
+          <div className="quick-composer-input-actions composer-input-actions">
           <ModelPickerMenu
-            className="quick-model-picker"
+            className="quick-model-picker composer-model-picker"
+            compactTrigger
             provider={provider}
             value={activeModelId}
             variant="dropdown"
@@ -1753,14 +2013,15 @@ export default function QuickChat() {
             onChange={changeModel}
           />
           <button
-            className={`quick-send-button${isStreaming ? ' stop' : ''}`}
+            className={`quick-send-button send-button${isStreaming ? ' stop' : ''}`}
             disabled={!settings || (!isStreaming && !draft.trim() && pendingQuoteRefs.length === 0 && pendingAttachments.length === 0)}
             onClick={isStreaming ? stopGenerating : undefined}
             title={isStreaming ? t('app.stopGenerating') : t('app.send', { shortcut: messageSendShortcutLabel })}
             type={isStreaming ? 'button' : 'submit'}
           >
-            {isStreaming ? <Square size={14} fill="currentColor" /> : <ArrowUp size={18} />}
+            {isStreaming ? <Square size={15} fill="currentColor" /> : <Send size={18} />}
           </button>
+          </div>
         </div>
       </form>
     </div>

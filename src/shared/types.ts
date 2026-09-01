@@ -249,6 +249,7 @@ export interface Conversation {
   reasoningEffort?: ReasoningEffort
   webSearchMode?: WebSearchMode
   workspace?: ConversationWorkspace
+  goalTask?: GoalTask
   projectMemory?: ConversationProjectMemory
   pinnedAt?: number
   totalTokens?: number
@@ -338,6 +339,24 @@ export interface ToolConfig {
   enabled: boolean
   createdAt: number
   updatedAt: number
+}
+
+export type GoalTaskStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
+
+export interface GoalTask {
+  id: string
+  goal: string
+  acceptanceCriteria: string
+  status: GoalTaskStatus
+  maxSteps: number
+  maxDurationMinutes: number
+  runCount: number
+  startedAt: number
+  lastRunStartedAt: number
+  updatedAt: number
+  completedAt?: number
+  lastPlan?: AgentExecutionPlan
+  lastError?: string
 }
 
 export type SkillStatus = 'draft' | 'active' | 'paused'
@@ -559,11 +578,16 @@ export interface WorkspaceAgentRequest {
   webSearchMode?: WebSearchMode
   webSearchEnabled?: boolean
   projectMemory?: ConversationProjectMemory
+  executionLimits?: {
+    maxTurns: number
+    maxDurationMs: number
+  }
 }
 
 export interface WorkspaceAgentProgress {
   conversationId: string
   activity: WorkspaceToolActivity
+  changedFiles?: string[]
 }
 
 export interface WorkspaceAgentResult {

@@ -96,6 +96,8 @@ const api = {
     ipcRenderer.invoke('workspace-agent:run', request),
   revealWorkspaceFile: (rootPath: string, relativePath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:reveal-file', rootPath, relativePath),
+  openWorkspaceDirectory: (rootPath: string): Promise<void> =>
+    ipcRenderer.invoke('workspace:open-directory', rootPath),
   respondWorkspaceApproval: (id: string, approved: boolean): void =>
     ipcRenderer.send('workspace-agent:approval-response', id, approved),
   deleteProject: (id: string): Promise<AppStateSnapshot> => ipcRenderer.invoke('project:delete', id),

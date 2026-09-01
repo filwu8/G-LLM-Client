@@ -48,6 +48,9 @@ jobs:
       - name: Run on-device analytics tests
         run: pnpm test:analytics
 
+      - name: Run goal mode tests
+        run: pnpm test:goal-mode
+
       - name: Reject high-severity production dependency advisories
         run: pnpm audit --prod --audit-level high
 

@@ -51,6 +51,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Sun,
+  Target,
   AtSign,
   Trash2,
   Upload,
@@ -86,6 +87,7 @@ import {
   isPristineConversationDraft,
   isConversationRunning,
   removeConversationRun,
+  resolveActiveConversation,
   startConversationRun,
   stopConversationWebSearch,
   stopPendingWebSearch,
@@ -110,6 +112,7 @@ import { applyRendererLanguage, rendererI18n } from './i18n'
 import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { MarkdownMessage } from './MarkdownMessage'
 import { ResponseDuration } from './ResponseDuration'
+import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
 import { UsageAnalyticsPanel } from './UsageAnalytics'
 import { calculateLocalUsageStats } from './localUsageStats'
 import { LocalTaskPanel } from './LocalTaskPanel'
@@ -166,6 +169,7 @@ import type {
   ChatRequest,
   ClipboardAttachmentInput,
   Conversation,
+  GoalTask,
   ConversationSearchResponse,
   ConversationSearchResult,
   DataLocationInfo,
@@ -192,6 +196,7 @@ import type {
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
 } from '@shared/types'
+import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
 
 const iconMap: Record<AssistantIcon, LucideIcon> = {
   sparkles: Sparkles,
@@ -810,6 +815,7 @@ export default function App() {
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
   const [workspaceApprovalPrompts, setWorkspaceApprovalPrompts] = useState<WorkspaceApprovalPrompt[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
+  const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false)
@@ -817,6 +823,7 @@ export default function App() {
   const [conversationModelOpen, setConversationModelOpen] = useState(false)
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [toolCenterOpen, setToolCenterOpen] = useState(false)
+  const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [spaceCenterOpen, setSpaceCenterOpen] = useState(false)
   const [agreementOpen, setAgreementOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
@@ -857,6 +864,7 @@ export default function App() {
   const activeConversationIdRef = useRef<string | null>(null)
   const activeProjectIdRef = useRef('')
   const workspaceActivitiesRef = useRef<Record<string, WorkspaceToolActivity[]>>({})
+  const workspaceChangedFilesRef = useRef<Record<string, string[]>>({})
   const conversationSearchRequestRef = useRef(0)
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
@@ -871,6 +879,9 @@ export default function App() {
   const pendingKnowledgeRefs = composerKnowledgeRefs[composerSessionKey] ?? []
   const workspaceActivities = activeConversationId
     ? workspaceActivitiesByConversation[activeConversationId] ?? []
+    : []
+  const workspaceChangedFiles = activeConversationId
+    ? workspaceChangedFilesByConversation[activeConversationId] ?? []
     : []
   const workspaceApprovalPrompt = workspaceApprovalPrompts[0] ?? null
   const isStreaming = isConversationRunning(conversationRunStates, activeConversationId)
@@ -963,7 +974,9 @@ export default function App() {
   function clearWorkspaceActivities(conversationId: string | null = activeConversationId) {
     if (!conversationId) return
     workspaceActivitiesRef.current[conversationId] = []
+    workspaceChangedFilesRef.current[conversationId] = []
     setWorkspaceActivitiesByConversation((current) => ({ ...current, [conversationId]: [] }))
+    setWorkspaceChangedFilesByConversation((current) => ({ ...current, [conversationId]: [] }))
   }
 
   const activeSpace = useMemo(
@@ -1004,10 +1017,13 @@ export default function App() {
     ),
     [activeAssistantId, activeConversationId, conversations]
   )
-  const activeConversation =
-    activeAssistantConversations.find((conversation) => conversation.id === activeConversationId) ?? null
+  const activeConversation = resolveActiveConversation(
+    activeAssistantConversations,
+    activeConversationId,
+    streamingConversationDraftsRef.current
+  )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
-  const currentWorkspace = activeConversation ? activeConversation.workspace : draftWorkspace
+  const currentWorkspace = activeConversation?.workspace ?? draftWorkspace
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
     [activeConversation, assistantDefaultProvider, providers]
@@ -1400,6 +1416,13 @@ export default function App() {
         workspaceActivitiesRef.current[progress.conversationId] = next
         return { ...current, [progress.conversationId]: next }
       })
+      if (progress.changedFiles) {
+        workspaceChangedFilesRef.current[progress.conversationId] = progress.changedFiles
+        setWorkspaceChangedFilesByConversation((current) => ({
+          ...current,
+          [progress.conversationId]: progress.changedFiles ?? []
+        }))
+      }
     }),
     []
   )
@@ -2374,6 +2397,7 @@ export default function App() {
   ) {
     if (!settings) return
     const conversationId = nextConversation.id
+    streamingConversationDraftsRef.current[conversationId] = nextConversation
     const responseStartedAt = conversationRunStatesRef.current[conversationId]?.startedAt ?? Date.now()
     clearWorkspaceActivities(conversationId)
     let outcome: 'completed' | 'error' = 'completed'
@@ -2390,7 +2414,13 @@ export default function App() {
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.projectMemory
+        projectMemory: nextConversation.projectMemory,
+        executionLimits: nextConversation.goalTask
+          ? {
+              maxTurns: nextConversation.goalTask.maxSteps,
+              maxDurationMs: nextConversation.goalTask.maxDurationMinutes * 60_000
+            }
+          : undefined
       })
       const assistantMessage: ChatMessage = {
         ...createMessage('assistant', result.content),
@@ -2406,9 +2436,20 @@ export default function App() {
       const completedConversation = withConversationTokens({
         ...nextConversation,
         workspace,
+        goalTask: nextConversation.goalTask
+          ? {
+              ...nextConversation.goalTask,
+              status: result.plan.status === 'succeeded' ? 'completed' : 'paused',
+              lastPlan: result.plan,
+              lastError: result.plan.status === 'succeeded' ? undefined : result.plan.verification,
+              updatedAt: Date.now(),
+              completedAt: result.plan.status === 'succeeded' ? Date.now() : undefined
+            }
+          : undefined,
         messages: [...nextConversation.messages, assistantMessage],
         updatedAt: Date.now()
       })
+      streamingConversationDraftsRef.current[conversationId] = completedConversation
       setConversations((current) => [completedConversation, ...current.filter((item) => item.id !== completedConversation.id)])
       void window.gllm.saveConversation(completedConversation)
       if (result.changedFiles.length > 0) showToolNotice(t('workspace.filesChanged', { count: result.changedFiles.length }))
@@ -2418,9 +2459,11 @@ export default function App() {
         showToolNotice(t('workspace.generationStopped'))
         return
       }
-      outcome = 'error'
-      const message = formatWorkspaceError(rawMessage)
+      const reachedGoalTimeLimit = Boolean(nextConversation.goalTask && isGoalExecutionTimeLimitMessage(rawMessage))
+      outcome = reachedGoalTimeLimit ? 'completed' : 'error'
+      const message = formatWorkspaceError(rawMessage.replace(`${GOAL_EXECUTION_TIME_LIMIT}:`, '').trim())
       const currentActivities = workspaceActivitiesRef.current[conversationId] ?? []
+      const currentChangedFiles = workspaceChangedFilesRef.current[conversationId] ?? []
       const currentAttempt: MessageRetryAttempt = {
         attemptedAt: Date.now(),
         error: message,
@@ -2429,20 +2472,31 @@ export default function App() {
       const failedConversation = withConversationTokens({
         ...nextConversation,
         workspace,
+        goalTask: nextConversation.goalTask
+          ? {
+              ...nextConversation.goalTask,
+              status: reachedGoalTimeLimit ? 'paused' : 'failed',
+              lastError: message,
+              updatedAt: Date.now()
+            }
+          : undefined,
         messages: [...nextConversation.messages, {
-          ...createMessage('assistant', t('workspace.taskFailed', { message })),
+          ...createMessage('assistant', reachedGoalTimeLimit ? t('goalMode.timeLimitPaused', { message }) : t('workspace.taskFailed', { message })),
           responseStartedAt,
           responseCompletedAt: Date.now(),
-          error: message,
+          error: reachedGoalTimeLimit ? undefined : message,
           workspaceActivities: currentActivities,
+          workspaceChangedFiles: currentChangedFiles,
           workspaceArtifactRoot: workspace.rootPath,
-          retryAttempts: [...retryAttempts, currentAttempt]
+          retryAttempts: reachedGoalTimeLimit ? undefined : [...retryAttempts, currentAttempt]
         }],
         updatedAt: Date.now()
       })
+      streamingConversationDraftsRef.current[conversationId] = failedConversation
       setConversations((current) => [failedConversation, ...current.filter((item) => item.id !== failedConversation.id)])
       void window.gllm.saveConversation(failedConversation)
     } finally {
+      delete streamingConversationDraftsRef.current[conversationId]
       setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.conversationId !== conversationId))
       completeConversationRun(conversationId, outcome)
     }
@@ -2690,6 +2744,171 @@ export default function App() {
     }
   }
 
+  async function openWorkspaceDirectory(rootPath: string) {
+    try {
+      await window.gllm.openWorkspaceDirectory(rootPath)
+    } catch (error) {
+      showToolNotice(error instanceof Error ? error.message : t('workspace.openDirectoryFailed'))
+    }
+  }
+
+  async function chooseGoalWorkspaceDirectory(): Promise<string | null> {
+    try {
+      return await window.gllm.chooseWorkspaceDirectory()
+    } catch (error) {
+      showToolNotice(error instanceof Error ? error.message : t('workspace.bindFailed'))
+      return null
+    }
+  }
+
+  async function startGoalMode(value: GoalSetupValue) {
+    if (!settings || isStreaming) return
+    if ((activeAssistant.status ?? 'active') !== 'active') {
+      showToolNotice(t('notices.inactiveAssistant'))
+      return
+    }
+    if (needsApiKey) {
+      setSettingsOpen(true)
+      return
+    }
+    const normalizeWorkspacePath = (path: string) => {
+      const normalized = path.replace(/[\\/]+$/, '').replace(/\\/g, '/')
+      return window.gllm.platform === 'linux' ? normalized : normalized.toLocaleLowerCase()
+    }
+    const conflictingConversation = conversations.find((conversation) =>
+      conversation.id !== activeConversation?.id &&
+      conversation.workspace?.permission === 'read-write' &&
+      normalizeWorkspacePath(conversation.workspace.rootPath) === normalizeWorkspacePath(value.rootPath)
+    )
+    if (conflictingConversation) {
+      setGoalSetupOpen(false)
+      showToolNotice(t('workspace.folderConflict', { conversation: conflictingConversation.title }), 0, {
+        emphasis: true,
+        requiresConfirmation: true,
+        conversationId: conflictingConversation.id
+      })
+      return
+    }
+
+    const now = Date.now()
+    const displayName = value.rootPath.split(/[\\/]/).filter(Boolean).at(-1) || t('workspace.defaultName')
+    const workspace: ConversationWorkspace = {
+      rootPath: value.rootPath,
+      displayName,
+      permission: 'read-write',
+      approvalMode: value.approvalMode,
+      grantedAt: currentWorkspace?.rootPath === value.rootPath ? currentWorkspace.grantedAt : now,
+      lastVerifiedAt: now
+    }
+    const goalTask: GoalTask = {
+      id: createId('goal'),
+      goal: value.goal,
+      acceptanceCriteria: value.acceptanceCriteria,
+      status: 'running',
+      maxSteps: value.maxSteps,
+      maxDurationMinutes: value.maxDurationMinutes,
+      runCount: 1,
+      startedAt: now,
+      lastRunStartedAt: now,
+      updatedAt: now
+    }
+    const baseConversation = activeConversation ?? createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+    const goalMessage = createMessage('user', t('goalMode.executionPrompt', {
+      goal: value.goal,
+      criteria: value.acceptanceCriteria,
+      steps: value.maxSteps,
+      minutes: value.maxDurationMinutes
+    }))
+    const nextConversation = withConversationTokens({
+      ...baseConversation,
+      assistantId: activeAssistant.id,
+      workspace,
+      goalTask,
+      title: value.goal.slice(0, 28),
+      messages: [...baseConversation.messages, goalMessage],
+      updatedAt: now
+    })
+
+    setGoalSetupOpen(false)
+    setDraftWorkspace(undefined)
+    if (!activeConversation) moveComposerSessionToConversation(nextConversation.id, true)
+    beginConversationRun(nextConversation.id)
+    selectConversation(nextConversation.id)
+    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
+    void window.gllm.saveConversation(nextConversation)
+    await executeWorkspaceConversation(nextConversation, workspace, activeConversation ? conversationProvider : assistantDefaultProvider)
+  }
+
+  function setGoalTaskStatus(status: 'paused' | 'stopped') {
+    if (!activeConversation?.goalTask) return
+    if (isStreaming) window.gllm.cancelResponse(activeConversation.id)
+    const nextConversation: Conversation = {
+      ...activeConversation,
+      goalTask: {
+        ...activeConversation.goalTask,
+        status,
+        updatedAt: Date.now(),
+        completedAt: status === 'stopped' ? Date.now() : undefined
+      },
+      updatedAt: Date.now()
+    }
+    discardConversationRun(activeConversation.id)
+    saveConversationUpdate(nextConversation)
+    showToolNotice(t(status === 'paused' ? 'goalMode.pausedNotice' : 'goalMode.stoppedNotice'))
+  }
+
+  function clearGoalTask() {
+    if (!activeConversation?.goalTask || !window.confirm(t('goalMode.confirmClear'))) return
+    const currentConversation = streamingConversationDraftsRef.current[activeConversation.id] ?? activeConversation
+    if (isConversationRunning(conversationRunStatesRef.current, activeConversation.id)) {
+      window.gllm.cancelResponse(activeConversation.id)
+    }
+    const nextConversation: Conversation = {
+      ...currentConversation,
+      goalTask: undefined,
+      updatedAt: Date.now()
+    }
+    discardConversationRun(activeConversation.id)
+    saveConversationUpdate(nextConversation)
+    showToolNotice(t('goalMode.clearedNotice'))
+  }
+
+  async function resumeGoalTask() {
+    if (!settings || isStreaming || !activeConversation?.goalTask || !activeConversation.workspace) return
+    if ((activeAssistant.status ?? 'active') !== 'active') {
+      showToolNotice(t('notices.inactiveAssistant'))
+      return
+    }
+    if (needsApiKey) {
+      setSettingsOpen(true)
+      return
+    }
+    const now = Date.now()
+    const goalTask: GoalTask = {
+      ...activeConversation.goalTask,
+      status: 'running',
+      runCount: activeConversation.goalTask.runCount + 1,
+      lastRunStartedAt: now,
+      updatedAt: now,
+      completedAt: undefined,
+      lastError: undefined
+    }
+    const resumeMessage = createMessage('user', t('goalMode.resumePrompt', {
+      goal: goalTask.goal,
+      criteria: goalTask.acceptanceCriteria
+    }))
+    const nextConversation = withConversationTokens({
+      ...activeConversation,
+      goalTask,
+      messages: [...activeConversation.messages, resumeMessage],
+      updatedAt: now
+    })
+    beginConversationRun(nextConversation.id)
+    setMessageAutoFollow(true)
+    saveConversationUpdate(nextConversation)
+    await executeWorkspaceConversation(nextConversation, activeConversation.workspace, conversationProvider)
+  }
+
   async function sendMessage(content = draft) {
     if (!settings || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
     if ((activeAssistant.status ?? 'active') !== 'active') {
@@ -2789,12 +3008,23 @@ export default function App() {
           updatedAt: Date.now()
         }
       : stoppedWebSearchConversation
-    streamingConversationDraftsRef.current[activeConversation.id] = stoppedConversation
+    const finalConversation: Conversation = stoppedConversation.goalTask
+      ? {
+          ...stoppedConversation,
+          goalTask: {
+            ...stoppedConversation.goalTask,
+            status: 'paused',
+            updatedAt: Date.now()
+          }
+        }
+      : stoppedConversation
+    streamingConversationDraftsRef.current[activeConversation.id] = finalConversation
     setConversations((current) => current.map((conversation) =>
-      conversation.id === stoppedConversation.id ? stoppedConversation : conversation
+      conversation.id === finalConversation.id ? finalConversation : conversation
     ))
-    void window.gllm.saveConversation(stoppedConversation)
+    void window.gllm.saveConversation(finalConversation)
     discardConversationRun(activeConversation.id)
+    if (finalConversation.goalTask) showToolNotice(t('goalMode.pausedNotice'))
   }
 
   async function saveSettings(next: AppSettings) {
@@ -3442,7 +3672,11 @@ export default function App() {
                       {currentWorkspace ? (
                         <WorkspaceActivityLog
                           activities={workspaceActivities}
+                          changedFiles={workspaceChangedFiles}
+                          artifactRoot={currentWorkspace.rootPath}
                           model={conversationProvider.defaultModel}
+                          onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
+                          onArtifactContextMenu={openWorkspaceArtifactMenu}
                           running
                           startedAt={activeRunStartedAt}
                         />
@@ -3519,9 +3753,31 @@ export default function App() {
               sendMessage()
             }}
           >
+            {isStreaming && (
+              <section className="composer-run-status" aria-live="polite" role="status">
+                <RefreshCw className="spin" size={14} />
+                <span className="model-wait-shimmer">
+                  {currentWorkspace
+                    ? t(workspaceActivities.length > 0 ? 'workspace.operating' : 'workspace.understanding')
+                    : t('app.waitingForModel', { model: conversationProvider.defaultModel })}
+                </span>
+                <ResponseDuration running startedAt={activeRunStartedAt} />
+              </section>
+            )}
+            {activeConversation?.goalTask && (
+              <GoalTaskPanel
+                task={activeConversation.goalTask}
+                running={isStreaming}
+                onNewGoal={() => setGoalSetupOpen(true)}
+                onPause={() => setGoalTaskStatus('paused')}
+                onResume={() => void resumeGoalTask()}
+                onClear={clearGoalTask}
+              />
+            )}
             {currentWorkspace && (
               <WorkspaceBar
                 workspace={currentWorkspace}
+                onOpen={() => void openWorkspaceDirectory(currentWorkspace.rootPath)}
                 onApprovalModeChange={(mode) => void changeConversationWorkspaceApproval(mode)}
                 onUnbind={() => void unbindConversationWorkspace()}
               />
@@ -3666,6 +3922,15 @@ export default function App() {
                   onClick={() => void bindConversationWorkspace()}
                 >
                   <FolderOpen size={16} />
+                </button>
+                <button
+                  className={goalSetupOpen || Boolean(activeConversation?.goalTask) ? 'active' : ''}
+                  disabled={isStreaming}
+                  title={t('goalMode.title')}
+                  type="button"
+                  onClick={() => setGoalSetupOpen(true)}
+                >
+                  <Target size={16} />
                 </button>
                 <button
                   className={knowledgeOpen || pendingKnowledgeRefs.length > 0 ? 'active' : ''}
@@ -3854,6 +4119,14 @@ export default function App() {
             window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved)
             setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.id !== workspaceApprovalPrompt.id))
           }}
+        />
+      )}
+      {goalSetupOpen && (
+        <GoalSetupDialog
+          currentWorkspace={currentWorkspace}
+          onChooseDirectory={chooseGoalWorkspaceDirectory}
+          onClose={() => setGoalSetupOpen(false)}
+          onStart={(value) => void startGoalMode(value)}
         />
       )}
       {assistantSettingsOpen && (
@@ -6238,6 +6511,7 @@ function SettingsPanel({
   const [dataLocationInfo, setDataLocationInfo] = useState<DataLocationInfo | null>(dataLocation)
   const [dataLocationStatus, setDataLocationStatus] = useState('')
   const [newModelId, setNewModelId] = useState('')
+  const [modelSearchQuery, setModelSearchQuery] = useState('')
   const [addProviderOpen, setAddProviderOpen] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -6252,6 +6526,15 @@ function SettingsPanel({
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>(initialTab)
   const providerNeedsKey = isProviderApiKeyMissing(providerDraft)
   const modelOptions = getModelOptions(providerDraft)
+  const normalizedModelSearch = modelSearchQuery.trim().toLocaleLowerCase()
+  const filteredModelOptions = normalizedModelSearch
+    ? modelOptions.filter((model) => [
+        model.id,
+        model.name,
+        model.type,
+        ...normalizeModelCapabilities(model)
+      ].some((value) => String(value ?? '').toLocaleLowerCase().includes(normalizedModelSearch)))
+    : modelOptions
   const providerSaved = providers.some((provider) => provider.id === providerDraft.id)
   const savedProvider = providers.find((provider) => provider.id === providerDraft.id) ?? null
   const visibleProviders = providerSaved ? providers : [providerDraft, ...providers]
@@ -6311,6 +6594,7 @@ function SettingsPanel({
     setSettingsDraft({ ...settingsDraft, activeProviderId: provider.id })
     setProviderStatus('')
     setNewModelId('')
+    setModelSearchQuery('')
     setApiKeyVisible(false)
   }
 
@@ -6766,8 +7050,23 @@ function SettingsPanel({
                     <small>{t('provider.capabilitiesHint')}</small>
                   </div>
                 </div>
+                <div className="model-manager-search">
+                  <Search size={15} />
+                  <input
+                    aria-label={t('provider.modelSearchPlaceholder')}
+                    placeholder={t('provider.modelSearchPlaceholder')}
+                    type="search"
+                    value={modelSearchQuery}
+                    onChange={(event) => setModelSearchQuery(event.target.value)}
+                  />
+                  {modelSearchQuery && (
+                    <button aria-label={t('common.clear')} onClick={() => setModelSearchQuery('')} title={t('common.clear')} type="button">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="model-chip-list">
-                  {modelOptions.map((model) => (
+                  {filteredModelOptions.map((model) => (
                     <div
                       key={model.id}
                       className={model.id === providerDraft.defaultModel ? 'active' : ''}
@@ -6791,6 +7090,12 @@ function SettingsPanel({
                       )}
                     </div>
                   ))}
+                  {filteredModelOptions.length === 0 && (
+                    <div className="model-search-empty">
+                      <Search size={18} />
+                      <span>{t('provider.modelSearchNoResults', { query: modelSearchQuery.trim() })}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="model-add-fallback">
                   <div>
