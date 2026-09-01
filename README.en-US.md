@@ -4,7 +4,7 @@
 
 Current code version: [V2.0.16](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.15](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.15), released on 2026-09-01.
+Latest stable release: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16), released on 2026-09-01.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
