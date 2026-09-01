@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.13](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.14](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.13](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.13)，发布于 2026-08-28。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.14 助手工作流、Skill 与模型能力
+
+- 助手可以围绕用户目标生成并更新执行计划，调用工作区工具、扩展函数和获得授权的其他助手，持续交付可验证结果。
+- 扩展工具中心支持创建和上传 Markdown Skill；Skill 可维护版本、评测案例和回滚记录，助手配置来源与状态更清晰。
+- 优化允许调用的其他助手、扩展工具和个性设置布局；已删除助手会自动从授权关系中清理，避免残留配置导致异常。
+- 每次对话完成后显示持续工作用时；等待模型和搜索整理答案时提供持续动态反馈。
+- G-LLM 官方接口中的 `:free` 模型显示免费标签，其他模型显示付费标签；此规则不会应用到第三方或自部署接口。
+- 聊天模型可理解生图任务并整理提示词，再自动调用同一供应商中真正支持 `/images/generations` 的生图模型；看图能力不会被误判为生图能力。
 
 ## V2.0.13 自部署模型、工作区 Agent 与自动更新稳定性
 

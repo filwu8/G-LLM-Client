@@ -109,6 +109,7 @@ import { getMessageSendShortcutLabel, shouldSendMessageFromKeyboard } from './ke
 import { applyRendererLanguage, rendererI18n } from './i18n'
 import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { MarkdownMessage } from './MarkdownMessage'
+import { ResponseDuration } from './ResponseDuration'
 import { LocalTaskPanel } from './LocalTaskPanel'
 import {
   findLocalizedAssistantPreset,
@@ -117,7 +118,7 @@ import {
   searchLocalizedAssistantPresets
 } from './localizedContent'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
-import { getModelDisplayLabel, getModelOptions, ModelPickerMenu } from './ModelPicker'
+import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { applyDocumentTheme } from './theme'
@@ -128,6 +129,9 @@ import {
   type AssistantPreset
 } from '@shared/assistantPresets'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
+import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistantCapabilities'
+import { addSkillEvalCase, evaluateSkillRegression, evolveSkill, rollbackSkill } from '@shared/skillLifecycle'
+import { parseSkillMarkdown } from '@shared/skillMarkdown'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import {
   DEFAULT_PROVIDER,
@@ -176,6 +180,7 @@ import type {
   ProviderTemplateCategory,
   ProviderTemplateId,
   ReasoningEffort,
+  SkillConfig,
   ToolConfig,
   ToolConfigType,
   ThemeEntitlementResult,
@@ -633,7 +638,11 @@ function formatWorkspaceError(value: string): string {
   return normalized || rendererI18n.t('workspaceErrors.unknown')
 }
 
-function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChunk): Conversation {
+function applyChatChunkToConversation(
+  conversation: Conversation,
+  chunk: ChatChunk,
+  timing: { startedAt?: number; completedAt?: number } = {}
+): Conversation {
   let messages = [...conversation.messages]
   const last = messages[messages.length - 1]
 
@@ -652,17 +661,26 @@ function applyChatChunkToConversation(conversation: Conversation, chunk: ChatChu
     messages.push({
       ...createMessage('assistant', presentation.userMessage),
       error: presentation.technicalDetail,
-      retryAt: presentation.automaticallyRetryable ? Date.now() + 60_000 : undefined
+      retryAt: presentation.automaticallyRetryable ? Date.now() + 60_000 : undefined,
+      responseStartedAt: timing.startedAt,
+      responseCompletedAt: timing.completedAt
     })
   } else {
     let assistantMessage = last?.role === 'assistant' ? last : null
     if (!assistantMessage && (chunk.content || chunk.reasoningContent || chunk.webSearch)) {
-      assistantMessage = createMessage('assistant', '')
+      assistantMessage = {
+        ...createMessage('assistant', ''),
+        responseStartedAt: timing.startedAt
+      }
       messages.push(assistantMessage)
     }
 
     if (assistantMessage) {
-      let nextMessage = assistantMessage
+      let nextMessage: ChatMessage = {
+        ...assistantMessage,
+        responseStartedAt: assistantMessage.responseStartedAt ?? timing.startedAt,
+        responseCompletedAt: timing.completedAt ?? assistantMessage.responseCompletedAt
+      }
       if (chunk.webSearch) nextMessage = withWebSearchActivity(nextMessage, chunk.webSearch)
       if (chunk.cancelled) {
         nextMessage = { ...nextMessage, webSearch: stopPendingWebSearch(nextMessage.webSearch) }
@@ -770,6 +788,7 @@ export default function App() {
   const [notes, setNotes] = useState<KnowledgeNote[]>([])
   const [memories, setMemories] = useState<AssistantMemory[]>([])
   const [tools, setTools] = useState<ToolConfig[]>([])
+  const [skills, setSkills] = useState<SkillConfig[]>([])
   const [appVersion, setAppVersion] = useState('1.0.0')
   const [appBuildCode, setAppBuildCode] = useState('')
   const [dataLocation, setDataLocation] = useState<DataLocationInfo | null>(null)
@@ -954,6 +973,14 @@ export default function App() {
     space: activeSpace?.id === defaultSpaceId ? t('app.defaultSpace') : activeSpaceName
   })
   const activeAssistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
+  const activeAssistantSkills = useMemo(
+    () => resolveAssistantSkills(activeAssistant, skills),
+    [activeAssistant, skills]
+  )
+  const activeAssistantTools = useMemo(
+    () => resolveAssistantTools(activeAssistant, tools),
+    [activeAssistant, tools]
+  )
   const activeAssistantDisplay = useMemo(
     () => localizeAssistant(activeAssistant),
     [activeAssistant, i18n.resolvedLanguage]
@@ -1082,6 +1109,7 @@ export default function App() {
     setNotes(state.notes)
     setMemories(state.memories ?? [])
     setTools(state.tools ?? [])
+    setSkills(state.skills ?? [])
 
     if (options.selectFirstConversation) {
       selectConversation(firstConversation?.id ?? null)
@@ -1217,6 +1245,11 @@ export default function App() {
       chatChunkFlushTimerRef.current = null
       const chunks = coalesceChatChunks(pendingChatChunksRef.current.splice(0))
       if (chunks.length === 0) return
+      const completedAt = Date.now()
+      const chunkTimings = new Map(chunks.map((chunk) => [chunk.conversationId, {
+        startedAt: conversationRunStatesRef.current[chunk.conversationId]?.startedAt,
+        completedAt: chunk.done ? completedAt : undefined
+      }]))
 
       setConversations((current) => {
         let next = current
@@ -1228,7 +1261,7 @@ export default function App() {
             : streamingConversationDraftsRef.current[chunk.conversationId]
           if (!source) continue
 
-          const updatedConversation = applyChatChunkToConversation(source, chunk)
+          const updatedConversation = applyChatChunkToConversation(source, chunk, chunkTimings.get(chunk.conversationId))
           streamingConversationDraftsRef.current[chunk.conversationId] = updatedConversation
           if (chunk.done) void window.gllm.saveConversation(updatedConversation)
           if (index < 0 && updatedConversation.projectId !== activeProjectIdRef.current) continue
@@ -2192,6 +2225,21 @@ export default function App() {
     setTools((current) => current.filter((tool) => tool.id !== id))
   }
 
+  async function saveSkillConfig(skill: SkillConfig) {
+    const saved = await window.gllm.saveSkill({ ...skill, projectId: skill.projectId ?? activeProjectId })
+    setSkills((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
+    return saved
+  }
+
+  async function deleteSkillConfig(id: string) {
+    await window.gllm.deleteSkill(id)
+    setSkills((current) => current.filter((skill) => skill.id !== id))
+    setAssistants((current) => current.map((assistant) => ({
+      ...assistant,
+      skillIds: assistant.skillIds?.filter((skillId) => skillId !== id)
+    })))
+  }
+
   function translateMessage(message: ChatMessage) {
     if (!settings || !activeConversation) return
     if (isStreaming) {
@@ -2306,6 +2354,7 @@ export default function App() {
       conversationId: nextConversation.id,
       assistant: activeAssistant,
       assistantMemories: enabledAssistantMemories,
+      assistantSkills: activeAssistantSkills,
       projectMemory: nextConversation.projectMemory,
       provider: conversationProvider,
       messages: nextConversation.messages,
@@ -2323,11 +2372,16 @@ export default function App() {
   ) {
     if (!settings) return
     const conversationId = nextConversation.id
+    const responseStartedAt = conversationRunStatesRef.current[conversationId]?.startedAt ?? Date.now()
     clearWorkspaceActivities(conversationId)
     let outcome: 'completed' | 'error' = 'completed'
     try {
       const result = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
+        assistant: activeAssistant,
+        assistantSkills: activeAssistantSkills,
+        assistantTools: activeAssistantTools,
+        availableAssistants: assistants,
         workspace,
         provider,
         messages: nextConversation.messages,
@@ -2338,9 +2392,12 @@ export default function App() {
       })
       const assistantMessage: ChatMessage = {
         ...createMessage('assistant', result.content),
+        responseStartedAt,
+        responseCompletedAt: Date.now(),
         workspaceActivities: result.activities,
         workspaceChangedFiles: result.changedFiles,
         workspaceArtifactRoot: workspace.rootPath,
+        agentPlan: result.plan,
         contextSavings: result.contextSavings,
         retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
       }
@@ -2372,6 +2429,8 @@ export default function App() {
         workspace,
         messages: [...nextConversation.messages, {
           ...createMessage('assistant', t('workspace.taskFailed', { message })),
+          responseStartedAt,
+          responseCompletedAt: Date.now(),
           error: message,
           workspaceActivities: currentActivities,
           workspaceArtifactRoot: workspace.rootPath,
@@ -2429,6 +2488,7 @@ export default function App() {
       conversationId: nextConversation.id,
       assistant: activeAssistant,
       assistantMemories: enabledAssistantMemories,
+      assistantSkills: activeAssistantSkills,
       projectMemory: nextConversation.projectMemory,
       provider: conversationProvider,
       messages: nextConversation.messages,
@@ -2630,6 +2690,11 @@ export default function App() {
 
   async function sendMessage(content = draft) {
     if (!settings || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
+    if ((activeAssistant.status ?? 'active') !== 'active') {
+      showToolNotice(t('assistantSettings.inactiveNotice'))
+      setAssistantSettingsOpen(true)
+      return
+    }
     const candidateText = content.trim()
     if (shouldPrepareLocalTask(candidateText)) {
       await preparePendingLocalTask(candidateText)
@@ -2693,6 +2758,7 @@ export default function App() {
       conversationId: nextConversation.id,
       assistant: activeAssistant,
       assistantMemories: enabledAssistantMemories,
+      assistantSkills: activeAssistantSkills,
       projectMemory: nextConversation.projectMemory,
       provider: activeConversation?.assistantId === activeAssistant.id ? conversationProvider : assistantDefaultProvider,
       messages: nextConversation.messages,
@@ -2705,14 +2771,27 @@ export default function App() {
   function stopGenerating() {
     if (!isStreaming || !activeConversation) return
     window.gllm.cancelResponse(activeConversation.id)
-    const stoppedConversation = stopConversationWebSearch(activeConversation)
-    if (stoppedConversation !== activeConversation) {
-      streamingConversationDraftsRef.current[activeConversation.id] = stoppedConversation
-      setConversations((current) => current.map((conversation) =>
-        conversation.id === stoppedConversation.id ? stoppedConversation : conversation
-      ))
-      void window.gllm.saveConversation(stoppedConversation)
-    }
+    const responseStartedAt = conversationRunStatesRef.current[activeConversation.id]?.startedAt
+    const stoppedWebSearchConversation = stopConversationWebSearch(activeConversation)
+    const lastAssistantIndex = stoppedWebSearchConversation.messages.findLastIndex((message) => message.role === 'assistant')
+    const stoppedConversation = lastAssistantIndex >= 0
+      ? {
+          ...stoppedWebSearchConversation,
+          messages: stoppedWebSearchConversation.messages.map((message, index) => index === lastAssistantIndex
+            ? {
+                ...message,
+                responseStartedAt: message.responseStartedAt ?? responseStartedAt,
+                responseCompletedAt: message.responseCompletedAt ?? Date.now()
+              }
+            : message),
+          updatedAt: Date.now()
+        }
+      : stoppedWebSearchConversation
+    streamingConversationDraftsRef.current[activeConversation.id] = stoppedConversation
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === stoppedConversation.id ? stoppedConversation : conversation
+    ))
+    void window.gllm.saveConversation(stoppedConversation)
     discardConversationRun(activeConversation.id)
   }
 
@@ -2790,6 +2869,20 @@ export default function App() {
     })
     setActiveAssistantId(saved.id)
     return saved
+  }
+
+  async function exportAssistantTemplate(assistant: Assistant) {
+    const path = await window.gllm.exportAssistantTemplate(assistant.id)
+    if (path) showToolNotice(t('assistantTemplates.exported', { path }))
+  }
+
+  async function importAssistantTemplate() {
+    const result = await window.gllm.importAssistantTemplate()
+    if (!result) return
+    applyAppState(result.state)
+    setActiveAssistantId(result.assistantId)
+    showToolNotice(t('assistantTemplates.imported'))
+    if (result.warnings.length > 0) window.alert(result.warnings.join('\n'))
   }
 
   async function toggleAssistantPin(assistant: Assistant) {
@@ -2894,13 +2987,16 @@ export default function App() {
                   className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}`}
                   onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
-                  title={displayAssistant.name}
+                  title={`${displayAssistant.name}\n${t(`assistantSettings.statuses.${assistant.status ?? 'active'}`)} · ${assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local')} · v${assistant.configSource?.version ?? '1.0.0'}`}
                   type="button"
                 >
                   <AssistantAvatar assistant={assistant} />
                   <span className="assistant-card-copy">
                     <span className="assistant-card-heading">
                       <strong>{displayAssistant.name}</strong>
+                      {(assistant.status ?? 'active') !== 'active' && (
+                        <span className={`assistant-status-badge ${assistant.status}`}>{t(`assistantSettings.statuses.${assistant.status}`)}</span>
+                      )}
                       {assistant.pinnedAt && <Pin className="assistant-pin-badge" size={12} aria-label={t('assistantActions.pinned')} />}
                       {assistantRunStatus === 'running' && (
                         <span className="assistant-run-badge running" title={assistantRunLabel} aria-label={assistantRunLabel}>
@@ -3105,9 +3201,10 @@ export default function App() {
                             startedAt={activeRunStartedAt}
                           />
                         )}
-                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0) && (
+                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan) && (
                           <WorkspaceActivityLog
                             activities={message.workspaceActivities ?? []}
+                            plan={message.agentPlan}
                             changedFiles={message.workspaceChangedFiles}
                             artifactRoot={message.workspaceArtifactRoot}
                             onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
@@ -3297,6 +3394,13 @@ export default function App() {
                           </button>
                         </div>
                         <div className="message-meta">
+                          {message.role === 'assistant' && (
+                            <ResponseDuration
+                              completedAt={message.responseCompletedAt}
+                              running={isMessageStreaming}
+                              startedAt={message.responseStartedAt}
+                            />
+                          )}
                           <time dateTime={messageTimestamp.iso} title={messageTimestamp.full}>{messageTimestamp.short}</time>
                           <span
                             className="message-token"
@@ -3731,6 +3835,7 @@ export default function App() {
           onClose={() => setAssistantCenterOpen(false)}
           onSave={saveAssistant}
           onSuggest={suggestAssistant}
+          onImport={importAssistantTemplate}
         />
       )}
       {pendingWorkspaceRoot && (
@@ -3752,8 +3857,16 @@ export default function App() {
       {assistantSettingsOpen && (
         <AssistantSettingsDialog
           assistant={activeAssistant}
+          assistants={assistants}
+          skills={skills}
+          tools={tools}
           onClose={() => setAssistantSettingsOpen(false)}
           onSave={saveAssistant}
+          onExport={exportAssistantTemplate}
+          onOpenExtensions={() => {
+            setAssistantSettingsOpen(false)
+            setToolCenterOpen(true)
+          }}
         />
       )}
       {conversationModelOpen && activeConversation && (
@@ -3782,10 +3895,13 @@ export default function App() {
       )}
       {toolCenterOpen && (
         <ToolConfigDialog
+          skills={skills}
           tools={tools}
           onClose={() => setToolCenterOpen(false)}
           onDelete={deleteToolConfig}
           onSave={saveToolConfig}
+          onDeleteSkill={deleteSkillConfig}
+          onSaveSkill={saveSkillConfig}
         />
       )}
       {spaceCenterOpen && (
@@ -4491,14 +4607,118 @@ function UserAgreementDialog({ onAccept, onRecoverData }: { onAccept: () => void
   )
 }
 
+function CapabilityBindingList({
+  label,
+  emptyLabel,
+  emptyActionLabel,
+  items,
+  selectedIds,
+  onChange,
+  onEmptyAction
+}: {
+  label: string
+  emptyLabel: string
+  emptyActionLabel?: string
+  items: Array<{ id: string; name: string; detail: string }>
+  selectedIds: string[]
+  onChange: (ids: string[]) => void
+  onEmptyAction?: () => void
+}) {
+  return (
+    <fieldset className="capability-binding-list">
+      <legend>{label}</legend>
+      {items.length === 0 ? (
+        <div className="capability-empty-state">
+          <p>{emptyLabel}</p>
+          {onEmptyAction && emptyActionLabel && (
+            <button className="capability-empty-action" onClick={onEmptyAction} type="button">
+              <Wrench size={14} />
+              {emptyActionLabel}
+            </button>
+          )}
+        </div>
+      ) : items.map((item) => {
+        const checked = selectedIds.includes(item.id)
+        return (
+          <label key={item.id}>
+            <input
+              checked={checked}
+              type="checkbox"
+              onChange={() => onChange(checked
+                ? selectedIds.filter((id) => id !== item.id)
+                : [...selectedIds, item.id])}
+            />
+            <span><strong>{item.name}</strong><small>{item.detail}</small></span>
+          </label>
+        )
+      })}
+    </fieldset>
+  )
+}
+
+function AssistantDelegationList({
+  assistants,
+  selectedIds,
+  onChange
+}: {
+  assistants: Assistant[]
+  selectedIds: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <fieldset className="assistant-delegation-list">
+      <legend>{t('assistantSettings.delegates')}</legend>
+      <p className="assistant-delegation-help">{t('assistantSettings.delegatesDescription')}</p>
+      {assistants.length === 0 ? (
+        <div className="capability-empty-state"><p>{t('assistantSettings.noDelegates')}</p></div>
+      ) : (
+        <div className="assistant-delegation-grid">
+          {assistants.map((item) => {
+            const checked = selectedIds.includes(item.id)
+            return (
+              <label className={checked ? 'selected' : ''} key={item.id}>
+                <input
+                  checked={checked}
+                  type="checkbox"
+                  onChange={() => onChange(checked
+                    ? selectedIds.filter((id) => id !== item.id)
+                    : [...selectedIds, item.id])}
+                />
+                <AssistantAvatar assistant={item} />
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{item.title}</small>
+                </span>
+                <span className="assistant-delegation-check"><CircleCheck size={17} /></span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </fieldset>
+  )
+}
+
 function AssistantSettingsDialog({
   assistant,
+  assistants,
+  skills,
+  tools,
   onClose,
-  onSave
+  onSave,
+  onExport,
+  onOpenExtensions
 }: {
   assistant: Assistant
+  assistants: Assistant[]
+  skills: SkillConfig[]
+  tools: ToolConfig[]
   onClose: () => void
   onSave: (assistant: Assistant) => Promise<Assistant>
+  onExport: (assistant: Assistant) => Promise<void>
+  onOpenExtensions: () => void
 }) {
   const { t } = useTranslation()
   const builtInAssistant = DEFAULT_ASSISTANTS.find((item) => item.id === assistant.id)
@@ -4510,6 +4730,12 @@ function AssistantSettingsDialog({
   const [avatarZoom, setAvatarZoom] = useState(1)
   const [systemPrompt, setSystemPrompt] = useState(assistant.systemPrompt)
   const [starterPromptText, setStarterPromptText] = useState(assistant.starterPrompts.join('\n'))
+  const [assistantStatus, setAssistantStatus] = useState(assistant.status ?? 'active')
+  const [sourceLocator, setSourceLocator] = useState(assistant.configSource?.locator ?? '')
+  const [configVersion, setConfigVersion] = useState(assistant.configSource?.version ?? '1.0.0')
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>(assistant.skillIds ?? [])
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>(assistant.toolIds ?? [])
+  const [delegateAssistantIds, setDelegateAssistantIds] = useState<string[]>(assistant.delegateAssistantIds ?? [])
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -4525,7 +4751,13 @@ function AssistantSettingsDialog({
     tone.trim() !== assistant.tone ||
     (avatarDataUrl || undefined) !== (assistant.avatarDataUrl || undefined) ||
     systemPrompt.trim() !== assistant.systemPrompt ||
-    starterPrompts.join('\n') !== assistant.starterPrompts.join('\n')
+    starterPrompts.join('\n') !== assistant.starterPrompts.join('\n') ||
+    assistantStatus !== (assistant.status ?? 'active') ||
+    sourceLocator.trim() !== (assistant.configSource?.locator ?? '') ||
+    configVersion.trim() !== (assistant.configSource?.version ?? '1.0.0') ||
+    selectedSkillIds.join('|') !== (assistant.skillIds ?? []).join('|') ||
+    selectedToolIds.join('|') !== (assistant.toolIds ?? []).join('|') ||
+    delegateAssistantIds.join('|') !== (assistant.delegateAssistantIds ?? []).join('|')
 
   useEffect(() => {
     if (!avatarSourceDataUrl) return
@@ -4543,6 +4775,13 @@ function AssistantSettingsDialog({
       disposed = true
     }
   }, [avatarSourceDataUrl, avatarZoom])
+
+  useEffect(() => {
+    const availableIds = new Set(assistants
+      .filter((item) => item.id !== assistant.id && (item.status ?? 'active') === 'active')
+      .map((item) => item.id))
+    setDelegateAssistantIds((current) => current.filter((id) => availableIds.has(id)))
+  }, [assistant.id, assistants])
 
   async function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -4589,6 +4828,15 @@ function AssistantSettingsDialog({
         systemPrompt: nextPrompt,
         starterPrompts: starterPrompts.length > 0 ? starterPrompts : assistant.starterPrompts,
         avatarDataUrl: avatarDataUrl || undefined,
+        status: assistantStatus,
+        configSource: {
+          type: assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local'),
+          locator: sourceLocator.trim() || undefined,
+          version: configVersion.trim() || '1.0.0'
+        },
+        skillIds: selectedSkillIds,
+        toolIds: selectedToolIds,
+        delegateAssistantIds,
         updatedAt: Date.now()
       })
       setStatus(t('assistantSettings.saved'))
@@ -4673,6 +4921,54 @@ function AssistantSettingsDialog({
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
 
+          <div className="form-row two">
+            <label>
+              <span>{t('assistantSettings.status')}</span>
+              <select value={assistantStatus} onChange={(event) => setAssistantStatus(event.target.value as NonNullable<Assistant['status']>)}>
+                <option value="active">{t('assistantSettings.statuses.active')}</option>
+                <option value="draft">{t('assistantSettings.statuses.draft')}</option>
+                <option value="paused">{t('assistantSettings.statuses.paused')}</option>
+              </select>
+            </label>
+            <label>
+              <span>{t('assistantSettings.configVersion')}</span>
+              <input value={configVersion} onChange={(event) => setConfigVersion(event.target.value)} />
+            </label>
+          </div>
+
+          <label>
+            <span>{t('assistantSettings.configSource')}</span>
+            <input
+              placeholder={t('assistantSettings.configSourcePlaceholder')}
+              value={sourceLocator}
+              onChange={(event) => setSourceLocator(event.target.value)}
+            />
+          </label>
+
+          <CapabilityBindingList
+            emptyLabel={t('assistantSettings.noSkills')}
+            emptyActionLabel={t('assistantSettings.openExtensions')}
+            items={skills.map((skill) => ({ id: skill.id, name: skill.name, detail: `${skill.version} · ${t(`assistantSettings.statuses.${skill.status}`)}` }))}
+            label={t('assistantSettings.skills')}
+            selectedIds={selectedSkillIds}
+            onChange={setSelectedSkillIds}
+            onEmptyAction={onOpenExtensions}
+          />
+
+          <CapabilityBindingList
+            emptyLabel={t('assistantSettings.noTools')}
+            items={tools.map((tool) => ({ id: tool.id, name: tool.name, detail: t(`tools.types.${tool.type}`) }))}
+            label={t('assistantSettings.tools')}
+            selectedIds={selectedToolIds}
+            onChange={setSelectedToolIds}
+          />
+
+          <AssistantDelegationList
+            assistants={assistants.filter((item) => item.id !== assistant.id && (item.status ?? 'active') === 'active')}
+            selectedIds={delegateAssistantIds}
+            onChange={setDelegateAssistantIds}
+          />
+
           <label>
             <span>{t('assistantSettings.systemPrompt')}</span>
             <textarea
@@ -4699,6 +4995,9 @@ function AssistantSettingsDialog({
         </div>
 
         <div className="form-actions assistant-settings-actions">
+          <button className="secondary-action" disabled={saving} onClick={() => void onExport(assistant)} type="button">
+            {t('assistantTemplates.export')}
+          </button>
           <button className="secondary-action" disabled={!builtInAssistant || saving} onClick={restoreBuiltInPrompt} type="button">
             {t('assistantSettings.restorePrompt')}
           </button>
@@ -4720,13 +5019,15 @@ function AddAssistantDialog({
   providers,
   onClose,
   onSave,
-  onSuggest
+  onSuggest,
+  onImport
 }: {
   globalProviderId: string
   providers: ApiProvider[]
   onClose: () => void
   onSave: (assistant: Assistant) => Promise<Assistant>
   onSuggest: (keyword: string, provider: ApiProvider) => Promise<AssistantSuggestion>
+  onImport: () => Promise<void>
 }) {
   const { t } = useTranslation()
   const [keyword, setKeyword] = useState('')
@@ -4842,6 +5143,9 @@ function AddAssistantDialog({
             <h2>{t('addAssistant.title')}</h2>
           </div>
           <div className="header-actions">
+            <button className="secondary-action" onClick={() => void onImport()} type="button">
+              {t('assistantTemplates.import')}
+            </button>
             <button className="icon-button" onClick={onClose} title={t('common.close')}>
               <X size={18} />
             </button>
@@ -5283,15 +5587,21 @@ function KnowledgeBaseDialog({
 }
 
 function ToolConfigDialog({
+  skills,
   tools,
   onClose,
   onDelete,
-  onSave
+  onSave,
+  onDeleteSkill,
+  onSaveSkill
 }: {
+  skills: SkillConfig[]
   tools: ToolConfig[]
   onClose: () => void
   onDelete: (id: string) => Promise<void>
   onSave: (tool: ToolConfig) => Promise<ToolConfig>
+  onDeleteSkill: (id: string) => Promise<void>
+  onSaveSkill: (skill: SkillConfig) => Promise<SkillConfig>
 }) {
   const { t } = useTranslation()
   const [type, setType] = useState<ToolConfigType>('function')
@@ -5300,6 +5610,120 @@ function ToolConfigDialog({
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
+  const [activeSection, setActiveSection] = useState<'skills' | 'tools'>('skills')
+  const [skillName, setSkillName] = useState('')
+  const [skillDescription, setSkillDescription] = useState('')
+  const [skillInstructions, setSkillInstructions] = useState('')
+  const [skillImportSource, setSkillImportSource] = useState('')
+  const skillFileInputRef = useRef<HTMLInputElement>(null)
+
+  async function saveNewSkill() {
+    if (!skillName.trim() || !skillInstructions.trim()) {
+      setStatus(t('skills.required'))
+      return
+    }
+    setSaving(true)
+    const now = Date.now()
+    try {
+      const saved = await onSaveSkill({
+        id: createId('skill'),
+        name: skillName.trim(),
+        description: skillDescription.trim(),
+        instructions: skillInstructions.trim(),
+        version: '1.0.0',
+        status: 'active',
+        sourceType: skillImportSource ? 'imported' : 'local',
+        sourceLocator: skillImportSource || undefined,
+        toolIds: [],
+        createdAt: now,
+        updatedAt: now
+      })
+      setStatus(t('skills.saved', { skill: saved.name }))
+      setSkillName('')
+      setSkillDescription('')
+      setSkillInstructions('')
+      setSkillImportSource('')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function chooseSkillMarkdown(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    if (!/\.(?:md|markdown)$/i.test(file.name)) {
+      setStatus(t('skills.markdownOnly'))
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      setStatus(t('skills.fileTooLarge'))
+      return
+    }
+
+    try {
+      const parsed = parseSkillMarkdown(await file.text(), file.name)
+      if (!parsed.instructions) {
+        setStatus(t('skills.emptyFile'))
+        return
+      }
+      setSkillName(parsed.name)
+      setSkillDescription(parsed.description)
+      setSkillInstructions(parsed.instructions)
+      setSkillImportSource(file.name)
+      setStatus(t('skills.fileReady', { file: file.name }))
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t('skills.fileReadFailed'))
+    }
+  }
+
+  async function toggleSkill(skill: SkillConfig) {
+    setSaving(true)
+    try {
+      const saved = await onSaveSkill({ ...skill, status: skill.status === 'active' ? 'paused' : 'active' })
+      setStatus(t(saved.status === 'active' ? 'skills.enabled' : 'skills.disabled', { skill: saved.name }))
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function createSkillRevision(skill: SkillConfig) {
+    const instructions = window.prompt(t('skills.revisionPrompt'), skill.instructions)
+    if (instructions === null || !instructions.trim() || instructions.trim() === skill.instructions) return
+    const reason = window.prompt(t('skills.revisionReasonPrompt'), '') ?? ''
+    const saved = await onSaveSkill(evolveSkill(skill, instructions, reason))
+    setStatus(t('skills.revisionSaved', { skill: saved.name, version: saved.version }))
+  }
+
+  async function rollbackLatestSkillRevision(skill: SkillConfig) {
+    const revision = skill.revisions?.at(-1)
+    if (!revision || !window.confirm(t('skills.rollbackConfirm', { version: revision.version }))) return
+    const saved = await onSaveSkill(rollbackSkill(skill, revision.version))
+    setStatus(t('skills.rolledBack', { skill: saved.name, version: saved.version }))
+  }
+
+  async function addSkillFeedbackCase(skill: SkillConfig) {
+    const input = window.prompt(t('skills.evalInputPrompt'), '')
+    if (!input?.trim()) return
+    const expected = window.prompt(t('skills.evalExpectedPrompt'), '')
+    if (!expected?.trim()) return
+    const output = window.prompt(t('skills.evalOutputPrompt'), '') ?? ''
+    const saved = await onSaveSkill(addSkillEvalCase(skill, input, expected.split(/[,，\n]/), output))
+    setStatus(t('skills.evalAdded', { skill: saved.name }))
+  }
+
+  async function runSkillRegression(skill: SkillConfig) {
+    const saved = await onSaveSkill(evaluateSkillRegression(skill))
+    setStatus(t('skills.evalResult', {
+      passed: saved.lastEvaluation?.passed ?? 0,
+      failed: saved.lastEvaluation?.failed ?? 0
+    }))
+  }
 
   async function saveNewTool() {
     const trimmedName = name.trim()
@@ -5375,7 +5799,84 @@ function ToolConfigDialog({
           {t('tools.note')}
         </div>
 
+        <div className="tool-center-tabs" role="tablist">
+          <button className={activeSection === 'skills' ? 'active' : ''} onClick={() => setActiveSection('skills')} role="tab" type="button">
+            <Brain size={16} />
+            {t('skills.title')}
+            <span>{skills.length}</span>
+          </button>
+          <button className={activeSection === 'tools' ? 'active' : ''} onClick={() => setActiveSection('tools')} role="tab" type="button">
+            <Wrench size={16} />
+            {t('tools.workspaceTools')}
+            <span>{tools.length}</span>
+          </button>
+        </div>
+
+        <div className="tool-center-content">
+        {activeSection === 'skills' && <>
+        <div className="tool-config-form skill-config-form">
+          <h3>{t('skills.title')}</h3>
+          <label>
+            <span>{t('skills.name')}</span>
+            <input value={skillName} onChange={(event) => setSkillName(event.target.value)} />
+          </label>
+          <label>
+            <span>{t('skills.description')}</span>
+            <input value={skillDescription} onChange={(event) => setSkillDescription(event.target.value)} />
+          </label>
+          <label>
+            <span>{t('skills.instructions')}</span>
+            <textarea rows={4} value={skillInstructions} onChange={(event) => setSkillInstructions(event.target.value)} />
+          </label>
+          {skillImportSource && <div className="skill-import-source"><FileText size={14} />{t('skills.importedFrom', { file: skillImportSource })}</div>}
+          <input ref={skillFileInputRef} accept=".md,.markdown,text/markdown" hidden type="file" onChange={(event) => void chooseSkillMarkdown(event)} />
+          <div className="skill-form-actions">
+            <button className="secondary-action" disabled={saving} onClick={() => skillFileInputRef.current?.click()} type="button">
+              <Upload size={16} />
+              {t('skills.uploadMarkdown')}
+            </button>
+            <button className="primary-action" disabled={saving} onClick={() => void saveNewSkill()} type="button">
+              <Plus size={16} />
+              {t('skills.add')}
+            </button>
+          </div>
+          <div className="tool-card-list skill-card-list">
+            {skills.length === 0 && <div className="tool-empty">{t('skills.empty')}</div>}
+            {skills.map((skill) => (
+              <article key={skill.id} className={`tool-card ${skill.status === 'active' ? 'enabled' : ''}`}>
+                <span className="tool-card-icon"><Brain size={18} /></span>
+                <div>
+                  <strong>{skill.name}</strong>
+                  <p>v{skill.version} · {t(`assistantSettings.statuses.${skill.status}`)}</p>
+                  {skill.description && <em>{skill.description}</em>}
+                  {skill.lastEvaluation && (
+                    <small>{t('skills.lastEvaluation', {
+                      passed: skill.lastEvaluation.passed,
+                      failed: skill.lastEvaluation.failed
+                    })}</small>
+                  )}
+                </div>
+                <div className="tool-card-actions">
+                  <button disabled={saving} type="button" onClick={() => void createSkillRevision(skill)}>{t('skills.newVersion')}</button>
+                  <button disabled={saving || !skill.revisions?.length} type="button" onClick={() => void rollbackLatestSkillRevision(skill)}>{t('skills.rollback')}</button>
+                  <button disabled={saving} type="button" onClick={() => void addSkillFeedbackCase(skill)}>{t('skills.addEval')}</button>
+                  <button disabled={saving || !skill.evalCases?.length} type="button" onClick={() => void runSkillRegression(skill)}>{t('skills.runEval')}</button>
+                  <button disabled={saving} type="button" onClick={() => void toggleSkill(skill)}>
+                    {skill.status === 'active' ? t('knowledge.disable') : t('knowledge.enable')}
+                  </button>
+                  <button disabled={saving} type="button" onClick={() => void onDeleteSkill(skill.id)}>
+                    {t('common.delete')}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+        </>}
+
+        {activeSection === 'tools' && <>
         <div className="tool-config-form">
+          <h3>{t('tools.workspaceTools')}</h3>
           <div className="tool-type-tabs">
             {(['function', 'mcp', 'plugin'] as ToolConfigType[]).map((item) => (
               <button key={item} className={item === type ? 'active' : ''} onClick={() => setType(item)} type="button">
@@ -5437,8 +5938,10 @@ function ToolConfigDialog({
             </article>
           ))}
         </div>
+        </>}
 
         {status && <div className="assistant-status">{status}</div>}
+        </div>
       </section>
     </ModalBackdrop>
   )
@@ -6256,6 +6759,7 @@ function SettingsPanel({
                         {model.id === providerDraft.defaultModel && <small>{t('provider.defaultBadge')}</small>}
                       </button>
                       <span className="model-capability-list">
+                        <ModelAccessTierBadge model={model} provider={providerDraft} />
                         {normalizeModelCapabilities(model).map((capability) => (
                           <span key={capability} className={`model-capability-badge type-${capability}`}>
                             {t(`modelPicker.capability.${capability}`)}
@@ -6366,47 +6870,49 @@ function SettingsPanel({
 
         {activeSettingsTab === 'personalization' && (
           <div className="settings-tab-panel personalization-settings-panel">
-            <section className="preference-section language-preference-section">
-              <div className="data-location-head">
-                <div>
-                  <strong>{t('language.label')}</strong>
-                  <small>{t('language.description')}</small>
+            <div className="locale-preference-grid">
+              <section className="preference-section language-preference-section">
+                <div className="data-location-head">
+                  <div>
+                    <strong>{t('language.label')}</strong>
+                    <small>{t('language.description')}</small>
+                  </div>
                 </div>
-              </div>
-              <select
-                className="language-select"
-                value={settingsDraft.language}
-                onChange={(event) => {
-                  const language = event.target.value as AppSettings['language']
-                  setSettingsDraft({ ...settingsDraft, language })
-                }}
-              >
-                <option value="system">{t('language.system')}</option>
-                <option value="zh-CN">{t('language.zhCN')}</option>
-                <option value="en-US">{t('language.enUS')}</option>
-              </select>
-            </section>
+                <select
+                  className="language-select"
+                  value={settingsDraft.language}
+                  onChange={(event) => {
+                    const language = event.target.value as AppSettings['language']
+                    setSettingsDraft({ ...settingsDraft, language })
+                  }}
+                >
+                  <option value="system">{t('language.system')}</option>
+                  <option value="zh-CN">{t('language.zhCN')}</option>
+                  <option value="en-US">{t('language.enUS')}</option>
+                </select>
+              </section>
 
-            <section className="preference-section timezone-preference-section">
-              <div className="data-location-head">
-                <div>
-                  <strong>{t('settings.timeZone.title')}</strong>
-                  <small>{t('settings.timeZone.description')}</small>
+              <section className="preference-section timezone-preference-section">
+                <div className="data-location-head">
+                  <div>
+                    <strong>{t('settings.timeZone.title')}</strong>
+                    <small>{t('settings.timeZone.description')}</small>
+                  </div>
                 </div>
-              </div>
-              <select
-                className="language-select"
-                value={settingsDraft.timeZone}
-                onChange={(event) => setSettingsDraft({ ...settingsDraft, timeZone: event.target.value })}
-              >
-                <option value="system">
-                  {t('settings.timeZone.system', { zone: resolveTimeZone('system') })}
-                </option>
-                {TIME_ZONE_OPTIONS.map((timeZone) => (
-                  <option key={timeZone} value={timeZone}>{getTimeZoneOptionLabel(timeZone)}</option>
-                ))}
-              </select>
-            </section>
+                <select
+                  className="language-select"
+                  value={settingsDraft.timeZone}
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, timeZone: event.target.value })}
+                >
+                  <option value="system">
+                    {t('settings.timeZone.system', { zone: resolveTimeZone('system') })}
+                  </option>
+                  {TIME_ZONE_OPTIONS.map((timeZone) => (
+                    <option key={timeZone} value={timeZone}>{getTimeZoneOptionLabel(timeZone)}</option>
+                  ))}
+                </select>
+              </section>
+            </div>
 
             <section className="preference-section theme-preference-section">
               <div className="data-location-head">

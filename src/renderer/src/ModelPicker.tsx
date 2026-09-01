@@ -19,7 +19,7 @@ import {
 import { supportsReasoningEffort } from '@shared/featureFlags'
 import { resolveProviderModelId } from '@shared/providers'
 import type { ApiProvider, ProviderModel, ReasoningEffort } from '@shared/types'
-import { getCompactModelTitle } from './modelDisplay'
+import { getCompactModelTitle, getModelAccessTier } from './modelDisplay'
 
 const reasoningEffortOptions: Array<{ value: ReasoningEffort; labelKey: string; titleKey: string }> = [
   { value: 'default', labelKey: 'modelPicker.reasoning.default', titleKey: 'modelPicker.reasoning.defaultTitle' },
@@ -191,7 +191,15 @@ export function ModelCapabilityBadges({ model }: { model: ProviderModel }) {
   )
 }
 
+export function ModelAccessTierBadge({ provider, model }: { provider: ApiProvider; model: Pick<ProviderModel, 'id'> }) {
+  const { t } = useTranslation()
+  const tier = getModelAccessTier(provider, model)
+  if (!tier) return null
+  return <span className={`model-tier-badge ${tier}`}>{t(`modelPicker.${tier}`)}</span>
+}
+
 function ModelPickerList({
+  provider,
   models,
   selectedModelId,
   onSelect,
@@ -200,6 +208,7 @@ function ModelPickerList({
   onModelReasoningChange,
   emptyLabel
 }: {
+  provider: ApiProvider
   models: ProviderModel[]
   selectedModelId: string
   onSelect: (modelId: string) => void
@@ -261,6 +270,7 @@ function ModelPickerList({
               </span>
             )}
             <span className="model-capability-list">
+              <ModelAccessTierBadge model={model} provider={provider} />
               <ModelCapabilityBadges model={model} />
             </span>
           </div>
@@ -367,7 +377,7 @@ export function ModelPickerMenu({
   if (variant === 'dropdown') {
     const subtitle = selectedModel ? getModelSubtitle(selectedModel) : ''
     const compactTitle = selectedModel && compactTrigger ? getCompactModelTitle(selectedModel) : ''
-    const isFreeModel = Boolean(selectedModel && /:free$/i.test(selectedModel.id))
+    const selectedTier = selectedModel ? getModelAccessTier(provider, selectedModel) : null
 
     return (
       <div
@@ -387,7 +397,7 @@ export function ModelPickerMenu({
           <span className="model-dropdown-current">
             <strong>
               {selectedModel ? compactTitle || getModelTitle(selectedModel) : value || t('modelPicker.select')}
-              {compactTrigger && isFreeModel && <span className="model-current-tier"> · {t('modelPicker.free')}</span>}
+              {compactTrigger && selectedTier && <span className={`model-current-tier ${selectedTier}`}> · {t(`modelPicker.${selectedTier}`)}</span>}
               {showReasoningValue && <span className="model-current-reasoning"> {t(selectedReasoningOption.labelKey)}</span>}
             </strong>
             {subtitle && <small>{subtitle}</small>}
@@ -403,6 +413,7 @@ export function ModelPickerMenu({
           <div className="model-dropdown-popover">
             {searchField}
             <ModelPickerList
+              provider={provider}
               models={visibleModelOptions}
               selectedModelId={value}
               reasoningEffort={selectedReasoningEffort}
@@ -435,7 +446,7 @@ export function ModelPickerMenu({
         </small>
       </div>
       {searchField}
-      <ModelPickerList models={visibleModelOptions} selectedModelId={value} onSelect={selectModel} />
+      <ModelPickerList provider={provider} models={visibleModelOptions} selectedModelId={value} onSelect={selectModel} />
     </div>
   )
 }

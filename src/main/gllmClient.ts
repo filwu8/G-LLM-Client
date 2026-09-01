@@ -21,11 +21,13 @@ import type {
   PreparedAttachment,
   ProviderCheckResult,
   ProviderModel,
+  SkillConfig,
   WebResearchAudit,
   WebSearchActivity,
   WebSearchResult
 } from '../shared/types'
 import type { AppLanguage } from '../shared/i18n'
+import { buildAssistantSkillContext } from '../shared/assistantCapabilities'
 import {
   sanitizeAssistantSystemPrompt,
   universalAssistantPolicy,
@@ -290,6 +292,7 @@ function buildAssistantSystemInstruction(
   messages: ChatMessage[],
   compressedHistory?: string,
   assistantMemories: AssistantMemory[] = [],
+  assistantSkills: SkillConfig[] = [],
   projectMemory?: ConversationProjectMemory
 ): string {
   const basePrompt = assistant.systemPrompt.trim() || universalFallbackPrompt
@@ -300,6 +303,7 @@ function buildAssistantSystemInstruction(
     getTimelineSystemContext(assistant, messages, compressedHistory),
     '',
     getAssistantMemoryContext(assistantMemories),
+    buildAssistantSkillContext(assistantSkills),
     getConversationProjectMemoryContext(projectMemory),
     '\n\n如果用户开启了联网搜索，本客户端会在用户消息后附加“联网搜索资料”。回答时优先结合这些资料，并说明信息可能存在时效性，避免声称自己无法联网。请按“来源相关性、时效性、来源一致性”判断；同一观点仅来自单一来源时要标注不确定，并建议继续验证。'
   ].join('\n')
@@ -316,6 +320,7 @@ function prepareOpenAiMessages(
   webContext = '',
   sendImages = true,
   assistantMemories: AssistantMemory[] = [],
+  assistantSkills: SkillConfig[] = [],
   projectMemory?: ConversationProjectMemory
 ): PreparedOpenAiMessages {
   const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user')
@@ -325,7 +330,7 @@ function prepareOpenAiMessages(
     messages: normalizeOpenAiSystemMessages([
       {
         role: 'system',
-        content: buildAssistantSystemInstruction(assistant, messages, context.compressedHistory, assistantMemories, projectMemory)
+        content: buildAssistantSystemInstruction(assistant, messages, context.compressedHistory, assistantMemories, assistantSkills, projectMemory)
       },
       ...(context.compressedHistory
         ? [
@@ -2149,6 +2154,7 @@ export async function* streamGllmChat(
       webContext,
       sendImages,
       request.assistantMemories ?? [],
+      request.assistantSkills ?? [],
       request.projectMemory
     )
     contextSavings = preparedMessages.contextSavings

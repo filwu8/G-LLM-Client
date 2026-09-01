@@ -39,6 +39,7 @@ import type {
   PreparedAttachment,
   Project,
   ProviderCheckResult,
+  SkillConfig,
   ThemeEntitlementResult,
   ToolConfig,
   WorkspaceAgentProgress,
@@ -99,6 +100,9 @@ const api = {
     ipcRenderer.send('workspace-agent:approval-response', id, approved),
   deleteProject: (id: string): Promise<AppStateSnapshot> => ipcRenderer.invoke('project:delete', id),
   saveAssistant: (assistant: Assistant): Promise<Assistant> => ipcRenderer.invoke('assistant:save', assistant),
+  exportAssistantTemplate: (id: string): Promise<string | null> => ipcRenderer.invoke('assistant:export-template', id),
+  importAssistantTemplate: (): Promise<{ state: AppStateSnapshot; assistantId: string; warnings: string[] } | null> =>
+    ipcRenderer.invoke('assistant:import-template'),
   reorderAssistants: (ids: string[]): Promise<Assistant[]> => ipcRenderer.invoke('assistant:reorder', ids),
   deleteAssistant: (id: string): Promise<AppStateSnapshot> => ipcRenderer.invoke('assistant:delete', id),
   suggestAssistant: (request: AssistantSuggestionRequest): Promise<AssistantSuggestion> =>
@@ -116,6 +120,8 @@ const api = {
   deleteMemory: (id: string): Promise<void> => ipcRenderer.invoke('memory:delete', id),
   saveTool: (tool: ToolConfig): Promise<ToolConfig> => ipcRenderer.invoke('tool:save', tool),
   deleteTool: (id: string): Promise<void> => ipcRenderer.invoke('tool:delete', id),
+  saveSkill: (skill: SkillConfig): Promise<SkillConfig> => ipcRenderer.invoke('skill:save', skill),
+  deleteSkill: (id: string): Promise<void> => ipcRenderer.invoke('skill:delete', id),
   pickAttachments: (kind: AttachmentKind): Promise<PreparedAttachment[]> => ipcRenderer.invoke('attachment:pick', kind),
   preparePastedAttachments: (inputs: ClipboardAttachmentInput[]): Promise<PreparedAttachment[]> =>
     ipcRenderer.invoke('attachment:prepare-pasted', inputs),

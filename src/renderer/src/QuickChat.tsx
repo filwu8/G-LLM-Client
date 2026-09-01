@@ -61,6 +61,7 @@ import { applyRendererLanguage } from './i18n'
 import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { localizeAssistant } from './localizedContent'
 import { MarkdownMessage } from './MarkdownMessage'
+import { ResponseDuration } from './ResponseDuration'
 import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
@@ -68,6 +69,7 @@ import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, Works
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
+import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistantCapabilities'
 import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import type {
@@ -85,6 +87,8 @@ import type {
   MessageRetryAttempt,
   PreparedAttachment,
   ReasoningEffort,
+  SkillConfig,
+  ToolConfig,
   WebSearchMode,
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
@@ -192,13 +196,17 @@ function getQuickWebSearchRequestSettings(
   }
 }
 
-function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversation {
+function applyChatChunk(
+  conversation: Conversation,
+  chunk: ChatChunk,
+  timing: { startedAt?: number; completedAt?: number } = {}
+): Conversation {
   const messages = [...conversation.messages]
   const last = messages.at(-1)
   const errorPresentation = chunk.error ? getChatErrorPresentation(chunk.error) : undefined
   const nextContent = errorPresentation?.userMessage ?? chunk.content
 
-  if (!nextContent && !chunk.reasoningContent && !chunk.webSearch && !chunk.usage && !chunk.contextSavings && !chunk.cancelled) {
+  if (!nextContent && !chunk.reasoningContent && !chunk.webSearch && !chunk.usage && !chunk.contextSavings && !chunk.cancelled && !chunk.done) {
     return { ...conversation, updatedAt: Date.now() }
   }
 
@@ -216,10 +224,12 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
       tokenCount: chunk.usage?.totalTokens ?? estimatedOutputTokens,
       inputTokens: chunk.usage?.inputTokens ?? last.inputTokens,
       outputTokens: chunk.usage?.outputTokens ?? estimatedOutputTokens,
-      contextSavings: chunk.contextSavings ?? last.contextSavings
+      contextSavings: chunk.contextSavings ?? last.contextSavings,
+      responseStartedAt: last.responseStartedAt ?? timing.startedAt,
+      responseCompletedAt: timing.completedAt ?? last.responseCompletedAt
     }
   } else {
-    if (chunk.cancelled) return { ...conversation, updatedAt: Date.now() }
+    if (chunk.cancelled || (!nextContent && !chunk.reasoningContent && !chunk.webSearch)) return { ...conversation, updatedAt: Date.now() }
     messages.push({
       ...createMessage('assistant', nextContent),
       reasoningContent: chunk.reasoningContent,
@@ -229,7 +239,9 @@ function applyChatChunk(conversation: Conversation, chunk: ChatChunk): Conversat
       tokenCount: chunk.usage?.totalTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? ''),
       inputTokens: chunk.usage?.inputTokens ?? 0,
       outputTokens: chunk.usage?.outputTokens ?? estimateTokenCount(nextContent) + estimateTokenCount(chunk.reasoningContent ?? ''),
-      contextSavings: chunk.contextSavings
+      contextSavings: chunk.contextSavings,
+      responseStartedAt: timing.startedAt,
+      responseCompletedAt: timing.completedAt
     })
   }
 
@@ -270,6 +282,8 @@ export default function QuickChat() {
   const [assistants, setAssistants] = useState<Assistant[]>(DEFAULT_ASSISTANTS)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [memories, setMemories] = useState<AssistantMemory[]>([])
+  const [skills, setSkills] = useState<SkillConfig[]>([])
+  const [tools, setTools] = useState<ToolConfig[]>([])
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_PROVIDER.defaultModel)
@@ -295,6 +309,7 @@ export default function QuickChat() {
   const autoFollowMessagesRef = useRef(true)
   const conversationRef = useRef<Conversation | null>(null)
   const streamingConversationIdRef = useRef<string | null>(null)
+  const responseStartedAtRef = useRef<number | null>(null)
   const isStreamingRef = useRef(false)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
@@ -305,6 +320,11 @@ export default function QuickChat() {
     setIsStreaming(value)
   }
 
+  function beginQuickResponse(startedAt = Date.now()) {
+    responseStartedAtRef.current = startedAt
+    updateStreaming(true)
+  }
+
   const assistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
   const assistantDisplay = useMemo(
     () => localizeAssistant(assistant),
@@ -313,6 +333,14 @@ export default function QuickChat() {
   const assistantMemories = useMemo(
     () => memories.filter((memory) => memory.assistantId === assistant.id && memory.enabled),
     [assistant.id, memories]
+  )
+  const assistantSkills = useMemo(
+    () => resolveAssistantSkills(assistant, skills),
+    [assistant, skills]
+  )
+  const assistantTools = useMemo(
+    () => resolveAssistantTools(assistant, tools),
+    [assistant, tools]
   )
   const provider = useMemo(
     () => {
@@ -349,6 +377,8 @@ export default function QuickChat() {
       setAssistants(loadedAssistants)
       setConversations(state.conversations)
       setMemories(state.memories ?? [])
+      setSkills(state.skills ?? [])
+      setTools(state.tools ?? [])
       setActiveAssistantId(quickAssistant.id)
       const latestConversation = getLatestAssistantConversation(state.conversations, quickAssistant.id)
       const initialProvider = state.settings
@@ -510,13 +540,18 @@ export default function QuickChat() {
       chatChunkFlushTimerRef.current = null
       const chunks = coalesceChatChunks(pendingChatChunksRef.current.splice(0))
       if (chunks.length === 0) return
+      const responseStartedAt = responseStartedAtRef.current ?? undefined
+      const completedAt = Date.now()
 
       setConversation((active) => {
         if (!active) return active
         let next = active
         for (const chunk of chunks) {
           if (next.id !== chunk.conversationId) continue
-          next = applyChatChunk(next, chunk)
+          next = applyChatChunk(next, chunk, {
+            startedAt: responseStartedAt,
+            completedAt: chunk.done ? completedAt : undefined
+          })
         }
         if (next === active) return active
         conversationRef.current = next
@@ -530,6 +565,7 @@ export default function QuickChat() {
       for (const chunk of chunks) {
         if (!chunk.done) continue
         streamingConversationIdRef.current = null
+        responseStartedAtRef.current = null
         updateStreaming(false)
         if (chunk.error) {
           setStatus(getChatErrorPresentation(chunk.error).userMessage)
@@ -742,11 +778,16 @@ export default function QuickChat() {
     retryAttempts: MessageRetryAttempt[] = []
   ) {
     if (!settings) return
+    const responseStartedAt = responseStartedAtRef.current ?? nextConversation.messages.at(-1)?.createdAt ?? Date.now()
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
     try {
       const result = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
+        assistant,
+        assistantSkills,
+        assistantTools,
+        availableAssistants: assistants,
         workspace,
         provider: selectedProvider,
         messages: nextConversation.messages,
@@ -757,9 +798,12 @@ export default function QuickChat() {
       })
       const assistantMessage: ChatMessage = {
         ...createMessage('assistant', result.content),
+        responseStartedAt,
+        responseCompletedAt: Date.now(),
         workspaceActivities: result.activities,
         workspaceChangedFiles: result.changedFiles,
         workspaceArtifactRoot: workspace.rootPath,
+        agentPlan: result.plan,
         contextSavings: result.contextSavings,
         retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
       }
@@ -790,6 +834,8 @@ export default function QuickChat() {
       }
       const failedMessage: ChatMessage = {
         ...createMessage('assistant', t('workspace.taskFailed', { message })),
+        responseStartedAt,
+        responseCompletedAt: Date.now(),
         error: message,
         workspaceActivities: workspaceActivitiesRef.current,
         workspaceArtifactRoot: workspace.rootPath,
@@ -810,6 +856,7 @@ export default function QuickChat() {
     } finally {
       setWorkspaceApprovalPrompt(null)
       streamingConversationIdRef.current = null
+      responseStartedAtRef.current = null
       updateStreaming(false)
     }
   }
@@ -955,7 +1002,7 @@ export default function QuickChat() {
     }
 
     setStatus('')
-    updateStreaming(true)
+    beginQuickResponse()
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
@@ -974,6 +1021,7 @@ export default function QuickChat() {
       conversationId: nextConversation.id,
       assistant,
       assistantMemories,
+      assistantSkills,
       provider: selectedProvider,
       messages: nextConversation.messages,
       settings,
@@ -1034,7 +1082,7 @@ export default function QuickChat() {
 
     cancelQuickMessageEdit()
     setStatus('')
-    updateStreaming(true)
+    beginQuickResponse()
     setMessageAutoFollow(true)
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
@@ -1049,6 +1097,7 @@ export default function QuickChat() {
       conversationId: nextConversation.id,
       assistant,
       assistantMemories,
+      assistantSkills,
       provider: selectedProvider,
       messages: nextConversation.messages,
       settings,
@@ -1059,6 +1108,10 @@ export default function QuickChat() {
 
   function sendMessage(content = draft) {
     if (!settings || isStreamingRef.current) return
+    if ((assistant.status ?? 'active') !== 'active') {
+      setStatus(t('assistantSettings.inactiveNotice'))
+      return
+    }
 
     if (needsApiKey) {
       setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
@@ -1097,7 +1150,7 @@ export default function QuickChat() {
     setPendingQuoteRefs([])
     setPendingAttachments([])
     setStatus('')
-    updateStreaming(true)
+    beginQuickResponse(userMessage.createdAt)
     streamingConversationIdRef.current = nextConversation.id
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
@@ -1112,6 +1165,7 @@ export default function QuickChat() {
       conversationId: nextConversation.id,
       assistant,
       assistantMemories,
+      assistantSkills,
       provider: selectedProvider,
       messages: nextConversation.messages,
       settings,
@@ -1123,14 +1177,27 @@ export default function QuickChat() {
   function stopGenerating() {
     if (!isStreaming || !conversation) return
     window.gllm.cancelResponse(conversation.id)
-    const stoppedConversation = stopConversationWebSearch(conversation)
-    if (stoppedConversation !== conversation) {
-      setConversation(stoppedConversation)
-      setConversations((current) => current.map((item) => item.id === stoppedConversation.id ? stoppedConversation : item))
-      conversationRef.current = stoppedConversation
-      void window.gllm.saveConversation(stoppedConversation)
-    }
+    const stoppedWebSearchConversation = stopConversationWebSearch(conversation)
+    const lastAssistantIndex = stoppedWebSearchConversation.messages.findLastIndex((message) => message.role === 'assistant')
+    const stoppedConversation = lastAssistantIndex >= 0
+      ? {
+          ...stoppedWebSearchConversation,
+          messages: stoppedWebSearchConversation.messages.map((message, index) => index === lastAssistantIndex
+            ? {
+                ...message,
+                responseStartedAt: message.responseStartedAt ?? responseStartedAtRef.current ?? undefined,
+                responseCompletedAt: message.responseCompletedAt ?? Date.now()
+              }
+            : message),
+          updatedAt: Date.now()
+        }
+      : stoppedWebSearchConversation
+    setConversation(stoppedConversation)
+    setConversations((current) => current.map((item) => item.id === stoppedConversation.id ? stoppedConversation : item))
+    conversationRef.current = stoppedConversation
+    void window.gllm.saveConversation(stoppedConversation)
     streamingConversationIdRef.current = null
+    responseStartedAtRef.current = null
     updateStreaming(false)
   }
 
@@ -1417,9 +1484,10 @@ export default function QuickChat() {
                     ))}
                   </div>
                 )}
-                {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0) && (
+                {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan) && (
                   <WorkspaceActivityLog
                     activities={message.workspaceActivities ?? []}
+                    plan={message.agentPlan}
                     changedFiles={message.workspaceChangedFiles}
                     artifactRoot={message.workspaceArtifactRoot}
                     onArtifactOpen={(rootPath, relativePath) => void window.gllm.revealWorkspaceFile(rootPath, relativePath)}
@@ -1460,6 +1528,13 @@ export default function QuickChat() {
                   </button>
                 </div>
                 <div className="quick-message-meta">
+                  {message.role === 'assistant' && (
+                    <ResponseDuration
+                      completedAt={message.responseCompletedAt}
+                      running={isMessageStreaming}
+                      startedAt={message.responseStartedAt}
+                    />
+                  )}
                   <time dateTime={messageTimestamp.iso} title={messageTimestamp.full}>{messageTimestamp.short}</time>
                   <span
                     className="quick-message-token"

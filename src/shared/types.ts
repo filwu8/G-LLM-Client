@@ -29,12 +29,15 @@ export interface ChatMessage {
   workspaceActivities?: WorkspaceToolActivity[]
   workspaceChangedFiles?: string[]
   workspaceArtifactRoot?: string
+  agentPlan?: AgentExecutionPlan
   retryAttempts?: MessageRetryAttempt[]
   translation?: string
   tokenCount?: number
   inputTokens?: number
   outputTokens?: number
   contextSavings?: ContextSavings
+  responseStartedAt?: number
+  responseCompletedAt?: number
   createdAt: number
 }
 
@@ -201,6 +204,15 @@ export type AssistantIcon =
 
 export type AssistantColor = 'ink' | 'green' | 'amber' | 'blue' | 'rose' | 'teal' | 'violet' | 'slate'
 
+export type AssistantStatus = 'draft' | 'active' | 'paused'
+export type AssistantConfigSourceType = 'built-in' | 'local' | 'workspace' | 'imported'
+
+export interface AssistantConfigSource {
+  type: AssistantConfigSourceType
+  locator?: string
+  version: string
+}
+
 export interface Assistant {
   id: string
   projectId?: string
@@ -212,6 +224,11 @@ export interface Assistant {
   avatarDataUrl?: string
   systemPrompt: string
   starterPrompts: string[]
+  status?: AssistantStatus
+  configSource?: AssistantConfigSource
+  skillIds?: string[]
+  toolIds?: string[]
+  delegateAssistantIds?: string[]
   modelProviderId?: string
   modelId?: string
   builtIn?: boolean
@@ -321,6 +338,55 @@ export interface ToolConfig {
   enabled: boolean
   createdAt: number
   updatedAt: number
+}
+
+export type SkillStatus = 'draft' | 'active' | 'paused'
+export type SkillSourceType = 'local' | 'workspace' | 'imported'
+
+export interface SkillConfig {
+  id: string
+  projectId?: string
+  name: string
+  description: string
+  instructions: string
+  version: string
+  status: SkillStatus
+  sourceType: SkillSourceType
+  sourceLocator?: string
+  toolIds: string[]
+  revisions?: SkillRevision[]
+  evalCases?: SkillEvalCase[]
+  lastEvaluation?: SkillEvaluationSummary
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SkillRevision {
+  version: string
+  description: string
+  instructions: string
+  reason: string
+  createdAt: number
+}
+
+export interface SkillEvalCase {
+  id: string
+  input: string
+  expectedIncludes: string[]
+  sampleOutput: string
+  enabled: boolean
+  createdAt: number
+  lastPassed?: boolean
+  lastEvaluatedAt?: number
+  lastMissingCriteria?: string[]
+}
+
+export interface SkillEvaluationSummary {
+  skillVersion: string
+  passed: number
+  failed: number
+  total: number
+  evaluatedAt: number
 }
 
 export type ProviderTemplateId =
@@ -451,6 +517,24 @@ export interface WorkspaceToolActivity {
   detail?: string
 }
 
+export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+
+export interface AgentPlanStep {
+  id: string
+  title: string
+  status: AgentPlanStepStatus
+  detail?: string
+}
+
+export interface AgentExecutionPlan {
+  goal: string
+  status: 'planning' | 'executing' | 'verifying' | 'succeeded' | 'failed'
+  steps: AgentPlanStep[]
+  verification?: string
+  startedAt: number
+  completedAt?: number
+}
+
 export interface WorkspaceApprovalPrompt {
   id: string
   conversationId: string
@@ -462,6 +546,11 @@ export interface WorkspaceApprovalPrompt {
 
 export interface WorkspaceAgentRequest {
   conversationId: string
+  assistant: Assistant
+  assistantSkills?: SkillConfig[]
+  assistantTools?: ToolConfig[]
+  availableAssistants?: Assistant[]
+  delegationContext?: AssistantDelegationContext
   workspace: ConversationWorkspace
   provider: ApiProvider
   messages: ChatMessage[]
@@ -483,6 +572,14 @@ export interface WorkspaceAgentResult {
   activities: WorkspaceToolActivity[]
   changedFiles: string[]
   contextSavings?: ContextSavings
+  plan: AgentExecutionPlan
+}
+
+export interface AssistantDelegationContext {
+  path: string[]
+  depth: number
+  maxDepth: number
+  remainingCalls: number
 }
 
 export type AgentRunKind = 'chat' | 'workspace'
@@ -628,6 +725,7 @@ export interface ChatRequest {
   conversationId: string
   assistant: Assistant
   assistantMemories?: AssistantMemory[]
+  assistantSkills?: SkillConfig[]
   projectMemory?: ConversationProjectMemory
   provider: ApiProvider
   messages: ChatMessage[]
@@ -718,4 +816,21 @@ export interface AppStateSnapshot {
   notes: KnowledgeNote[]
   memories: AssistantMemory[]
   tools: ToolConfig[]
+  skills: SkillConfig[]
+}
+
+export interface AssistantTemplateBundle {
+  schemaVersion: 1
+  exportedAt: number
+  publisher?: string
+  assistant: Assistant
+  skills: SkillConfig[]
+  tools: ToolConfig[]
+}
+
+export interface AssistantTemplateImportResult {
+  assistant: Assistant
+  skills: SkillConfig[]
+  tools: ToolConfig[]
+  warnings: string[]
 }

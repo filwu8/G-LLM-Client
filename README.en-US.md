@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.13](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.14](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.13](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.13), released on 2026-08-28.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.14 Assistant Workflows, Skills, and Model Capabilities
+
+- Assistants can plan around a user goal, update execution progress, use workspace and extension tools, and delegate bounded work to explicitly authorized assistants.
+- The Extension Tool Center can create or upload Markdown Skills. Skills retain versions, evaluation cases, and rollback history, with clearer ownership and status metadata.
+- Improved delegated-assistant, extension-tool, and personalization layouts. Deleting an assistant automatically removes stale delegation references.
+- Completed responses show total working time, while model and research waits provide continuous animated feedback.
+- Models ending in `:free` receive a Free badge only on the official G-LLM endpoint; other official models receive a Paid badge, without applying that assumption to third-party APIs.
+- A capable chat model can turn an image request into a complete prompt and hand it to a real image-generation model from the same provider. Vision input is never mistaken for image generation.
 
 ## V2.0.13 Self-Hosted Models, Workspace Agent, and Update Reliability
 

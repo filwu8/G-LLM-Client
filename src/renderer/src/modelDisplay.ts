@@ -4,7 +4,21 @@
  * Change Date: 2030-08-01
  */
 
-import type { ProviderModel } from '@shared/types'
+import type { ApiProvider, ProviderModel } from '@shared/types'
+
+export type ModelAccessTier = 'free' | 'paid'
+
+export function getModelAccessTier(provider: ApiProvider, model: Pick<ProviderModel, 'id'>): ModelAccessTier | null {
+  let normalizedApiBaseUrl = ''
+  try {
+    const url = new URL(provider.apiBaseUrl)
+    normalizedApiBaseUrl = `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`.toLocaleLowerCase()
+  } catch {
+    return null
+  }
+  if (normalizedApiBaseUrl !== 'https://llm.gprophet.com/v1') return null
+  return /:free$/i.test(model.id.trim()) ? 'free' : 'paid'
+}
 
 export function getCompactModelTitle(model: ProviderModel): string {
   const configuredName = model.name?.trim()

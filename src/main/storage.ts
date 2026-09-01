@@ -16,7 +16,9 @@ import { DEFAULT_ASSISTANTS } from '../shared/assistants'
 import { inferModelType, normalizeModelCapabilities } from '../shared/modelCapabilities'
 import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID } from '../shared/providers'
 import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../shared/assistantPromptPolicy'
+import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
 import type {
+  AgentExecutionPlan,
   ApiProvider,
   AppSettings,
   AppTheme,
@@ -37,6 +39,9 @@ import type {
   Project,
   ProviderModel,
   ReasoningEffort,
+  SkillConfig,
+  SkillSourceType,
+  SkillStatus,
   ToolConfig,
   ToolConfigType,
   ThemeEntitlementResult,
@@ -70,6 +75,7 @@ interface StoreSchema {
   notes: KnowledgeNote[]
   memories: AssistantMemory[]
   tools: ToolConfig[]
+  skills: SkillConfig[]
   installationId: string
   themeRequestUsage: ThemeRequestUsage
 }
@@ -628,6 +634,7 @@ const store = new Store<StoreSchema>({
     notes: [],
     memories: [],
     tools: [],
+    skills: [],
     installationId: '',
     themeRequestUsage: {
       totalRequests: 0,
@@ -989,6 +996,25 @@ function sanitizeTimeZone(value: unknown): string {
   }
 }
 
+function sanitizeAgentPlan(value: AgentExecutionPlan | undefined): AgentExecutionPlan | undefined {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.steps)) return undefined
+  const statuses = ['pending', 'running', 'completed', 'failed', 'skipped'] as const
+  const planStatuses = ['planning', 'executing', 'verifying', 'succeeded', 'failed'] as const
+  return {
+    goal: String(value.goal ?? '').trim().slice(0, 500),
+    status: planStatuses.includes(value.status) ? value.status : 'planning',
+    steps: value.steps.slice(0, 30).map((step, index) => ({
+      id: String(step.id ?? '').trim().slice(0, 80) || `step_${index + 1}`,
+      title: String(step.title ?? '').trim().slice(0, 200) || `步骤 ${index + 1}`,
+      status: statuses.includes(step.status) ? step.status : 'pending',
+      detail: String(step.detail ?? '').trim().slice(0, 500) || undefined
+    })),
+    verification: String(value.verification ?? '').trim().slice(0, 1000) || undefined,
+    startedAt: Number.isFinite(value.startedAt) ? Number(value.startedAt) : Date.now(),
+    completedAt: Number.isFinite(value.completedAt) ? Number(value.completedAt) : undefined
+  }
+}
+
 function sanitizeMessage(message: ChatMessage): ChatMessage {
   const role = message.role === 'assistant' || message.role === 'user' || message.role === 'system' ? message.role : 'user'
   const content = String(message.content ?? '')
@@ -1026,6 +1052,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     })),
     workspaceChangedFiles: (message.workspaceChangedFiles ?? []).map(String).filter(Boolean).slice(0, 100),
     workspaceArtifactRoot: message.workspaceArtifactRoot?.trim() || undefined,
+    agentPlan: sanitizeAgentPlan(message.agentPlan),
     retryAttempts: (message.retryAttempts ?? []).slice(-12).map((attempt) => ({
       attemptedAt: Number.isFinite(attempt.attemptedAt) ? Number(attempt.attemptedAt) : Date.now(),
       error: String(attempt.error ?? '').trim().slice(0, 500) || '工作区任务失败',
@@ -1042,6 +1069,8 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     inputTokens: sanitizeTokenCount(message.inputTokens),
     outputTokens: sanitizeTokenCount(message.outputTokens),
     contextSavings: sanitizeContextSavings(message.contextSavings),
+    responseStartedAt: Number.isFinite(message.responseStartedAt) ? Number(message.responseStartedAt) : undefined,
+    responseCompletedAt: Number.isFinite(message.responseCompletedAt) ? Number(message.responseCompletedAt) : undefined,
     createdAt: Number.isFinite(message.createdAt) ? Number(message.createdAt) : Date.now()
   }
 }
@@ -1182,6 +1211,51 @@ function sanitizeTool(tool: ToolConfig, fallbackProjectId = getActiveProjectId()
   }
 }
 
+function sanitizeSkill(skill: SkillConfig, fallbackProjectId = getActiveProjectId()): SkillConfig {
+  const now = Date.now()
+  const statusOptions: SkillStatus[] = ['draft', 'active', 'paused']
+  const sourceOptions: SkillSourceType[] = ['local', 'workspace', 'imported']
+  return {
+    id: skill.id?.trim() || `skill_${now}_${Math.random().toString(16).slice(2)}`,
+    projectId: sanitizeProjectId(skill.projectId, fallbackProjectId),
+    name: String(skill.name ?? '').trim().slice(0, 100) || '未命名 Skill',
+    description: String(skill.description ?? '').trim().slice(0, 1000),
+    instructions: String(skill.instructions ?? '').trim().slice(0, 50_000),
+    version: String(skill.version ?? '1.0.0').trim().slice(0, 40) || '1.0.0',
+    status: statusOptions.includes(skill.status) ? skill.status : 'draft',
+    sourceType: sourceOptions.includes(skill.sourceType) ? skill.sourceType : 'local',
+    sourceLocator: String(skill.sourceLocator ?? '').trim().slice(0, 1000) || undefined,
+    toolIds: Array.from(new Set((skill.toolIds ?? []).map(String).map((id) => id.trim()).filter(Boolean))).slice(0, 100),
+    revisions: (skill.revisions ?? []).slice(-50).map((revision) => ({
+      version: String(revision.version ?? '').trim().slice(0, 40) || '1.0.0',
+      description: String(revision.description ?? '').trim().slice(0, 1000),
+      instructions: String(revision.instructions ?? '').trim().slice(0, 50_000),
+      reason: String(revision.reason ?? '').trim().slice(0, 500),
+      createdAt: Number.isFinite(revision.createdAt) ? Number(revision.createdAt) : now
+    })),
+    evalCases: (skill.evalCases ?? []).slice(-100).map((evalCase, index) => ({
+      id: String(evalCase.id ?? '').trim() || `eval_${now}_${index}`,
+      input: String(evalCase.input ?? '').trim().slice(0, 8000),
+      expectedIncludes: (evalCase.expectedIncludes ?? []).map(String).map((item) => item.trim()).filter(Boolean).slice(0, 30),
+      sampleOutput: String(evalCase.sampleOutput ?? '').trim().slice(0, 20_000),
+      enabled: evalCase.enabled !== false,
+      createdAt: Number.isFinite(evalCase.createdAt) ? Number(evalCase.createdAt) : now,
+      lastPassed: typeof evalCase.lastPassed === 'boolean' ? evalCase.lastPassed : undefined,
+      lastEvaluatedAt: Number.isFinite(evalCase.lastEvaluatedAt) ? Number(evalCase.lastEvaluatedAt) : undefined,
+      lastMissingCriteria: (evalCase.lastMissingCriteria ?? []).map(String).map((item) => item.trim()).filter(Boolean).slice(0, 30)
+    })),
+    lastEvaluation: skill.lastEvaluation && typeof skill.lastEvaluation === 'object' ? {
+      skillVersion: String(skill.lastEvaluation.skillVersion ?? '').trim().slice(0, 40),
+      passed: Math.max(0, Number(skill.lastEvaluation.passed) || 0),
+      failed: Math.max(0, Number(skill.lastEvaluation.failed) || 0),
+      total: Math.max(0, Number(skill.lastEvaluation.total) || 0),
+      evaluatedAt: Number.isFinite(skill.lastEvaluation.evaluatedAt) ? Number(skill.lastEvaluation.evaluatedAt) : now
+    } : undefined,
+    createdAt: Number.isFinite(skill.createdAt) ? Number(skill.createdAt) : now,
+    updatedAt: now
+  }
+}
+
 function getMigratedDefaultProvider(): ApiProvider {
   const legacy = store.get('settings', defaultSettings) as LegacySettings
   const legacyUrl = legacy.apiBaseUrl?.trim()
@@ -1255,6 +1329,22 @@ function sanitizeAssistant(assistant: Assistant, fallbackProjectId = getActivePr
     systemPrompt:
       sanitizeAssistantSystemPrompt(assistant.systemPrompt, universalFallbackPrompt),
     starterPrompts: starterPrompts.length > 0 ? starterPrompts : ['帮我分析这个问题', '帮我写一份方案', '把下面内容整理清楚'],
+    status: assistant.status === 'draft' || assistant.status === 'paused' ? assistant.status : 'active',
+    configSource: {
+      type: assistant.configSource?.type === 'workspace' || assistant.configSource?.type === 'imported'
+        ? assistant.configSource.type
+        : assistant.builtIn
+          ? 'built-in'
+          : 'local',
+      locator: String(assistant.configSource?.locator ?? '').trim().slice(0, 1000) || undefined,
+      version: String(assistant.configSource?.version ?? '1.0.0').trim().slice(0, 40) || '1.0.0'
+    },
+    skillIds: Array.from(new Set((assistant.skillIds ?? []).map(String).map((id) => id.trim()).filter(Boolean))).slice(0, 100),
+    toolIds: Array.from(new Set((assistant.toolIds ?? []).map(String).map((id) => id.trim()).filter(Boolean))).slice(0, 100),
+    delegateAssistantIds: Array.from(new Set((assistant.delegateAssistantIds ?? [])
+      .map(String)
+      .map((id) => id.trim())
+      .filter((id) => id && id !== assistant.id))).slice(0, 50),
     createdAt: assistant.createdAt ?? now,
     updatedAt: now
   }
@@ -1449,7 +1539,7 @@ export function getAssistants(projectId = getActiveProjectId()): Assistant[] {
   const assistants = [...defaults, ...custom]
   const order = store.get('assistantOrders', {})[normalizedProjectId] ?? []
   const orderById = new Map(order.map((id, index) => [id, index]))
-  return assistants
+  const orderedAssistants = assistants
     .map((assistant, index) => ({ assistant, index }))
     .sort((first, second) => {
       const firstOrder = orderById.get(first.assistant.id)
@@ -1460,6 +1550,7 @@ export function getAssistants(projectId = getActiveProjectId()): Assistant[] {
       return firstOrder - secondOrder
     })
     .map(({ assistant }) => assistant)
+  return filterAvailableAssistantDelegations(orderedAssistants)
 }
 
 export function reorderAssistants(ids: string[], projectId = getActiveProjectId()): Assistant[] {
@@ -1493,10 +1584,11 @@ export function deleteAssistant(id: string, projectId = getActiveProjectId()): v
     const deletedKey = getDeletedBuiltInAssistantKey(normalizedProjectId, id)
     store.set('deletedBuiltInAssistants', [...new Set([...getDeletedBuiltInAssistantKeys(), deletedKey])])
   }
-  store.set(
-    'assistants',
-    getAllCustomAssistants().filter((assistant) => !(assistant.id === id && assistant.projectId === normalizedProjectId))
-  )
+  store.set('assistants', removeAssistantDelegationReferences(
+    getAllCustomAssistants(),
+    id,
+    normalizedProjectId
+  ))
   store.set(
     'conversations',
     getAllConversations().filter(
@@ -1659,4 +1751,36 @@ export function deleteTool(id: string): void {
     'tools',
     getAllTools().filter((tool) => tool.id !== id)
   )
+  store.set('assistants', getAllCustomAssistants().map((assistant) => ({
+    ...assistant,
+    toolIds: assistant.toolIds?.filter((toolId) => toolId !== id)
+  })))
+  store.set('skills', getAllSkills().map((skill) => ({
+    ...skill,
+    toolIds: skill.toolIds.filter((toolId) => toolId !== id)
+  })))
+}
+
+function getAllSkills(): SkillConfig[] {
+  return store.get('skills', []).map((skill) => sanitizeSkill(skill, defaultProjectId))
+}
+
+export function getSkills(projectId = getActiveProjectId()): SkillConfig[] {
+  const normalizedProjectId = sanitizeProjectId(projectId)
+  return getAllSkills().filter((skill) => skill.projectId === normalizedProjectId)
+}
+
+export function saveSkill(skill: SkillConfig, projectId = getActiveProjectId()): SkillConfig {
+  const normalized = sanitizeSkill(skill, projectId)
+  const skills = getAllSkills()
+  store.set('skills', [normalized, ...skills.filter((item) => item.id !== normalized.id)].slice(0, 500))
+  return normalized
+}
+
+export function deleteSkill(id: string): void {
+  store.set('skills', getAllSkills().filter((skill) => skill.id !== id))
+  store.set('assistants', getAllCustomAssistants().map((assistant) => ({
+    ...assistant,
+    skillIds: assistant.skillIds?.filter((skillId) => skillId !== id)
+  })))
 }

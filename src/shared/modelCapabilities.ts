@@ -158,6 +158,14 @@ export function getModelCapabilities(providerOrModel: ApiProvider | string): Mod
   }
 }
 
+/** Select the actual image model while allowing the default chat model to author the prompt. */
+export function resolveImageGenerationModel(provider: ApiProvider): ProviderModel | undefined {
+  const defaultModel = getDefaultProviderModel(provider)
+  if (defaultModel && normalizeModelCapabilities(defaultModel).includes('image')) return defaultModel
+
+  return provider.models.find((model) => normalizeModelCapabilities(model).includes('image'))
+}
+
 export function getAttachmentSupportLabel(attachment: PreparedAttachment, capabilities: ModelCapabilities): string {
   if (attachment.kind === 'image') {
     if (!attachment.dataUrl) return '图片过大或读取失败，无法直接识别'

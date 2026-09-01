@@ -140,6 +140,9 @@ jobs:
       - name: Test approved source
         run: pnpm test
 
+      - name: Test assistant platform
+        run: pnpm test:assistant-platform
+
       - name: Reject high-severity production dependency advisories
         run: pnpm audit --prod --audit-level high
 

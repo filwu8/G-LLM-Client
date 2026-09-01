@@ -27,6 +27,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
 
 import type {
   ApiProvider,
@@ -86,6 +87,7 @@ import {
   deleteNote,
   deleteProject,
   deleteProvider,
+  deleteSkill,
   deleteTool,
   exportDataArchive,
   getActiveProjectId,
@@ -101,6 +103,7 @@ import {
   getProjects,
   getProviders,
   getSettings,
+  getSkills,
   getTools,
   importDataArchive,
   migrateDataRoot,
@@ -113,6 +116,7 @@ import {
   saveNote,
   saveProject,
   saveProvider,
+  saveSkill,
   saveTool,
   setActiveProjectId,
   setSettings
@@ -1493,7 +1497,8 @@ function getAppStateSnapshot() {
     conversations: getConversations(activeProjectId),
     notes: getNotes(activeProjectId),
     memories: getMemories(activeProjectId),
-    tools: getTools(activeProjectId)
+    tools: getTools(activeProjectId),
+    skills: getSkills(activeProjectId)
   }
 }
 
@@ -1830,6 +1835,38 @@ app.whenReady().then(() => {
     return getAppStateSnapshot()
   })
   ipcMain.handle('assistant:suggest', (_, request) => generateAssistantSuggestion(request))
+  ipcMain.handle('assistant:export-template', async (event, id: string) => {
+    const assistant = getAssistants().find((item) => item.id === id)
+    if (!assistant) throw new Error('找不到要导出的助手')
+    const bundle = createAssistantTemplateBundle(assistant, getSkills(), getTools(), app.getName())
+    const safeName = assistant.name.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60) || 'assistant'
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: Electron.SaveDialogOptions = {
+      title: '导出助手模板',
+      defaultPath: `${safeName}.gllm-assistant.json`,
+      filters: [{ name: 'G-LLM Assistant Template', extensions: ['json'] }]
+    }
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    writeFileSync(result.filePath, `${JSON.stringify(bundle, null, 2)}\n`, 'utf8')
+    return result.filePath
+  })
+  ipcMain.handle('assistant:import-template', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: Electron.OpenDialogOptions = {
+      title: '导入助手模板',
+      properties: ['openFile'],
+      filters: [{ name: 'G-LLM Assistant Template', extensions: ['json'] }]
+    }
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    const payload = JSON.parse(readFileSync(result.filePaths[0], 'utf8')) as unknown
+    const imported = importAssistantTemplateBundle(payload, getActiveProjectId(), (prefix) => `${prefix}_${randomUUID()}`)
+    for (const tool of imported.tools) saveTool(tool)
+    for (const skill of imported.skills) saveSkill(skill)
+    const assistant = saveAssistant(imported.assistant)
+    return { state: getAppStateSnapshot(), assistantId: assistant.id, warnings: imported.warnings }
+  })
   ipcMain.handle('conversation:search', (_, request) =>
     searchConversations(request, getConversationSearchSources())
   )
@@ -1860,6 +1897,8 @@ app.whenReady().then(() => {
   ipcMain.handle('memory:delete', (_, id: string) => deleteMemory(id))
   ipcMain.handle('tool:save', (_, tool) => saveTool(tool))
   ipcMain.handle('tool:delete', (_, id: string) => deleteTool(id))
+  ipcMain.handle('skill:save', (_, skill) => saveSkill(skill))
+  ipcMain.handle('skill:delete', (_, id: string) => deleteSkill(id))
   ipcMain.handle('attachment:pick', async (event, kind) => {
     const { pickAttachments } = await import('./attachments')
     return pickAttachments(BrowserWindow.fromWebContents(event.sender), kind, getSettings().language)

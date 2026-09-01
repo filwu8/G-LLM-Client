@@ -8,7 +8,7 @@ import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, LoaderCircle, Sh
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
+import type { AgentExecutionPlan, ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
 
 type WorkspaceApprovalMode = NonNullable<ConversationWorkspace['approvalMode']>
 
@@ -175,13 +175,14 @@ export function WorkspaceBar({ workspace, onUnbind, onApprovalModeChange }: {
   )
 }
 
-export function WorkspaceActivityLog({ activities, changedFiles, running = false, model, startedAt, artifactRoot, onArtifactOpen, onArtifactContextMenu }: {
+export function WorkspaceActivityLog({ activities, changedFiles, running = false, model, startedAt, artifactRoot, plan, onArtifactOpen, onArtifactContextMenu }: {
   activities: WorkspaceToolActivity[]
   changedFiles?: string[]
   running?: boolean
   model?: string
   startedAt?: number
   artifactRoot?: string
+  plan?: AgentExecutionPlan
   onArtifactOpen?: (rootPath: string, relativePath: string) => void
   onArtifactContextMenu?: (event: ReactMouseEvent, rootPath: string, relativePath: string) => void
 }) {
@@ -190,6 +191,20 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
   const duration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
   return (
     <div className="workspace-message-activities">
+      {plan && (
+        <div className={`agent-plan agent-plan-${plan.status}`}>
+          <div className="agent-plan-goal"><strong>{t('workspace.goal')}</strong><span>{plan.goal}</span></div>
+          <div className="agent-plan-steps">
+            {plan.steps.map((step) => (
+              <div className={`agent-plan-step ${step.status}`} key={step.id} title={step.detail}>
+                {step.status === 'running' ? <LoaderCircle className="spin" size={13} /> : step.status === 'completed' ? <CircleCheck size={13} /> : step.status === 'failed' ? <XCircle size={13} /> : <span className="agent-plan-step-dot" />}
+                <span>{step.title}</span>
+              </div>
+            ))}
+          </div>
+          {plan.verification && <small className="agent-plan-verification">{t('workspace.verification')}: {plan.verification}</small>}
+        </div>
+      )}
       <div className="workspace-message-activities-title">
         {running && <LoaderCircle className="spin" size={14} />}
         <strong>{running ? (activities.length > 0 ? t('workspace.operating') : t('workspace.understanding')) : activities.length > 0 ? t('workspace.activityLog') : t('workspace.generatedFiles')}</strong>
