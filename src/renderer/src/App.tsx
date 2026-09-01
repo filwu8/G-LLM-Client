@@ -110,6 +110,8 @@ import { applyRendererLanguage, rendererI18n } from './i18n'
 import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { MarkdownMessage } from './MarkdownMessage'
 import { ResponseDuration } from './ResponseDuration'
+import { UsageAnalyticsPanel } from './UsageAnalytics'
+import { calculateLocalUsageStats } from './localUsageStats'
 import { LocalTaskPanel } from './LocalTaskPanel'
 import {
   findLocalizedAssistantPreset,
@@ -260,7 +262,7 @@ interface ConversationContextMenu {
   conversationId: string
 }
 
-type SettingsTab = 'providers' | 'personalization' | 'storage' | 'about'
+type SettingsTab = 'providers' | 'personalization' | 'analytics' | 'storage' | 'about'
 
 interface SpaceFormPayload {
   name: string
@@ -276,7 +278,7 @@ interface WorkspaceArtifactContextMenu {
   relativePath: string
 }
 
-const settingsTabs: SettingsTab[] = ['providers', 'personalization', 'storage', 'about']
+const settingsTabs: SettingsTab[] = ['providers', 'personalization', 'analytics', 'storage', 'about']
 
 function ModalBackdrop({
   className = 'assistant-modal-backdrop',
@@ -3940,6 +3942,10 @@ export default function App() {
           dataLocation={dataLocation}
           settings={settings}
           providers={providers}
+          assistants={assistants}
+          conversations={conversations}
+          skills={skills}
+          tools={tools}
           goldThemeEntitled={goldThemeEntitled}
           goldThemeEntitlementChecked={goldThemeEntitlementChecked}
           onClose={() => {
@@ -6189,6 +6195,10 @@ function SettingsPanel({
   dataLocation,
   settings,
   providers,
+  assistants,
+  conversations,
+  skills,
+  tools,
   goldThemeEntitled,
   goldThemeEntitlementChecked,
   onClose,
@@ -6206,6 +6216,10 @@ function SettingsPanel({
   dataLocation: DataLocationInfo | null
   settings: AppSettings
   providers: ApiProvider[]
+  assistants: Assistant[]
+  conversations: Conversation[]
+  skills: SkillConfig[]
+  tools: ToolConfig[]
   goldThemeEntitled: boolean
   goldThemeEntitlementChecked: boolean
   onClose: () => void
@@ -6248,6 +6262,10 @@ function SettingsPanel({
     !savedProvider ||
     JSON.stringify(getComparableProvider(providerDraft)) !== JSON.stringify(getComparableProvider(savedProvider))
   const configChanged = settingsChanged || providerChanged
+  const localUsageStats = useMemo(
+    () => calculateLocalUsageStats(conversations, assistants, resolveTimeZone(settingsDraft.timeZone)),
+    [assistants, conversations, settingsDraft.timeZone]
+  )
 
   useEffect(() => {
     if (dataLocation) setDataLocationInfo(dataLocation)
@@ -7156,6 +7174,16 @@ function SettingsPanel({
               </button>
             </div>
           </div>
+        )}
+
+        {activeSettingsTab === 'analytics' && (
+          <UsageAnalyticsPanel
+            assistantCount={assistants.filter((assistant) => !assistant.hidden).length}
+            conversationCount={conversations.length}
+            skillCount={skills.length}
+            stats={localUsageStats}
+            toolCount={tools.length}
+          />
         )}
 
         {activeSettingsTab === 'about' && (

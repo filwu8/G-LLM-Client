@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-当前代码版本：[V2.0.14](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.15](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.14](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.14)，发布于 2026-09-01。
 
@@ -23,6 +23,14 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.15 本机数据洞察与跨平台设置界面
+
+- 个性设置之后新增独立的“数据统计”标签页，集中展示当前设备与已导入本地数据的使用情况，不上传聊天内容。
+- 汇总累计 Token、单日峰值 Token、最长聊天时长、当前连续天数与最长连续天数，并提供最近 12 周 Token 活跃热力图。
+- 展示常用模型、常用助手、常用工具及已完成工具调用，帮助用户理解自己的实际使用方式。
+- 数据存储页不再重复展示统计概览，数据位置、导入导出与使用洞察职责更加清晰。
+- Windows 设置抽屉与原生标题栏采用连续背景，顶部标签改为统一分段导航；macOS 抽屉增加适配内嵌标题栏的安全间距。
 
 ## V2.0.14 助手工作流、Skill 与模型能力
 

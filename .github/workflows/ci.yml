@@ -45,6 +45,9 @@ jobs:
       - name: Run assistant platform tests
         run: pnpm test:assistant-platform
 
+      - name: Run on-device analytics tests
+        run: pnpm test:analytics
+
       - name: Reject high-severity production dependency advisories
         run: pnpm audit --prod --audit-level high
 

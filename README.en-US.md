@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [English](./README.en-US.md)
 
-Current code version: [V2.0.14](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.15](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.14](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.14), released on 2026-09-01.
 
@@ -23,6 +23,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.15 On-Device Insights and Cross-Platform Settings UI
+
+- A dedicated Data Insights tab after Personalization brings together usage from this device and imported local data without uploading chat content.
+- It summarizes total tokens, peak daily tokens, longest chat duration, current streak, and longest streak, plus a 12-week token activity heatmap.
+- Rankings for models, assistants, and tools, together with completed tool-call totals, make real usage patterns easier to understand.
+- The Data Storage tab no longer duplicates the overview, keeping data location, import/export, and usage insights clearly separated.
+- The Windows settings drawer now flows behind the native title bar and uses unified segmented navigation; macOS drawers receive safe spacing for the inset title bar.
 
 ## V2.0.14 Assistant Workflows, Skills, and Model Capabilities
 

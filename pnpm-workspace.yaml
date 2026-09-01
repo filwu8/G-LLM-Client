@@ -12,6 +12,12 @@ supportedArchitectures:
     - x64
     - arm64
 
+overrides:
+  dompurify: 3.4.12
+  fast-uri: 3.1.5
+  js-yaml: 4.3.1
+  undici: 7.29.0
+
 # Slow down newly published packages long enough for common registry incidents to
 # be detected, reject transitive git/tarball sources, and prevent provenance
 # downgrades during dependency updates.
