@@ -13,6 +13,11 @@ import { fileURLToPath } from 'node:url'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outputPath = resolve(projectRoot, 'THIRD_PARTY_NOTICES.md')
 const projectPackage = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8'))
+const directOptionalDependencies = new Set(Object.keys(projectPackage.optionalDependencies || {}))
+
+function isUnshippedCanvasNativePackage(name) {
+  return /^@napi-rs\/canvas-(?:darwin|linux|win32)-/u.test(name) && !directOptionalDependencies.has(name)
+}
 
 const pnpmCommand = process.platform === 'win32'
   ? { executable: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', 'pnpm'] }
@@ -44,9 +49,16 @@ for (const [licenseGroup, entries] of Object.entries(groupedInventory)) {
       const packageJson = existsSync(packageJsonPath)
         ? JSON.parse(readFileSync(packageJsonPath, 'utf8'))
         : {}
+      const packageName = packageJson.name || entry.name
+
+      // @napi-rs/canvas declares native packages for many operating systems,
+      // architectures, and C libraries. Local installers may retain a different
+      // subset on each host. Only the native targets explicitly shipped by this
+      // project belong in the shared release notice.
+      if (isUnshippedCanvasNativePackage(packageName)) continue
 
       packages.push({
-        name: packageJson.name || entry.name,
+        name: packageName,
         version: packageJson.version || entry.versions[index] || entry.versions[0] || 'unknown',
         declaredLicense: packageJson.license || entry.license || licenseGroup,
         homepage: projectUrl(packageJson, entry.homepage),
@@ -59,7 +71,7 @@ for (const [licenseGroup, entries] of Object.entries(groupedInventory)) {
 // pnpm reports only the current operating system's optional packages. Include
 // every installed direct optional dependency so notices remain complete for
 // macOS, Linux, and Windows artifacts built from the same release source.
-for (const name of Object.keys(projectPackage.optionalDependencies || {})) {
+for (const name of directOptionalDependencies) {
   const packagePath = resolve(projectRoot, 'node_modules', ...name.split('/'))
   const packageJsonPath = resolve(packagePath, 'package.json')
   if (!existsSync(packageJsonPath)) continue
