@@ -4,7 +4,7 @@
 
 Versão atual do código: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Versão estável mais recente: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16), lançada em 1º de setembro de 2026.
+Versão estável mais recente: [V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17), lançada em 3 de setembro de 2026.
 
 [Baixar o cliente](https://llm.gprophet.com/download) | [Histórico completo](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

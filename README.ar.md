@@ -4,7 +4,7 @@
 
 إصدار الشفرة الحالي: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-أحدث إصدار مستقر: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16)، نُشر في 1 سبتمبر 2026.
+أحدث إصدار مستقر: [V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17)، نُشر في 3 سبتمبر 2026.
 
 [تنزيل التطبيق](https://llm.gprophet.com/download) | [سجل التغييرات الكامل](https://llm.gprophet.com/download/changelog) | [إصدارات GitHub](https://github.com/filwu8/G-LLM-Client/releases)
 

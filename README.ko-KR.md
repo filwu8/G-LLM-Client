@@ -4,7 +4,7 @@
 
 현재 코드 버전: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-최신 안정 버전: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16), 2026년 9월 1일 출시.
+최신 안정 버전: [V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17), 2026년 9월 3일 출시.
 
 [클라이언트 다운로드](https://llm.gprophet.com/download) | [전체 변경 기록](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

@@ -4,7 +4,7 @@
 
 現在のコードバージョン：[V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最新の安定版：[V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16)（2026年9月1日公開）
+最新の安定版：[V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17)（2026年9月3日公開）
 
 [クライアントをダウンロード](https://llm.gprophet.com/download) | [変更履歴](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

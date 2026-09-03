@@ -4,7 +4,7 @@
 
 Versi kode saat ini: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Rilis stabil terbaru: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16), dirilis pada 1 September 2026.
+Rilis stabil terbaru: [V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17), dirilis pada 3 September 2026.
 
 [Unduh klien](https://llm.gprophet.com/download) | [Catatan perubahan lengkap](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

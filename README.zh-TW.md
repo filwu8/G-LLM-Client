@@ -4,7 +4,7 @@
 
 目前程式碼版本：[V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最新穩定版本：[V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16)，發布於 2026-09-01。
+最新穩定版本：[V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17)，發布於 2026-09-03。
 
 [下載用戶端](https://llm.gprophet.com/download) | [完整更新記錄](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
