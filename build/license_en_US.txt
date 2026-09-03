@@ -1,4 +1,4 @@
-﻿G-LLM User Agreement
+G-LLM User Agreement
 
 Welcome to G-LLM. This software is a local AI desktop client for connecting your configured model providers, managing assistants, conversations, attachments, local knowledge base and long-term memory.
 
