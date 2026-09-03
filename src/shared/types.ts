@@ -143,6 +143,7 @@ export interface WebSearchResult {
   excerpt?: string
   publishedAt?: number
   sourceRole?: 'specified' | 'primary' | 'independent' | 'community' | 'aggregator' | 'unknown'
+  sourceTrust?: 'user-specified' | 'likely-official' | 'third-party' | 'unverified'
   relevanceScore?: number
   clusterId?: string
 }
@@ -265,6 +266,12 @@ export interface MainConversationOpenRequest {
   assistantId?: string
 }
 
+export interface ComposerSessionTarget {
+  conversationId?: string
+  projectId?: string
+  assistantId: string
+}
+
 export interface ConversationSearchSource {
   conversationId: string
   projectId: string
@@ -342,6 +349,9 @@ export interface ToolConfig {
 }
 
 export type GoalTaskStatus = 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
+export type GoalWebSearchScope = 'all' | 'official' | 'specified'
+export type GoalContextMode = 'auto' | 'continue' | 'relevant' | 'isolated'
+export type ResolvedGoalContextMode = Exclude<GoalContextMode, 'auto'>
 
 export interface GoalTask {
   id: string
@@ -350,6 +360,12 @@ export interface GoalTask {
   status: GoalTaskStatus
   maxSteps: number
   maxDurationMinutes: number
+  webSearchMode?: WebSearchMode
+  webSearchScope?: GoalWebSearchScope
+  webSearchDomains?: string[]
+  contextMode?: GoalContextMode
+  resolvedContextMode?: ResolvedGoalContextMode
+  contextStartMessageId?: string
   runCount: number
   startedAt: number
   lastRunStartedAt: number
@@ -577,6 +593,8 @@ export interface WorkspaceAgentRequest {
   reasoningEffort?: ReasoningEffort
   webSearchMode?: WebSearchMode
   webSearchEnabled?: boolean
+  webSearchScope?: GoalWebSearchScope
+  webSearchDomains?: string[]
   projectMemory?: ConversationProjectMemory
   executionLimits?: {
     maxTurns: number

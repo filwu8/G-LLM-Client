@@ -9427,14 +9427,23 @@ img.space-logo {
 .goal-setup-dialog > header > div > span { display: grid; gap: 3px; }
 .goal-setup-dialog > header strong { color: hsl(var(--foreground)); font-size: 17px; }
 .goal-setup-dialog > header small { color: hsl(var(--muted-foreground)); font-size: 12px; }
-.goal-setup-field, .goal-limit-grid label { display: grid; gap: 7px; color: hsl(var(--foreground)); font-size: 12px; font-weight: 650; }
-.goal-setup-field textarea, .goal-limit-grid select { width: 100%; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; padding: 10px; }
+.goal-setup-field, .goal-limit-grid label, .goal-context-setting { display: grid; gap: 7px; color: hsl(var(--foreground)); font-size: 12px; font-weight: 650; }
+.goal-setup-field textarea, .goal-limit-grid select, .goal-context-setting select { width: 100%; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; padding: 10px; }
 .goal-setup-field textarea { resize: vertical; line-height: 1.5; }
+.goal-context-setting small { color: hsl(var(--muted-foreground)); font-size: 10px; font-weight: 450; line-height: 1.4; }
 .goal-workspace-field { display: grid; gap: 7px; color: hsl(var(--foreground)); font-size: 12px; font-weight: 650; }
 .goal-workspace-field > div { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--muted) / .32); padding: 9px 10px; }
 .goal-workspace-field strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .goal-workspace-field button { border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--card)); color: hsl(var(--foreground)); padding: 6px 9px; }
 .goal-limit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.goal-search-settings { display: grid; gap: 10px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--muted) / .2); padding: 11px; }
+.goal-search-settings > header { display: flex; align-items: flex-start; gap: 8px; color: hsl(var(--primary)); }
+.goal-search-settings > header > span { display: grid; gap: 2px; }
+.goal-search-settings > header strong { font-size: 12px; }
+.goal-search-settings > header small, .goal-domain-field small { color: hsl(var(--muted-foreground)); font-size: 10px; font-weight: 450; line-height: 1.4; }
+.goal-search-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.goal-search-grid label, .goal-domain-field { display: grid; gap: 6px; color: hsl(var(--foreground)); font-size: 11px; font-weight: 650; }
+.goal-search-grid select, .goal-domain-field input { width: 100%; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; padding: 9px 10px; }
 .goal-safety-note { display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; background: hsl(var(--accent)); color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.5; padding: 10px; }
 .goal-safety-note svg { flex: 0 0 auto; color: hsl(var(--primary)); }
 .goal-setup-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; }

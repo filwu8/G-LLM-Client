@@ -1,8 +1,8 @@
 # G-LLM Client
 
-[简体中文](./README.md) | [English](./README.en-US.md)
+[简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.16](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16), released on 2026-09-01.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.17 Smarter Goals and Seamless Conversations
+
+- Starting a goal now carries over the unsent composer request and offers Smart, Full context, Relevant history, and Isolated goal modes. Related work can continue naturally while unrelated goals stay clean.
+- Each goal can control web access and source scope independently: search the web, prioritize likely official sources, or restrict research to specified domains. Likely-official results are clearly marked as unverified, and user-provided domains are never presented as certified official sites.
+- Workspace runs receive the real current date and time in the user's configured timezone, reducing stale report years, incorrect freshness judgments, and outdated delivery metadata.
+- On Windows, minimizing the main window and clicking the mascot or tray icon restores the same window. Closing the main window or hiding Quick Chat preserves the intended entry behavior, while drafts and active conversations survive window changes.
+- The GitHub project is now available in 13 languages so more users can quickly understand the product's value, core capabilities, and download options.
+- The production URI parser dependency is upgraded to clear high-severity security findings from the release gate.
 
 ## V2.0.16 Autonomous Goals and Workspace Delivery
 

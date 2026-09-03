@@ -7,6 +7,14 @@
 export const MAIN_COMPOSER_DRAFT_KEY = 'gllm:main-composer-draft:v1'
 export const QUICK_COMPOSER_DRAFT_KEY = 'gllm:quick-composer-draft:v1'
 
+export function getComposerSessionKey(conversationId: string | null | undefined, projectId: string | undefined, assistantId: string): string {
+  return conversationId ? `conversation:${conversationId}` : `new:${projectId || 'loading'}:${assistantId}`
+}
+
+export function getComposerDraftStorageKey(sessionKey: string): string {
+  return `${MAIN_COMPOSER_DRAFT_KEY}:${encodeURIComponent(sessionKey)}`
+}
+
 export function readComposerDraft(storageKey: string): string {
   try {
     return window.localStorage.getItem(storageKey) ?? ''

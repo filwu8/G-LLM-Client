@@ -34,6 +34,7 @@ import type {
   AppSettings,
   AppUpdateInfo,
   ChatActivityEvent,
+  ComposerSessionTarget,
   ContextSavings,
   ChatRequest,
   Conversation,
@@ -47,7 +48,11 @@ import type {
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
-import { normalizeMainConversationOpenRequest } from '../shared/conversationHandoff'
+import {
+  normalizeComposerSessionTarget,
+  normalizeMainConversationOpenRequest,
+  shouldRestoreMainWindowFromStatusIcon
+} from '../shared/conversationHandoff'
 import {
   DEFAULT_PROVIDER,
   DEFAULT_PROVIDER_ID,
@@ -154,6 +159,9 @@ let isQuitting = false
 let autoUpdateManager: AutoUpdateManager | null = null
 let activeAssistantId = 'general'
 let mainHiddenMode: 'none' | 'tray' | 'floating' = 'none'
+let statusIconTarget: 'main' | 'quick' = 'quick'
+let mainComposerTarget: ComposerSessionTarget | null = null
+let quickComposerTarget: ComposerSessionTarget | null = null
 const conversationMemoryUpdates = new Set<string>()
 const activeResponses = new ActiveResponseRegistry()
 let agentRunLedger: AgentRunLedger | null = null
@@ -640,6 +648,7 @@ function createWindow(): BrowserWindow {
   quickWindowShowPending = false
   quickWindow?.hide()
   mainHiddenMode = 'none'
+  statusIconTarget = 'main'
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (process.platform === 'darwin') app.focus({ steal: true })
@@ -688,6 +697,7 @@ function createWindow(): BrowserWindow {
     if (mainWindow) lastMainWindowBounds = mainWindow.getNormalBounds()
     const mascotVisible = getSettings().floatingMascotVisible
     mainHiddenMode = mascotVisible ? 'floating' : 'tray'
+    statusIconTarget = 'main'
     mainWindow?.hide()
     quickWindow?.hide()
     if (mascotVisible) showFloatingLogo()
@@ -700,6 +710,8 @@ function createWindow(): BrowserWindow {
     if (mainWindow) lastMainWindowBounds = mainWindow.getNormalBounds()
     const mascotVisible = getSettings().floatingMascotVisible
     mainHiddenMode = mascotVisible ? 'floating' : 'tray'
+    statusIconTarget = 'quick'
+    quickComposerTarget = mainComposerTarget
     mainWindow?.hide()
     quickWindow?.hide()
     if (mascotVisible) showFloatingLogo()
@@ -707,6 +719,7 @@ function createWindow(): BrowserWindow {
   })
   mainWindow.on('closed', () => {
     mainWindow = null
+    mainComposerTarget = null
     showFloatingLogo()
   })
 
@@ -717,13 +730,16 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
-function showMainWindowForConversation(requestValue?: unknown): void {
+function showMainWindowForConversation(requestValue?: unknown, composerTargetValue?: unknown): void {
   const window = createWindow()
   const request = normalizeMainConversationOpenRequest(requestValue)
-  if (!request) return
+  const composerTarget = normalizeComposerSessionTarget(composerTargetValue)
+  if (!request && !composerTarget) return
 
   const notify = () => {
-    if (!window.isDestroyed()) window.webContents.send('conversation:open-in-main', request)
+    if (window.isDestroyed()) return
+    if (request) window.webContents.send('conversation:open-in-main', request)
+    if (composerTarget) window.webContents.send('composer:open-in-main', composerTarget)
   }
   if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', notify)
   else notify()
@@ -1197,6 +1213,10 @@ function createQuickWindow(anchorBounds?: Rectangle): BrowserWindow {
   })
   quickWindow.webContents.on('did-finish-load', () => {
     quickWindowReady = true
+    const target = quickComposerTarget ?? mainComposerTarget
+    if (target && quickWindow && !quickWindow.isDestroyed()) {
+      quickWindow.webContents.send('composer:open-in-quick', target)
+    }
     if (!quickWindowShowPending || !quickWindow || quickWindow.isDestroyed()) return
     quickWindowShowPending = false
     quickWindow.show()
@@ -1220,6 +1240,8 @@ function createQuickWindow(anchorBounds?: Rectangle): BrowserWindow {
 }
 
 function showQuickWindow(anchorBounds?: Rectangle): void {
+  if (mainWindow?.isVisible()) quickComposerTarget = mainComposerTarget
+  statusIconTarget = 'quick'
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide()
   }
@@ -1230,6 +1252,8 @@ function showQuickWindow(anchorBounds?: Rectangle): void {
   quickWindowShowPending = true
   if (quickWindowReady) {
     quickWindowShowPending = false
+    const target = quickComposerTarget ?? mainComposerTarget
+    if (target) window.webContents.send('composer:open-in-quick', target)
     window.show()
     window.focus()
   }
@@ -1373,8 +1397,17 @@ function toggleQuickWindow(anchorBounds?: Rectangle): void {
   showQuickWindow(anchorBounds)
 }
 
-function handleTrayClick(anchorBounds?: Rectangle): void {
+function handleStatusIconClick(anchorBounds?: Rectangle): void {
+  const hasHiddenMainWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible())
+  if (shouldRestoreMainWindowFromStatusIcon(statusIconTarget, hasHiddenMainWindow)) {
+    createWindow()
+    return
+  }
   toggleQuickWindow(anchorBounds)
+}
+
+function handleTrayClick(anchorBounds?: Rectangle): void {
+  handleStatusIconClick(anchorBounds)
 }
 
 function windowsUsesDarkTaskbar(): boolean {
@@ -1727,15 +1760,24 @@ app.whenReady().then(() => {
   ipcMain.handle('app:quit', () => {
     quitApp()
   })
-  ipcMain.handle('app:show-main-window', (_, request?: MainConversationOpenRequest) => {
-    showMainWindowForConversation(request)
+  ipcMain.handle('app:show-main-window', (_, request?: MainConversationOpenRequest, composerTarget?: ComposerSessionTarget) => {
+    showMainWindowForConversation(request, composerTarget)
   })
   ipcMain.handle('app:show-quick-panel', () => {
-    showQuickWindow(floatingLogoWindow?.getBounds())
+    handleStatusIconClick(floatingLogoWindow?.getBounds())
   })
   ipcMain.handle('app:hide-quick-panel', () => {
     hideQuickWindow()
   })
+  ipcMain.on('composer:main-target', (event, target: ComposerSessionTarget) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== mainWindow) return
+    mainComposerTarget = normalizeComposerSessionTarget(target)
+  })
+  ipcMain.on('composer:quick-target', (event, target: ComposerSessionTarget) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== quickWindow) return
+    quickComposerTarget = normalizeComposerSessionTarget(target)
+  })
+  ipcMain.handle('composer:get-main-target', () => mainComposerTarget)
   ipcMain.handle('app:show-floating-logo-menu', () => {
     showFloatingLogoContextMenu()
   })

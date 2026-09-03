@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import type { Conversation, MainConversationOpenRequest } from './types'
+import type { ComposerSessionTarget, Conversation, MainConversationOpenRequest } from './types'
 
 const MAX_HANDOFF_ID_LENGTH = 180
 
@@ -46,4 +46,23 @@ export function findMainConversationTarget(
     (!request.projectId || conversation.projectId === request.projectId) &&
     (!request.assistantId || conversation.assistantId === request.assistantId)
   )) ?? null
+}
+
+export function normalizeComposerSessionTarget(value: unknown): ComposerSessionTarget | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as Record<string, unknown>
+  const assistantId = normalizeId(input.assistantId)
+  if (!assistantId) return null
+  return {
+    conversationId: normalizeId(input.conversationId),
+    projectId: normalizeId(input.projectId),
+    assistantId
+  }
+}
+
+export function shouldRestoreMainWindowFromStatusIcon(
+  target: 'main' | 'quick',
+  hasMainWindow: boolean
+): boolean {
+  return target === 'main' && hasMainWindow
 }

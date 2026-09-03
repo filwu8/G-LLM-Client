@@ -156,7 +156,7 @@ This file is generated from the locked production dependency graph by
 | estree-util-is-identifier-name@3.0.0 | MIT | [link](https://github.com/syntax-tree/estree-util-is-identifier-name#readme) |
 | extend@3.0.2 | MIT | [link](https://github.com/justmoon/node-extend#readme) |
 | fast-deep-equal@3.1.3 | MIT | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
-| fast-uri@3.1.5 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
+| fast-uri@3.1.6 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
 | fs-extra@10.1.0 | MIT | [link](https://github.com/jprichardson/node-fs-extra) |
 | graceful-fs@4.2.11 | ISC | [link](https://github.com/isaacs/node-graceful-fs#readme) |
 | hachure-fill@0.5.2 | MIT | [link](https://github.com/pshihn/hachure-fill#readme) |
@@ -2728,7 +2728,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### fast-uri@3.1.5
+### fast-uri@3.1.6
 
 ````text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae

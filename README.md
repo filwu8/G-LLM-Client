@@ -1,8 +1,8 @@
 # G-LLM Client
 
-[简体中文](./README.md) | [English](./README.en-US.md)
+[简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.16](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.16](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.16)，发布于 2026-09-01。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.17 更聪明的目标执行与无缝会话
+
+- 新建目标时会自动带入输入框中尚未发送的需求，并提供智能延续、完整上下文、仅相关历史和独立目标四种上下文策略；既能承接相关工作，也能避免旧任务干扰全新目标。
+- 每个目标都可单独设置联网开关和来源范围，支持全网、优先疑似官网或仅限指定域名；“疑似官网”会明确标注为未经认证，用户指定域名也不会被误称为官方来源。
+- 工作区执行会注入用户时区下的真实当前日期和时间，减少报告年份、时效判断和交付元数据沿用模型训练时间的问题。
+- Windows 主窗口最小化后，从宠物或托盘图标可准确恢复原窗口；关闭主窗口或隐藏快速对话后仍按原入口打开，并在大小窗口切换时保留未发送草稿与当前会话。
+- GitHub 项目入口扩展至 13 种语言，让更多地区的用户能快速了解产品价值、核心能力与下载方式。
+- 升级生产环境 URI 解析依赖，清除发布门禁中的高危安全告警。
 
 ## V2.0.16 自主目标模式与工作区交付
 

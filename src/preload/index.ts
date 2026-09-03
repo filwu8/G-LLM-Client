@@ -20,6 +20,7 @@ import type {
   ChatActivityEvent,
   ChatRequest,
   ClipboardAttachmentInput,
+  ComposerSessionTarget,
   Conversation,
   ConversationChangeEvent,
   ConversationSearchRequest,
@@ -52,6 +53,10 @@ let pendingDeepLinkHandoffStatus: DeepLinkHandoffStatusEvent | null = null
 const deepLinkHandoffStatusListeners = new Set<(status: DeepLinkHandoffStatusEvent) => void>()
 let pendingMainConversationOpenRequest: MainConversationOpenRequest | null = null
 const mainConversationOpenListeners = new Set<(request: MainConversationOpenRequest) => void>()
+let pendingQuickComposerTarget: ComposerSessionTarget | null = null
+let pendingMainComposerTarget: ComposerSessionTarget | null = null
+const quickComposerTargetListeners = new Set<(target: ComposerSessionTarget) => void>()
+const mainComposerTargetListeners = new Set<(target: ComposerSessionTarget) => void>()
 
 ipcRenderer.on('deep-link:handoff-status', (_event, status: DeepLinkHandoffStatusEvent) => {
   if (deepLinkHandoffStatusListeners.size === 0) {
@@ -67,6 +72,22 @@ ipcRenderer.on('conversation:open-in-main', (_event, request: MainConversationOp
     return
   }
   for (const listener of mainConversationOpenListeners) listener(request)
+})
+
+ipcRenderer.on('composer:open-in-quick', (_event, target: ComposerSessionTarget) => {
+  if (quickComposerTargetListeners.size === 0) {
+    pendingQuickComposerTarget = target
+    return
+  }
+  for (const listener of quickComposerTargetListeners) listener(target)
+})
+
+ipcRenderer.on('composer:open-in-main', (_event, target: ComposerSessionTarget) => {
+  if (mainComposerTargetListeners.size === 0) {
+    pendingMainComposerTarget = target
+    return
+  }
+  for (const listener of mainComposerTargetListeners) listener(target)
 })
 
 const api = {
@@ -146,10 +167,13 @@ const api = {
   importDataArchive: (): Promise<DataArchiveResult | null> => ipcRenderer.invoke('storage:import-data-archive'),
   relaunchApp: (): Promise<void> => ipcRenderer.invoke('app:relaunch'),
   quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
-  showMainWindow: (request?: MainConversationOpenRequest): Promise<void> =>
-    ipcRenderer.invoke('app:show-main-window', request),
+  showMainWindow: (request?: MainConversationOpenRequest, composerTarget?: ComposerSessionTarget): Promise<void> =>
+    ipcRenderer.invoke('app:show-main-window', request, composerTarget),
   showQuickPanel: (): Promise<void> => ipcRenderer.invoke('app:show-quick-panel'),
   hideQuickPanel: (): Promise<void> => ipcRenderer.invoke('app:hide-quick-panel'),
+  getMainComposerTarget: (): Promise<ComposerSessionTarget | null> => ipcRenderer.invoke('composer:get-main-target'),
+  setMainComposerTarget: (target: ComposerSessionTarget): void => ipcRenderer.send('composer:main-target', target),
+  setQuickComposerTarget: (target: ComposerSessionTarget): void => ipcRenderer.send('composer:quick-target', target),
   showFloatingLogoMenu: (): Promise<void> => ipcRenderer.invoke('app:show-floating-logo-menu'),
   getFloatingMascotSkin: (): Promise<FloatingMascotSkin> => ipcRenderer.invoke('app:get-floating-mascot-skin'),
   getFloatingMascotHint: (): Promise<FloatingMascotHintEvent | null> => ipcRenderer.invoke('app:get-floating-mascot-hint'),
@@ -196,6 +220,28 @@ const api = {
       })
     }
     return () => mainConversationOpenListeners.delete(listener)
+  },
+  onQuickComposerTargetRequested: (listener: (target: ComposerSessionTarget) => void): (() => void) => {
+    quickComposerTargetListeners.add(listener)
+    if (pendingQuickComposerTarget) {
+      const pending = pendingQuickComposerTarget
+      pendingQuickComposerTarget = null
+      queueMicrotask(() => {
+        if (quickComposerTargetListeners.has(listener)) listener(pending)
+      })
+    }
+    return () => quickComposerTargetListeners.delete(listener)
+  },
+  onMainComposerTargetRequested: (listener: (target: ComposerSessionTarget) => void): (() => void) => {
+    mainComposerTargetListeners.add(listener)
+    if (pendingMainComposerTarget) {
+      const pending = pendingMainComposerTarget
+      pendingMainComposerTarget = null
+      queueMicrotask(() => {
+        if (mainComposerTargetListeners.has(listener)) listener(pending)
+      })
+    }
+    return () => mainComposerTargetListeners.delete(listener)
   },
   onActiveAssistantChanged: (listener: (id: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id)

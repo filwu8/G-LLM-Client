@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.16",
+  "version": "2.0.17",
   "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -17,10 +17,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm i18n:check && pnpm licenses:generate && tsc --noEmit && electron-vite build && pnpm bundle:verify",
-    "test": "node --test --experimental-strip-types src/shared/modelCapabilities.test.ts src/main/activeResponse.test.ts src/main/agentRunLedger.test.ts src/main/chatStreamParser.test.ts src/main/conversationContext.test.ts src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/documentHtml.test.ts src/main/docxDocument.test.ts src/main/logRedaction.test.ts src/main/screenshotPlatform.test.ts src/main/updatePolicy.test.ts src/main/webSearchPolicy.test.ts src/main/webSearchParser.test.ts src/main/webResearch.test.ts src/main/workspaceArtifacts.test.ts src/main/workspaceArtifactVerification.test.ts src/main/workspaceContext.test.ts src/main/workspaceModelStream.test.ts src/main/workspaceRequestPolicy.test.ts src/main/workspaceScriptRunner.test.ts src/renderer/src/ModelPicker.test.ts src/renderer/src/chatErrors.test.ts src/renderer/src/chatPerformance.test.ts src/renderer/src/conversationEditing.test.ts src/renderer/src/conversationRuntime.test.ts src/renderer/src/markdownStrongBoundary.test.ts src/renderer/src/streamingMarkdown.test.ts src/shared/conversationHandoff.test.ts src/shared/providers.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts src/shared/webSearchMode.test.ts",
+    "test": "node --test --experimental-strip-types src/shared/goalWebSearch.test.ts src/shared/modelCapabilities.test.ts src/main/activeResponse.test.ts src/main/agentRunLedger.test.ts src/main/chatStreamParser.test.ts src/main/conversationContext.test.ts src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/documentHtml.test.ts src/main/docxDocument.test.ts src/main/logRedaction.test.ts src/main/screenshotPlatform.test.ts src/main/updatePolicy.test.ts src/main/webSearchPolicy.test.ts src/main/webSearchParser.test.ts src/main/webResearch.test.ts src/main/workspaceArtifacts.test.ts src/main/workspaceArtifactVerification.test.ts src/main/workspaceContext.test.ts src/main/workspaceModelStream.test.ts src/main/workspaceRequestPolicy.test.ts src/main/workspaceScriptRunner.test.ts src/renderer/src/ModelPicker.test.ts src/renderer/src/chatErrors.test.ts src/renderer/src/chatPerformance.test.ts src/renderer/src/conversationEditing.test.ts src/renderer/src/conversationRuntime.test.ts src/renderer/src/markdownStrongBoundary.test.ts src/renderer/src/streamingMarkdown.test.ts src/shared/conversationHandoff.test.ts src/shared/providers.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts src/shared/webSearchMode.test.ts",
     "test:assistant-platform": "node --test --experimental-strip-types src/shared/assistantCapabilities.test.ts src/shared/agentPlanning.test.ts src/shared/assistantDelegation.test.ts src/shared/skillLifecycle.test.ts src/shared/assistantTemplates.test.ts src/shared/skillMarkdown.test.ts",
     "test:analytics": "node --test --experimental-strip-types src/renderer/src/localUsageStats.test.ts",
-    "test:goal-mode": "node --test --experimental-strip-types src/shared/goalMode.test.ts",
+    "test:goal-mode": "node --test --experimental-strip-types src/shared/goalMode.test.ts src/shared/goalContext.test.ts",
     "test:deep-link": "node --test --experimental-strip-types src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/shared/themeEntitlement.test.ts",
     "i18n:check": "node scripts/check-translations.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",

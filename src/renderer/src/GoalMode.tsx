@@ -4,12 +4,13 @@
  * Change Date: 2030-08-01
  */
 
-import { CircleCheck, FolderOpen, Pause, Play, RotateCcw, ShieldCheck, Target, X } from 'lucide-react'
+import { CircleCheck, FolderOpen, Globe2, Pause, Play, RotateCcw, ShieldCheck, Target, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { ConversationWorkspace, GoalTask, GoalTaskStatus } from '@shared/types'
+import type { ConversationWorkspace, GoalContextMode, GoalTask, GoalTaskStatus, GoalWebSearchScope, WebSearchMode } from '@shared/types'
 import { getEffectiveGoalTaskStatus } from '@shared/goalMode'
+import { normalizeGoalWebSearchDomains } from '@shared/goalWebSearch'
 
 export interface GoalSetupValue {
   goal: string
@@ -18,21 +19,31 @@ export interface GoalSetupValue {
   approvalMode: NonNullable<ConversationWorkspace['approvalMode']>
   maxSteps: number
   maxDurationMinutes: number
+  webSearchMode: WebSearchMode
+  webSearchScope: GoalWebSearchScope
+  webSearchDomains: string[]
+  contextMode: GoalContextMode
 }
 
-export function GoalSetupDialog({ currentWorkspace, onChooseDirectory, onClose, onStart }: {
+export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initialGoal, onChooseDirectory, onClose, onStart }: {
   currentWorkspace?: ConversationWorkspace
+  defaultWebSearchMode?: WebSearchMode
+  initialGoal?: string
   onChooseDirectory: () => Promise<string | null>
   onClose: () => void
   onStart: (value: GoalSetupValue) => void
 }) {
   const { t } = useTranslation()
-  const [goal, setGoal] = useState('')
+  const [goal, setGoal] = useState(() => initialGoal?.trim() ?? '')
   const [acceptanceCriteria, setAcceptanceCriteria] = useState('')
+  const [contextMode, setContextMode] = useState<GoalContextMode>('auto')
   const [rootPath, setRootPath] = useState(currentWorkspace?.rootPath ?? '')
   const [approvalMode, setApprovalMode] = useState<NonNullable<ConversationWorkspace['approvalMode']>>(currentWorkspace?.approvalMode ?? 'auto')
   const [maxSteps, setMaxSteps] = useState(8)
   const [maxDurationMinutes, setMaxDurationMinutes] = useState(60)
+  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>(defaultWebSearchMode ?? 'auto')
+  const [webSearchScope, setWebSearchScope] = useState<GoalWebSearchScope>('all')
+  const [webSearchDomains, setWebSearchDomains] = useState('')
   const [choosing, setChoosing] = useState(false)
 
   useEffect(() => {
@@ -69,6 +80,17 @@ export function GoalSetupDialog({ currentWorkspace, onChooseDirectory, onClose, 
           <textarea maxLength={3000} rows={3} value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} placeholder={t('goalMode.acceptancePlaceholder')} />
         </label>
 
+        <label className="goal-context-setting">
+          <span>{t('goalMode.contextMode')}</span>
+          <select value={contextMode} onChange={(event) => setContextMode(event.target.value as GoalContextMode)}>
+            <option value="auto">{t('goalMode.contextAuto')}</option>
+            <option value="continue">{t('goalMode.contextContinue')}</option>
+            <option value="relevant">{t('goalMode.contextRelevant')}</option>
+            <option value="isolated">{t('goalMode.contextIsolated')}</option>
+          </select>
+          <small>{t(`goalMode.contextDescription.${contextMode}`)}</small>
+        </label>
+
         <div className="goal-workspace-field">
           <span>{t('goalMode.workspace')}</span>
           <div><FolderOpen size={16} /><strong title={rootPath}>{rootPath || t('goalMode.workspaceMissing')}</strong><button disabled={choosing} onClick={() => void chooseDirectory()} type="button">{choosing ? t('goalMode.choosingWorkspace') : t('goalMode.chooseWorkspace')}</button></div>
@@ -80,8 +102,17 @@ export function GoalSetupDialog({ currentWorkspace, onChooseDirectory, onClose, 
           <label><span>{t('goalMode.maxDuration')}</span><select value={maxDurationMinutes} onChange={(event) => setMaxDurationMinutes(Number(event.target.value))}><option value={15}>15 {t('goalMode.minutes')}</option><option value={30}>30 {t('goalMode.minutes')}</option><option value={60}>60 {t('goalMode.minutes')}</option><option value={120}>120 {t('goalMode.minutes')}</option></select></label>
         </div>
 
+        <section className="goal-search-settings">
+          <header><Globe2 size={16} /><span><strong>{t('goalMode.webSearch')}</strong><small>{t('goalMode.webSearchDescription')}</small></span></header>
+          <div className="goal-search-grid">
+            <label><span>{t('goalMode.webSearchMode')}</span><select value={webSearchMode} onChange={(event) => setWebSearchMode(event.target.value as WebSearchMode)}><option value="auto">{t('app.webSearchModeAuto')}</option><option value="on">{t('app.webSearchModeOn')}</option><option value="off">{t('app.webSearchModeOff')}</option></select></label>
+            <label><span>{t('goalMode.webSearchScope')}</span><select disabled={webSearchMode === 'off'} value={webSearchScope} onChange={(event) => setWebSearchScope(event.target.value as GoalWebSearchScope)}><option value="all">{t('goalMode.searchScopeAll')}</option><option value="official">{t('goalMode.searchScopeOfficial')}</option><option value="specified">{t('goalMode.searchScopeSpecified')}</option></select></label>
+          </div>
+          {webSearchMode !== 'off' && webSearchScope === 'specified' && <label className="goal-domain-field"><span>{t('goalMode.specifiedDomains')}</span><input value={webSearchDomains} onChange={(event) => setWebSearchDomains(event.target.value)} placeholder={t('goalMode.specifiedDomainsPlaceholder')} /><small>{t('goalMode.specifiedDomainsHint')}</small></label>}
+        </section>
+
         <div className="goal-safety-note"><ShieldCheck size={16} /><span>{t('goalMode.safetyNote')}</span></div>
-        <footer><button className="secondary-action" onClick={onClose} type="button">{t('common.cancel')}</button><button className="primary-action" disabled={!goal.trim() || !acceptanceCriteria.trim() || !rootPath} onClick={() => onStart({ goal: goal.trim(), acceptanceCriteria: acceptanceCriteria.trim(), rootPath, approvalMode, maxSteps, maxDurationMinutes })} type="button"><Play size={15} />{t('goalMode.start')}</button></footer>
+        <footer><button className="secondary-action" onClick={onClose} type="button">{t('common.cancel')}</button><button className="primary-action" disabled={!goal.trim() || !acceptanceCriteria.trim() || !rootPath || (webSearchMode !== 'off' && webSearchScope === 'specified' && normalizeGoalWebSearchDomains(webSearchDomains).length === 0)} onClick={() => onStart({ goal: goal.trim(), acceptanceCriteria: acceptanceCriteria.trim(), rootPath, approvalMode, maxSteps, maxDurationMinutes, webSearchMode, webSearchScope, webSearchDomains: normalizeGoalWebSearchDomains(webSearchDomains), contextMode })} type="button"><Play size={15} />{t('goalMode.start')}</button></footer>
       </section>
     </div>
   )
@@ -109,6 +140,7 @@ export function GoalTaskPanel({ task, running, onPause, onResume, onClear, onNew
         <div className="goal-task-meta">
           <span>{t('goalMode.runCount', { count: task.runCount })}</span>
           <span>{t('goalMode.limits', { steps: task.maxSteps, minutes: task.maxDurationMinutes })}</span>
+          {task.resolvedContextMode && <span>{t(`goalMode.contextResolved.${task.resolvedContextMode}`)}</span>}
           {task.lastPlan?.steps.map((step) => (
             <span className={`goal-task-step ${step.status}`} key={step.id} title={step.detail}>
               {step.status === 'completed' ? <CircleCheck size={10} /> : <i />}

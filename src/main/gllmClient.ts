@@ -22,10 +22,12 @@ import type {
   ProviderCheckResult,
   ProviderModel,
   SkillConfig,
+  GoalWebSearchScope,
   WebResearchAudit,
   WebSearchActivity,
   WebSearchResult
 } from '../shared/types'
+import { applyWorkspaceSearchScope, buildWorkspaceSearchQuery, getGoalSearchResultDomain, normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import type { AppLanguage } from '../shared/i18n'
 import { buildAssistantSkillContext } from '../shared/assistantCapabilities'
 import {
@@ -1433,17 +1435,37 @@ function interleaveSearchBatches(batches: WebSearchResult[][], limit: number): W
   return merged
 }
 
-export async function searchWebForWorkspace(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+export async function searchWebForWorkspace(
+  query: string,
+  signal?: AbortSignal,
+  options: { scope?: GoalWebSearchScope; domains?: string[] } = {}
+): Promise<WebSearchResult[]> {
   const boundedQuery = query.trim().slice(0, 500)
   if (!boundedQuery) return []
+  const scope = options.scope ?? 'all'
+  const domains = normalizeGoalWebSearchDomains(options.domains)
+  if (scope === 'specified' && domains.length === 0) return []
+  const scopedQuery = buildWorkspaceSearchQuery(boundedQuery, scope, domains)
 
   const [bing, duckDuckGo, google] = await Promise.all([
-    searchWeb(boundedQuery, signal).catch(() => []),
-    searchDuckDuckGo(boundedQuery, signal).catch(() => []),
-    searchGoogle(boundedQuery, signal).then((result) => result.results).catch(() => [])
+    searchWeb(scopedQuery, signal).catch(() => []),
+    searchDuckDuckGo(scopedQuery, signal).catch(() => []),
+    searchGoogle(scopedQuery, signal).then((result) => result.results).catch(() => [])
   ])
   signal?.throwIfAborted()
-  return interleaveSearchBatches([bing, duckDuckGo, google], 8)
+  const engineDomainCounts = new Map<string, number>()
+  for (const batch of [bing, duckDuckGo, google]) {
+    for (const domain of new Set(batch.map(getGoalSearchResultDomain).filter(Boolean))) {
+      engineDomainCounts.set(domain, (engineDomainCounts.get(domain) ?? 0) + 1)
+    }
+  }
+  const corroboratedDomains = new Set(Array.from(engineDomainCounts).filter(([, count]) => count >= 2).map(([domain]) => domain))
+  return applyWorkspaceSearchScope(
+    interleaveSearchBatches([bing, duckDuckGo, google], 24),
+    scope,
+    domains,
+    corroboratedDomains
+  ).slice(0, 8)
 }
 
 interface WebResearchProgress {

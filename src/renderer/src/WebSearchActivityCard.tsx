@@ -155,6 +155,7 @@ export function WebSearchActivityCard({ activity, model, running = false, starte
               <div className="web-search-result-content">
                 <strong>{result.title}</strong>
                 <small>
+                  {result.sourceTrust ? `${t(`webActivity.sourceTrust.${result.sourceTrust}`)} · ` : ''}
                   {result.sourceRole ? `${t(`webActivity.sourceRole.${result.sourceRole}`)} · ` : ''}
                   {result.source || result.sourceDomain || getUrlHost(result.url)}
                   {result.publishedAt ? ` · ${formatSearchResultDate(result.publishedAt)}` : ''}

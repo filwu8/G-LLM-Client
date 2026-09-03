@@ -464,6 +464,12 @@
       "community": "社区经验",
       "aggregator": "二手聚合",
       "unknown": "来源待确认"
+    },
+    "sourceTrust": {
+      "user-specified": "用户指定域名",
+      "likely-official": "疑似官方·未认证",
+      "third-party": "第三方来源",
+      "unverified": "身份待确认"
     }
   },
   "workspaceErrors": {
@@ -483,6 +489,22 @@
     "goalPlaceholder": "例如：完成这个项目的登录页面，并确保可以正常构建",
     "acceptanceCriteria": "验收标准",
     "acceptancePlaceholder": "逐条说明必须交付的结果、文件、质量或验证要求",
+    "contextMode": "上下文方式",
+    "contextAuto": "智能判断（推荐）",
+    "contextContinue": "延续全部上下文",
+    "contextRelevant": "仅参考相关历史",
+    "contextIsolated": "独立目标",
+    "contextDescription": {
+      "auto": "根据新旧目标的关联程度，自动选择完整、相关或独立上下文。",
+      "continue": "读取当前对话历史、项目记忆和工作区。",
+      "relevant": "只选择与新目标相关的历史，同时保留项目记忆和工作区。",
+      "isolated": "不读取此前聊天和项目记忆，但仍会观察授权工作区。"
+    },
+    "contextResolved": {
+      "continue": "完整上下文",
+      "relevant": "相关上下文",
+      "isolated": "独立上下文"
+    },
     "workspace": "授权工作文件夹",
     "workspaceMissing": "尚未选择文件夹",
     "chooseWorkspace": "选择文件夹",
@@ -491,6 +513,16 @@
     "maxSteps": "最大执行轮数",
     "maxDuration": "最长单次运行",
     "minutes": "分钟",
+    "webSearch": "联网搜索",
+    "webSearchDescription": "为这个目标单独设置搜索方式，不影响其他对话",
+    "webSearchMode": "搜索策略",
+    "webSearchScope": "来源范围",
+    "searchScopeAll": "全网",
+    "searchScopeOfficial": "优先疑似官方来源",
+    "searchScopeSpecified": "仅指定网站",
+    "specifiedDomains": "允许的网站域名",
+    "specifiedDomainsPlaceholder": "例如：microsoft.com, github.com",
+    "specifiedDomainsHint": "使用逗号或空格分隔；搜索结果将严格限制在这些域名及其子域名。",
     "safetyNote": "助手只能访问此文件夹；达到轮数或时间上限后会暂停，客户端重启后需要手动继续。",
     "start": "启动目标",
     "activeGoal": "当前目标",

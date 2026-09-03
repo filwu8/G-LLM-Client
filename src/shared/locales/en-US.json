@@ -464,6 +464,12 @@
       "community": "Community experience",
       "aggregator": "Secondary aggregator",
       "unknown": "Unverified source type"
+    },
+    "sourceTrust": {
+      "user-specified": "User-specified domain",
+      "likely-official": "Likely official · unverified",
+      "third-party": "Third-party source",
+      "unverified": "Identity unverified"
     }
   },
   "workspaceErrors": {
@@ -483,6 +489,22 @@
     "goalPlaceholder": "For example: finish the sign-in page and make sure the project builds",
     "acceptanceCriteria": "Acceptance criteria",
     "acceptancePlaceholder": "List the required deliverables, files, quality checks, and verification conditions",
+    "contextMode": "Context behavior",
+    "contextAuto": "Smart selection (recommended)",
+    "contextContinue": "Continue with full context",
+    "contextRelevant": "Use relevant history only",
+    "contextIsolated": "Independent goal",
+    "contextDescription": {
+      "auto": "Choose full, relevant, or isolated context based on how closely the goals relate.",
+      "continue": "Use the current conversation history, project memory, and workspace.",
+      "relevant": "Select related history while retaining project memory and workspace context.",
+      "isolated": "Ignore earlier chat and project memory while still inspecting the authorized workspace."
+    },
+    "contextResolved": {
+      "continue": "Full context",
+      "relevant": "Relevant context",
+      "isolated": "Isolated context"
+    },
     "workspace": "Authorized workspace folder",
     "workspaceMissing": "No folder selected",
     "chooseWorkspace": "Choose folder",
@@ -491,6 +513,16 @@
     "maxSteps": "Maximum turns",
     "maxDuration": "Maximum run time",
     "minutes": "minutes",
+    "webSearch": "Web search",
+    "webSearchDescription": "Set search behavior for this goal without affecting other conversations",
+    "webSearchMode": "Search policy",
+    "webSearchScope": "Source scope",
+    "searchScopeAll": "Entire web",
+    "searchScopeOfficial": "Prefer likely official sources",
+    "searchScopeSpecified": "Specified sites only",
+    "specifiedDomains": "Allowed domains",
+    "specifiedDomainsPlaceholder": "For example: microsoft.com, github.com",
+    "specifiedDomainsHint": "Separate domains with commas or spaces. Results are restricted to these domains and their subdomains.",
     "safetyNote": "The assistant can access only this folder. It pauses at the turn or time limit, and requires manual resume after an app restart.",
     "start": "Start goal",
     "activeGoal": "Active goal",

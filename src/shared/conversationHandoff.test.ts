@@ -10,7 +10,9 @@ import test from 'node:test'
 import {
   createMainConversationOpenRequest,
   findMainConversationTarget,
-  normalizeMainConversationOpenRequest
+  normalizeComposerSessionTarget,
+  normalizeMainConversationOpenRequest,
+  shouldRestoreMainWindowFromStatusIcon
 } from './conversationHandoff.ts'
 import type { Conversation } from './types.ts'
 
@@ -57,4 +59,28 @@ test('does not open a same-id conversation from a different project or assistant
     projectId: 'project-b',
     assistantId: target.assistantId
   }), null)
+})
+
+test('normalizes a composer target without requiring an existing conversation', () => {
+  assert.deepEqual(normalizeComposerSessionTarget({
+    conversationId: ' conversation-a ',
+    projectId: ' project-a ',
+    assistantId: ' assistant-a '
+  }), {
+    conversationId: 'conversation-a',
+    projectId: 'project-a',
+    assistantId: 'assistant-a'
+  })
+  assert.deepEqual(normalizeComposerSessionTarget({ assistantId: 'assistant-a' }), {
+    conversationId: undefined,
+    projectId: undefined,
+    assistantId: 'assistant-a'
+  })
+  assert.equal(normalizeComposerSessionTarget({ projectId: 'project-a' }), null)
+})
+
+test('routes status icon clicks by the way the previous window was hidden', () => {
+  assert.equal(shouldRestoreMainWindowFromStatusIcon('main', true), true)
+  assert.equal(shouldRestoreMainWindowFromStatusIcon('main', false), false)
+  assert.equal(shouldRestoreMainWindowFromStatusIcon('quick', true), false)
 })

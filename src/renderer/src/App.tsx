@@ -77,7 +77,7 @@ import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
 import { findMainConversationTarget } from '@shared/conversationHandoff'
-import type { MainConversationOpenRequest } from '@shared/types'
+import type { ComposerSessionTarget, MainConversationOpenRequest } from '@shared/types'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   acknowledgeConversationRun,
@@ -102,6 +102,8 @@ import {
   type MessageSelectionSnapshot
 } from './clipboard'
 import {
+  getComposerDraftStorageKey,
+  getComposerSessionKey,
   MAIN_COMPOSER_DRAFT_KEY,
   persistComposerDraft,
   readComposerDraft,
@@ -166,7 +168,6 @@ import type {
   AssistantSuggestion,
   ChatChunk,
   ChatMessage,
-  ChatRequest,
   ClipboardAttachmentInput,
   Conversation,
   GoalTask,
@@ -192,11 +193,13 @@ import type {
   ThemeEntitlementResult,
   WebSearchActivity,
   WebSearchMode,
+  WorkspaceAgentRequest,
   ConversationWorkspace,
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
 } from '@shared/types'
 import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
+import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
 
 const iconMap: Record<AssistantIcon, LucideIcon> = {
   sparkles: Sparkles,
@@ -220,14 +223,6 @@ type SessionStateUpdate<T> = T | ((current: T) => T)
 
 function resolveSessionStateUpdate<T>(update: SessionStateUpdate<T>, current: T): T {
   return typeof update === 'function' ? (update as (value: T) => T)(current) : update
-}
-
-function getComposerSessionKey(conversationId: string | null, projectId: string, assistantId: string): string {
-  return conversationId ? `conversation:${conversationId}` : `new:${projectId || 'loading'}:${assistantId}`
-}
-
-function getComposerDraftStorageKey(sessionKey: string): string {
-  return `${MAIN_COMPOSER_DRAFT_KEY}:${encodeURIComponent(sessionKey)}`
 }
 
 interface TokenUsage {
@@ -575,10 +570,13 @@ function createConversation(assistant: Assistant, provider: ApiProvider, project
 function getWebSearchRequestSettings(
   mode: WebSearchMode,
   conversation: Conversation
-): Pick<ChatRequest, 'webSearchMode' | 'webSearchEnabled'> {
+): Pick<WorkspaceAgentRequest, 'webSearchMode' | 'webSearchEnabled' | 'webSearchScope' | 'webSearchDomains'> {
+  const effectiveMode = conversation.goalTask?.webSearchMode ?? mode
   return {
-    webSearchMode: mode,
-    webSearchEnabled: decideConversationWebSearch(mode, conversation.messages).enabled
+    webSearchMode: effectiveMode,
+    webSearchEnabled: decideConversationWebSearch(effectiveMode, conversation.messages).enabled,
+    webSearchScope: conversation.goalTask?.webSearchScope,
+    webSearchDomains: conversation.goalTask?.webSearchDomains
   }
 }
 
@@ -1153,6 +1151,30 @@ export default function App() {
     window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
   }
 
+  async function openRequestedMainComposer(target: ComposerSessionTarget) {
+    let state = await window.gllm.getState()
+    if (target.projectId && state.activeProjectId !== target.projectId) {
+      state = await window.gllm.setActiveProjectId(target.projectId)
+    }
+    const conversation = target.conversationId
+      ? state.conversations.find((item) => (
+          item.id === target.conversationId &&
+          item.assistantId === target.assistantId &&
+          (!target.projectId || item.projectId === target.projectId)
+        )) ?? null
+      : null
+    if (target.conversationId && !conversation) return
+
+    applyAppState(state)
+    setDraftWorkspace(undefined)
+    setActiveAssistantId(target.assistantId)
+    selectConversation(conversation?.id ?? null)
+    const sessionKey = getComposerSessionKey(conversation?.id, target.projectId, target.assistantId)
+    const restoredDraft = readComposerDraft(getComposerDraftStorageKey(sessionKey))
+    setComposerDrafts((current) => ({ ...current, [sessionKey]: restoredDraft }))
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus())
+  }
+
   async function checkThemeEntitlement(): Promise<ThemeEntitlementResult> {
     const result = await window.gllm.checkThemeEntitlement()
     setGoldThemeEntitled(result.eligible)
@@ -1187,6 +1209,10 @@ export default function App() {
       if (appStateLoadedRef.current) void openRequestedMainConversation(request)
     })
   }, [])
+
+  useEffect(() => window.gllm.onMainComposerTargetRequested((target) => {
+    void openRequestedMainComposer(target)
+  }), [])
 
   useEffect(() => {
     return window.gllm.onSettingsChanged((nextSettings) => {
@@ -1253,6 +1279,24 @@ export default function App() {
   useEffect(() => {
     persistComposerDraft(getComposerDraftStorageKey(composerSessionKey), draft)
   }, [composerSessionKey, draft])
+
+  useEffect(() => {
+    window.gllm.setMainComposerTarget({
+      conversationId: activeConversationId ?? undefined,
+      projectId: activeProjectId || undefined,
+      assistantId: activeAssistantId
+    })
+  }, [activeAssistantId, activeConversationId, activeProjectId])
+
+  useEffect(() => {
+    const storageKey = getComposerDraftStorageKey(composerSessionKey)
+    const refreshDraft = (event: StorageEvent) => {
+      if (event.key !== storageKey) return
+      setComposerDrafts((current) => ({ ...current, [composerSessionKey]: event.newValue ?? '' }))
+    }
+    window.addEventListener('storage', refreshDraft)
+    return () => window.removeEventListener('storage', refreshDraft)
+  }, [composerSessionKey])
 
   useEffect(() => {
     resizeComposerTextarea(composerTextareaRef.current)
@@ -2410,11 +2454,11 @@ export default function App() {
         availableAssistants: assistants,
         workspace,
         provider,
-        messages: nextConversation.messages,
+        messages: selectGoalContextMessages(nextConversation.messages, nextConversation.goalTask),
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.projectMemory,
+        projectMemory: nextConversation.goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory,
         executionLimits: nextConversation.goalTask
           ? {
               maxTurns: nextConversation.goalTask.maxSteps,
@@ -2807,6 +2851,17 @@ export default function App() {
       status: 'running',
       maxSteps: value.maxSteps,
       maxDurationMinutes: value.maxDurationMinutes,
+      webSearchMode: value.webSearchMode,
+      webSearchScope: value.webSearchScope,
+      webSearchDomains: value.webSearchDomains,
+      contextMode: value.contextMode,
+      resolvedContextMode: resolveGoalContextMode(
+        value.contextMode,
+        value.goal,
+        value.acceptanceCriteria,
+        activeConversation?.goalTask,
+        activeConversation?.messages ?? []
+      ),
       runCount: 1,
       startedAt: now,
       lastRunStartedAt: now,
@@ -2819,6 +2874,7 @@ export default function App() {
       steps: value.maxSteps,
       minutes: value.maxDurationMinutes
     }))
+    goalTask.contextStartMessageId = goalMessage.id
     const nextConversation = withConversationTokens({
       ...baseConversation,
       assistantId: activeAssistant.id,
@@ -2830,6 +2886,7 @@ export default function App() {
     })
 
     setGoalSetupOpen(false)
+    setDraft('')
     setDraftWorkspace(undefined)
     if (!activeConversation) moveComposerSessionToConversation(nextConversation.id, true)
     beginConversationRun(nextConversation.id)
@@ -3883,7 +3940,11 @@ export default function App() {
               <textarea
                 ref={composerTextareaRef}
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setDraft(value)
+                  persistComposerDraft(getComposerDraftStorageKey(composerSessionKey), value)
+                }}
                 onPaste={(event) => void handleComposerPaste(event)}
                 onKeyDown={(event) => {
                   if (shouldSendMessageFromKeyboard(event, messageSendShortcut)) {
@@ -4124,6 +4185,8 @@ export default function App() {
       {goalSetupOpen && (
         <GoalSetupDialog
           currentWorkspace={currentWorkspace}
+          defaultWebSearchMode={webSearchMode}
+          initialGoal={draft}
           onChooseDirectory={chooseGoalWorkspaceDirectory}
           onClose={() => setGoalSetupOpen(false)}
           onStart={(value) => void startGoalMode(value)}

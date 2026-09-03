@@ -40,7 +40,6 @@ import { useTranslation } from 'react-i18next'
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
-import { createMainConversationOpenRequest } from '@shared/conversationHandoff'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import { replaceUserMessageBranch } from './conversationEditing'
 import { attachDraftWorkspace, stopConversationWebSearch, stopPendingWebSearch } from './conversationRuntime'
@@ -51,6 +50,8 @@ import {
   type MessageSelectionSnapshot
 } from './clipboard'
 import {
+  getComposerDraftStorageKey,
+  getComposerSessionKey,
   persistComposerDraft,
   QUICK_COMPOSER_DRAFT_KEY,
   readComposerDraft,
@@ -74,6 +75,7 @@ import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistant
 import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
+import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
 import type {
   ApiProvider,
   AppSettings,
@@ -82,7 +84,7 @@ import type {
   AssistantMemory,
   ChatChunk,
   ChatMessage,
-  ChatRequest,
+  ComposerSessionTarget,
   Conversation,
   ConversationWorkspace,
   GoalTask,
@@ -93,6 +95,7 @@ import type {
   SkillConfig,
   ToolConfig,
   WebSearchMode,
+  WorkspaceAgentRequest,
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
 } from '@shared/types'
@@ -192,10 +195,13 @@ function createQuickConversation(assistant: Assistant, title: string): Conversat
 function getQuickWebSearchRequestSettings(
   mode: WebSearchMode,
   conversation: Conversation
-): Pick<ChatRequest, 'webSearchMode' | 'webSearchEnabled'> {
+): Pick<WorkspaceAgentRequest, 'webSearchMode' | 'webSearchEnabled' | 'webSearchScope' | 'webSearchDomains'> {
+  const effectiveMode = conversation.goalTask?.webSearchMode ?? mode
   return {
-    webSearchMode: mode,
-    webSearchEnabled: decideConversationWebSearch(mode, conversation.messages).enabled
+    webSearchMode: effectiveMode,
+    webSearchEnabled: decideConversationWebSearch(effectiveMode, conversation.messages).enabled,
+    webSearchScope: conversation.goalTask?.webSearchScope,
+    webSearchDomains: conversation.goalTask?.webSearchDomains
   }
 }
 
@@ -288,7 +294,9 @@ export default function QuickChat() {
   const [skills, setSkills] = useState<SkillConfig[]>([])
   const [tools, setTools] = useState<ToolConfig[]>([])
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
+  const [activeProjectId, setActiveProjectId] = useState('')
   const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [composerTarget, setComposerTarget] = useState<ComposerSessionTarget | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_PROVIDER.defaultModel)
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<ReasoningEffort>('default')
   const [draft, setDraft] = useState(() => readComposerDraft(QUICK_COMPOSER_DRAFT_KEY))
@@ -370,32 +378,79 @@ export default function QuickChat() {
   const messages = conversation?.messages ?? []
   const currentWorkspace = conversation?.workspace ?? draftWorkspace
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
+  const quickDraftStorageKey = composerTarget
+    ? getComposerDraftStorageKey(getComposerSessionKey(
+        composerTarget.conversationId,
+        composerTarget.projectId,
+        composerTarget.assistantId
+      ))
+    : QUICK_COMPOSER_DRAFT_KEY
+
+  function applyQuickState(
+    state: Awaited<ReturnType<typeof window.gllm.getState>>,
+    fallbackAssistantId: string,
+    requestedTarget: ComposerSessionTarget | null
+  ) {
+    const loadedProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
+    const visibleStateAssistants = state.assistants.filter((item) => !item.hidden)
+    const loadedAssistants = visibleStateAssistants.length > 0 ? visibleStateAssistants : DEFAULT_ASSISTANTS
+    const requestedAssistantId = requestedTarget?.assistantId ?? fallbackAssistantId
+    const quickAssistant = getAssistantById(requestedAssistantId, loadedAssistants)
+    const exactConversation = requestedTarget?.conversationId
+      ? state.conversations.find((item) => (
+          item.id === requestedTarget.conversationId &&
+          item.assistantId === quickAssistant.id &&
+          (!requestedTarget.projectId || item.projectId === requestedTarget.projectId)
+        )) ?? null
+      : null
+    const selectedConversation = requestedTarget ? exactConversation : getLatestAssistantConversation(state.conversations, quickAssistant.id)
+    const target: ComposerSessionTarget = requestedTarget ?? {
+      conversationId: selectedConversation?.id,
+      projectId: state.activeProjectId || undefined,
+      assistantId: quickAssistant.id
+    }
+    const initialProvider = state.settings
+      ? getProviderById(selectedConversation?.modelProviderId || quickAssistant.modelProviderId || state.settings.activeProviderId, loadedProviders)
+      : loadedProviders[0] ?? DEFAULT_PROVIDER
+
+    setSettings(state.settings)
+    setProviders(loadedProviders)
+    setAssistants(loadedAssistants)
+    setConversations(state.conversations)
+    setMemories(state.memories ?? [])
+    setSkills(state.skills ?? [])
+    setTools(state.tools ?? [])
+    setActiveProjectId(state.activeProjectId)
+    setActiveAssistantId(quickAssistant.id)
+    setComposerTarget(target)
+    setConversation(selectedConversation)
+    conversationRef.current = selectedConversation
+    setDraft(readComposerDraft(getComposerDraftStorageKey(getComposerSessionKey(
+      target.conversationId,
+      target.projectId,
+      target.assistantId
+    ))))
+    setSelectedModelId(getQuickModelId(selectedConversation, quickAssistant, initialProvider))
+    setSelectedReasoningEffort(selectedConversation?.reasoningEffort ?? 'default')
+  }
 
   useEffect(() => {
-    void Promise.all([window.gllm.getState(), window.gllm.getActiveAssistantId()]).then(([state, activeId]) => {
-      const loadedProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
-      const visibleStateAssistants = state.assistants.filter((assistant) => !assistant.hidden)
-      const loadedAssistants = visibleStateAssistants.length > 0 ? visibleStateAssistants : DEFAULT_ASSISTANTS
-      const quickAssistant = getAssistantById(activeId, loadedAssistants)
-
-      setSettings(state.settings)
-      setProviders(loadedProviders)
-      setAssistants(loadedAssistants)
-      setConversations(state.conversations)
-      setMemories(state.memories ?? [])
-      setSkills(state.skills ?? [])
-      setTools(state.tools ?? [])
-      setActiveAssistantId(quickAssistant.id)
-      const latestConversation = getLatestAssistantConversation(state.conversations, quickAssistant.id)
-      const initialProvider = state.settings
-        ? getProviderById(latestConversation?.modelProviderId || quickAssistant.modelProviderId || state.settings.activeProviderId, loadedProviders)
-        : loadedProviders[0] ?? DEFAULT_PROVIDER
-
-      setConversation(latestConversation)
-      setSelectedModelId(getQuickModelId(latestConversation, quickAssistant, initialProvider))
-      setSelectedReasoningEffort(latestConversation?.reasoningEffort ?? 'default')
-    })
+    void Promise.all([
+      window.gllm.getState(),
+      window.gllm.getActiveAssistantId(),
+      window.gllm.getMainComposerTarget()
+    ]).then(([state, activeId, target]) => applyQuickState(state, activeId, target))
   }, [])
+
+  useEffect(() => window.gllm.onQuickComposerTargetRequested((target) => {
+    void (async () => {
+      let state = await window.gllm.getState()
+      if (target.projectId && state.activeProjectId !== target.projectId) {
+        state = await window.gllm.setActiveProjectId(target.projectId)
+      }
+      applyQuickState(state, target.assistantId, target)
+    })()
+  }), [])
 
   useEffect(() => {
     if (settings) applyDocumentTheme(settings.theme, true)
@@ -459,8 +514,26 @@ export default function QuickChat() {
   useEffect(() => window.gllm.onWorkspaceApprovalRequested(setWorkspaceApprovalPrompt), [])
 
   useEffect(() => {
-    persistComposerDraft(QUICK_COMPOSER_DRAFT_KEY, draft)
-  }, [draft])
+    persistComposerDraft(quickDraftStorageKey, draft)
+  }, [draft, quickDraftStorageKey])
+
+  useEffect(() => {
+    if (composerTarget) window.gllm.setQuickComposerTarget(composerTarget)
+  }, [composerTarget])
+
+  useEffect(() => {
+    const nextTarget: ComposerSessionTarget = {
+      conversationId: conversation?.id,
+      projectId: conversation?.projectId ?? (activeProjectId || undefined),
+      assistantId: conversation?.assistantId ?? activeAssistantId
+    }
+    if (
+      composerTarget?.conversationId === nextTarget.conversationId &&
+      composerTarget?.projectId === nextTarget.projectId &&
+      composerTarget?.assistantId === nextTarget.assistantId
+    ) return
+    setComposerTarget(nextTarget)
+  }, [activeAssistantId, activeProjectId, conversation?.assistantId, conversation?.id, conversation?.projectId])
 
   useEffect(() => {
     resizeComposerTextarea(draftTextareaRef.current)
@@ -486,8 +559,14 @@ export default function QuickChat() {
 
   useEffect(() => {
     if (isStreaming) return
+    if (composerTarget) {
+      setConversation(composerTarget.conversationId
+        ? conversations.find((item) => item.id === composerTarget.conversationId && item.assistantId === assistant.id) ?? null
+        : null)
+      return
+    }
     setConversation(getLatestAssistantConversation(conversations, assistant.id))
-  }, [assistant.id, conversations, isStreaming])
+  }, [assistant.id, composerTarget, conversations, isStreaming])
 
   useEffect(() => {
     setSelectedModelId(getQuickModelId(conversation, assistant, provider))
@@ -683,12 +762,19 @@ export default function QuickChat() {
       }
     }
 
-    await window.gllm.showMainWindow(target ? createMainConversationOpenRequest(target) : undefined)
+    const handoffTarget: ComposerSessionTarget = {
+      conversationId: target?.id,
+      projectId: target?.projectId ?? (activeProjectId || undefined),
+      assistantId: target?.assistantId ?? activeAssistantId
+    }
+    persistComposerDraft(quickDraftStorageKey, draft)
+    await window.gllm.showMainWindow(undefined, handoffTarget)
     await window.gllm.hideQuickPanel()
   }
 
   function startNewQuickChat() {
     setConversation(null)
+    setComposerTarget({ projectId: activeProjectId || undefined, assistantId: activeAssistantId })
     setDraftWorkspace(undefined)
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
@@ -838,6 +924,17 @@ export default function QuickChat() {
       status: 'running',
       maxSteps: value.maxSteps,
       maxDurationMinutes: value.maxDurationMinutes,
+      webSearchMode: value.webSearchMode,
+      webSearchScope: value.webSearchScope,
+      webSearchDomains: value.webSearchDomains,
+      contextMode: value.contextMode,
+      resolvedContextMode: resolveGoalContextMode(
+        value.contextMode,
+        value.goal,
+        value.acceptanceCriteria,
+        conversation?.goalTask,
+        conversation?.messages ?? []
+      ),
       runCount: 1,
       startedAt: now,
       lastRunStartedAt: now,
@@ -850,6 +947,7 @@ export default function QuickChat() {
       steps: value.maxSteps,
       minutes: value.maxDurationMinutes
     }))
+    goalTask.contextStartMessageId = goalMessage.id
     const nextConversation: Conversation = {
       ...baseConversation,
       workspace,
@@ -863,6 +961,7 @@ export default function QuickChat() {
     }
 
     setGoalSetupOpen(false)
+    setDraft('')
     setDraftWorkspace(undefined)
     setStatus('')
     beginQuickResponse(now)
@@ -974,11 +1073,11 @@ export default function QuickChat() {
         availableAssistants: assistants,
         workspace,
         provider: selectedProvider,
-        messages: nextConversation.messages,
+        messages: selectGoalContextMessages(nextConversation.messages, nextConversation.goalTask),
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.projectMemory,
+        projectMemory: nextConversation.goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory,
         executionLimits: nextConversation.goalTask
           ? {
               maxTurns: nextConversation.goalTask.maxSteps,
@@ -1861,6 +1960,8 @@ export default function QuickChat() {
       {goalSetupOpen && (
         <GoalSetupDialog
           currentWorkspace={currentWorkspace}
+          defaultWebSearchMode={webSearchMode}
+          initialGoal={draft}
           onChooseDirectory={chooseQuickGoalWorkspace}
           onClose={() => setGoalSetupOpen(false)}
           onStart={(value) => void startQuickGoalMode(value)}
@@ -1949,7 +2050,10 @@ export default function QuickChat() {
             disabled={!settings}
             rows={1}
             placeholder={needsApiKey ? t('app.configureApiKey') : t('app.inputPlaceholder')}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              persistComposerDraft(quickDraftStorageKey, event.target.value)
+            }}
             onPaste={(event) => void handleQuickPaste(event)}
             onKeyDown={handleDraftKeyDown}
           />

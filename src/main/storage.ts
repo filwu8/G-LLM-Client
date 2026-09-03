@@ -17,6 +17,7 @@ import { inferModelType, normalizeModelCapabilities } from '../shared/modelCapab
 import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID } from '../shared/providers'
 import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../shared/assistantPromptPolicy'
 import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
+import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import type {
   AgentExecutionPlan,
   ApiProvider,
@@ -885,6 +886,10 @@ function sanitizeWebSearchResult(result: WebSearchResult): WebSearchResult | nul
     'specified', 'primary', 'independent', 'community', 'aggregator', 'unknown'
   ]
   const sourceRole = sourceRoleOptions.includes(result.sourceRole ?? 'unknown') ? result.sourceRole : undefined
+  const sourceTrustOptions: Array<NonNullable<WebSearchResult['sourceTrust']>> = [
+    'user-specified', 'likely-official', 'third-party', 'unverified'
+  ]
+  const sourceTrust = sourceTrustOptions.includes(result.sourceTrust ?? 'unverified') ? result.sourceTrust : undefined
 
   return {
     title: title.slice(0, 160),
@@ -895,6 +900,7 @@ function sanitizeWebSearchResult(result: WebSearchResult): WebSearchResult | nul
     excerpt: result.excerpt ? String(result.excerpt).trim().slice(0, 1000) : undefined,
     publishedAt: Number.isFinite(result.publishedAt) ? Number(result.publishedAt) : undefined,
     sourceRole,
+    sourceTrust,
     relevanceScore: Number.isFinite(result.relevanceScore) ? Number(result.relevanceScore) : undefined,
     clusterId: result.clusterId ? String(result.clusterId).trim().slice(0, 80) : undefined
   }
@@ -1018,6 +1024,10 @@ function sanitizeAgentPlan(value: AgentExecutionPlan | undefined): AgentExecutio
 function sanitizeGoalTask(value: Conversation['goalTask']): Conversation['goalTask'] {
   if (!value || typeof value !== 'object') return undefined
   const statuses = ['running', 'paused', 'completed', 'failed', 'stopped'] as const
+  const webSearchModes = ['auto', 'on', 'off'] as const
+  const webSearchScopes = ['all', 'official', 'specified'] as const
+  const contextModes = ['auto', 'continue', 'relevant', 'isolated'] as const
+  const resolvedContextModes = ['continue', 'relevant', 'isolated'] as const
   const now = Date.now()
   return {
     id: String(value.id ?? '').trim().slice(0, 100) || `goal_${now}`,
@@ -1026,6 +1036,14 @@ function sanitizeGoalTask(value: Conversation['goalTask']): Conversation['goalTa
     status: statuses.includes(value.status) ? value.status : 'paused',
     maxSteps: Math.max(3, Math.min(14, Math.round(Number(value.maxSteps) || 8))),
     maxDurationMinutes: Math.max(5, Math.min(240, Math.round(Number(value.maxDurationMinutes) || 60))),
+    webSearchMode: webSearchModes.includes(value.webSearchMode as typeof webSearchModes[number]) ? value.webSearchMode : undefined,
+    webSearchScope: webSearchScopes.includes(value.webSearchScope as typeof webSearchScopes[number]) ? value.webSearchScope : undefined,
+    webSearchDomains: normalizeGoalWebSearchDomains(value.webSearchDomains),
+    contextMode: contextModes.includes(value.contextMode as typeof contextModes[number]) ? value.contextMode : undefined,
+    resolvedContextMode: resolvedContextModes.includes(value.resolvedContextMode as typeof resolvedContextModes[number])
+      ? value.resolvedContextMode
+      : undefined,
+    contextStartMessageId: String(value.contextStartMessageId ?? '').trim().slice(0, 100) || undefined,
     runCount: Math.max(1, Math.min(100, Math.round(Number(value.runCount) || 1))),
     startedAt: Number.isFinite(value.startedAt) ? Number(value.startedAt) : now,
     lastRunStartedAt: Number.isFinite(value.lastRunStartedAt) ? Number(value.lastRunStartedAt) : now,
