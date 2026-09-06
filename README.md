@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17)，发布于 2026-09-03。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.18 生图工具与更清晰的模型选择
+
+- 支持 `gpt-6-astra`、GPT 5.4/5.5 与 GPT 5.6 Sol/Terra/Luna 等对话模型通过 Responses API 调用托管的 `image_generation` 工具，同时保留对独立图片模型的直接调用。
+- 普通对话与工作区助手都能识别明确的生图请求，自动选择可用的 Image API 或 Responses 生图工具路由。
+- 模型能力标签区分“生图”和“生图工具”，并改进 GPT 系列的看图、推理强度与上游元数据识别。
+- 模型弹窗改为先选模型、再选推理强度的两层交互；当前选中、鼠标悬停和不支持强度的状态更易区分，右下角始终显示当前强度。
+- 模型输出时，切换按钮会显示运行动画并暂时禁用；主窗口和快速对话的窄宽布局也统一适配。
+- 在对话中生成或预览的图片可通过右键“图片另存为”下载；未发送消息时选择的模型也会正确保留，不再回退为默认模型。
 
 ## V2.0.17 更聪明的目标执行与无缝会话
 

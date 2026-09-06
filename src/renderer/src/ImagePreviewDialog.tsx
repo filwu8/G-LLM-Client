@@ -5,7 +5,7 @@
  */
 
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { type MouseEvent as ReactMouseEvent, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export interface ImagePreviewSource {
@@ -13,7 +13,15 @@ export interface ImagePreviewSource {
   name: string
 }
 
-export function ImagePreviewDialog({ image, onClose }: { image: ImagePreviewSource; onClose: () => void }) {
+export function ImagePreviewDialog({
+  image,
+  onClose,
+  onImageContextMenu
+}: {
+  image: ImagePreviewSource
+  onClose: () => void
+  onImageContextMenu?: (event: ReactMouseEvent<HTMLImageElement>) => void
+}) {
   const { t } = useTranslation()
 
   useEffect(() => {
@@ -38,7 +46,7 @@ export function ImagePreviewDialog({ image, onClose }: { image: ImagePreviewSour
           <button aria-label={t('common.close')} onClick={onClose} type="button"><X size={19} /></button>
         </header>
         <div className="image-preview-canvas">
-          <img alt={image.name} src={image.dataUrl} />
+          <img alt={image.name} src={image.dataUrl} onContextMenu={onImageContextMenu} />
         </div>
       </section>
     </div>

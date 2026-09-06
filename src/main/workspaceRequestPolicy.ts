@@ -5,6 +5,9 @@
  */
 
 const workspaceActionPattern = /压缩|生成|创建|新建|修改|改成|替换|重命名|移动|整理|处理|转换|合并|拆分|写入|保存|编写|实现|修复|批量|开发|制作|做成|构建|搭建|打包|部署|compress|generate|create|modify|replace|rename|move|organize|process|convert|merge|split|write|save|implement|fix|batch|develop|build|package|deploy/i
+const imageGenerationActionPattern = /生成|画|绘制|制作|设计|create|generate|draw|paint|design/i
+const imageGenerationSubjectPattern = /图片|图像|插画|海报|封面|壁纸|头像|logo|标志|照片|效果图|配图|image|illustration|poster|cover|wallpaper|avatar|photo|picture|artwork/i
+const explicitDrawingRequestPattern = /(?:帮我|请|给我)?(?:画|绘制)(?:一|个|张|幅|出)|\b(?:draw|paint)\s+(?:me\s+)?(?:a|an|the)\b/i
 
 export interface WorkspaceModelOutcome {
   content?: string | null
@@ -20,6 +23,10 @@ export interface WorkspaceMaxTokenSettings {
 
 export function isWorkspaceActionRequest(request: string): boolean {
   return workspaceActionPattern.test(request)
+}
+
+export function isImageGenerationRequest(request: string): boolean {
+  return explicitDrawingRequestPattern.test(request) || (imageGenerationActionPattern.test(request) && imageGenerationSubjectPattern.test(request))
 }
 
 export function isReasoningOnlyLengthOutcome(outcome: WorkspaceModelOutcome): boolean {

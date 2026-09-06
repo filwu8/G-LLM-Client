@@ -250,6 +250,13 @@ interface ImageAttachmentContextMenu {
   attachment: PreparedAttachment
 }
 
+interface RenderedImageContextMenu {
+  x: number
+  y: number
+  source: string
+  suggestedName?: string
+}
+
 interface AssistantContextMenu {
   x: number
   y: number
@@ -841,6 +848,7 @@ export default function App() {
   } | null>(null)
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
   const [imageAttachmentMenu, setImageAttachmentMenu] = useState<ImageAttachmentContextMenu | null>(null)
+  const [renderedImageMenu, setRenderedImageMenu] = useState<RenderedImageContextMenu | null>(null)
   const [imagePreview, setImagePreview] = useState<ImagePreviewSource | null>(null)
   const [workspaceArtifactMenu, setWorkspaceArtifactMenu] = useState<WorkspaceArtifactContextMenu | null>(null)
   const [assistantContextMenu, setAssistantContextMenu] = useState<AssistantContextMenu | null>(null)
@@ -1419,11 +1427,12 @@ export default function App() {
   }, [activeAssistantId])
 
   useEffect(() => {
-    if (!selectionMenu && !imageAttachmentMenu && !workspaceArtifactMenu && !assistantContextMenu && !conversationContextMenu) return
+    if (!selectionMenu && !imageAttachmentMenu && !renderedImageMenu && !workspaceArtifactMenu && !assistantContextMenu && !conversationContextMenu) return
 
     const closeMenu = () => {
       setSelectionMenu(null)
       setImageAttachmentMenu(null)
+      setRenderedImageMenu(null)
       setWorkspaceArtifactMenu(null)
       setAssistantContextMenu(null)
       setConversationContextMenu(null)
@@ -1445,7 +1454,7 @@ export default function App() {
       window.removeEventListener('resize', closeMenu)
       window.removeEventListener('keydown', closeMenuOnEscape)
     }
-  }, [selectionMenu, imageAttachmentMenu, workspaceArtifactMenu, assistantContextMenu, conversationContextMenu])
+  }, [selectionMenu, imageAttachmentMenu, renderedImageMenu, workspaceArtifactMenu, assistantContextMenu, conversationContextMenu])
 
   useEffect(() => window.gllm.onLocalTaskProgress(setLocalTaskProgress), [])
 
@@ -1752,6 +1761,7 @@ export default function App() {
     event.preventDefault()
     event.stopPropagation()
     setSelectionMenu(null)
+    setRenderedImageMenu(null)
     setImageAttachmentMenu({
       x: Math.min(event.clientX, window.innerWidth - 156),
       y: Math.min(event.clientY, window.innerHeight - 94),
@@ -1770,6 +1780,51 @@ export default function App() {
     } finally {
       setImageAttachmentMenu(null)
     }
+  }
+
+  async function saveImageSource(source: string, suggestedName?: string) {
+    try {
+      const savedPath = await window.gllm.saveImageAs({ source, suggestedName })
+      if (savedPath) showToolNotice(t('notices.imageSaved'))
+    } catch {
+      showToolNotice(t('notices.imageSaveFailed'))
+    }
+  }
+
+  async function saveImageAttachmentAs() {
+    const attachment = imageAttachmentMenu?.attachment
+    if (!attachment?.dataUrl) return
+
+    setImageAttachmentMenu(null)
+    await saveImageSource(attachment.dataUrl, attachment.name)
+  }
+
+  function openRenderedImageMenu(event: ReactMouseEvent): boolean {
+    const target = event.target
+    if (!(target instanceof HTMLImageElement)) return false
+
+    const source = target.currentSrc || target.src
+    if (!source) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    setSelectionMenu(null)
+    setImageAttachmentMenu(null)
+    setRenderedImageMenu({
+      x: Math.min(event.clientX, window.innerWidth - 174),
+      y: Math.min(event.clientY, window.innerHeight - 58),
+      source,
+      suggestedName: target.alt || undefined
+    })
+    return true
+  }
+
+  async function saveRenderedImageAs() {
+    const image = renderedImageMenu
+    if (!image) return
+
+    setRenderedImageMenu(null)
+    await saveImageSource(image.source, image.suggestedName)
   }
 
   async function handleComposerPaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
@@ -2206,6 +2261,8 @@ export default function App() {
   }
 
   function openSelectionContextMenu(event: ReactMouseEvent, message: ChatMessage) {
+    if (openRenderedImageMenu(event)) return
+
     const selection = getMessageSelectionForMessage(message.id)
     if (!selection) {
       setSelectionMenu(null)
@@ -3775,9 +3832,32 @@ export default function App() {
                 <Copy size={15} />
                 {t('app.copyImage')}
               </button>
+              <button type="button" onClick={() => void saveImageAttachmentAs()}>
+                <Download size={15} />
+                {t('app.saveImageAs')}
+              </button>
             </div>
           )}
-          {imagePreview && <ImagePreviewDialog image={imagePreview} onClose={() => setImagePreview(null)} />}
+          {renderedImageMenu && (
+            <div
+              className="selection-context-menu image-context-menu"
+              style={{ left: renderedImageMenu.x, top: renderedImageMenu.y }}
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <button type="button" onClick={() => void saveRenderedImageAs()}>
+                <Download size={15} />
+                {t('app.saveImageAs')}
+              </button>
+            </div>
+          )}
+          {imagePreview && (
+            <ImagePreviewDialog
+              image={imagePreview}
+              onClose={() => setImagePreview(null)}
+              onImageContextMenu={openRenderedImageMenu}
+            />
+          )}
           {workspaceArtifactMenu && (
             <div
               className="selection-context-menu workspace-artifact-context-menu"
@@ -4025,6 +4105,7 @@ export default function App() {
                   placement="top"
                   showTriggerCapabilities={false}
                   disabled={isStreaming}
+                  busy={isStreaming}
                   reasoningEffort={activeReasoningEffort}
                   onReasoningEffortChange={changeActiveConversationReasoningEffort}
                   onModelReasoningChange={changeActiveConversationModelAndReasoning}

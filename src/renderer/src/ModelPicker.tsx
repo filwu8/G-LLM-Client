@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, LoaderCircle, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -203,18 +203,12 @@ function ModelPickerList({
   models,
   selectedModelId,
   onSelect,
-  reasoningEffort,
-  onReasoningEffortChange,
-  onModelReasoningChange,
   emptyLabel
 }: {
   provider: ApiProvider
   models: ProviderModel[]
   selectedModelId: string
   onSelect: (modelId: string) => void
-  reasoningEffort?: ReasoningEffort
-  onReasoningEffortChange?: (effort: ReasoningEffort) => void
-  onModelReasoningChange?: (modelId: string, effort: ReasoningEffort) => void
   emptyLabel?: string
 }) {
   const { t } = useTranslation()
@@ -223,14 +217,11 @@ function ModelPickerList({
       {models.map((model) => {
         const subtitle = getModelSubtitle(model)
         const selected = model.id === selectedModelId
-        const showReasoningOptions = Boolean(
-          supportsReasoningEffort(model) && (onModelReasoningChange || (selected && onReasoningEffortChange))
-        )
         return (
           <div
             key={model.id}
             aria-selected={selected}
-            className={`conversation-model-option ${selected ? 'active' : ''} ${showReasoningOptions ? 'has-reasoning-options' : ''}`.trim()}
+            className={`conversation-model-option${selected ? ' active' : ''}`}
             onClick={() => onSelect(model.id)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
@@ -242,36 +233,22 @@ function ModelPickerList({
             tabIndex={0}
             title={getModelDisplayLabel(model)}
           >
-            <span className="conversation-model-info">
-              <strong>{getModelTitle(model)}</strong>
-              {subtitle && <small>{subtitle}</small>}
-            </span>
-            {showReasoningOptions && (
-              <span className="model-inline-reasoning" aria-label={t('modelPicker.reasoningEffort')}>
-                {reasoningEffortOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    aria-pressed={(reasoningEffort ?? 'default') === option.value}
-                    className={(reasoningEffort ?? 'default') === option.value ? 'active' : ''}
-                    title={t(option.titleKey)}
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (onModelReasoningChange) {
-                        onModelReasoningChange(model.id, option.value)
-                      } else {
-                        onReasoningEffortChange?.(option.value)
-                      }
-                    }}
-                  >
-                    {t(option.labelKey)}
-                  </button>
-                ))}
+            <span className="model-option-main">
+              <span className="conversation-model-info">
+                <span className="conversation-model-title">
+                  <strong>{getModelTitle(model)}</strong>
+                  {selected && (
+                    <span className="model-selected-indicator" aria-hidden="true">
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                  )}
+                </span>
+                {subtitle && <small>{subtitle}</small>}
               </span>
-            )}
-            <span className="model-capability-list">
-              <ModelAccessTierBadge model={model} provider={provider} />
-              <ModelCapabilityBadges model={model} />
+              <span className="model-capability-list">
+                <ModelAccessTierBadge model={model} provider={provider} />
+                <ModelCapabilityBadges model={model} />
+              </span>
             </span>
           </div>
         )
@@ -289,6 +266,7 @@ export function ModelPickerMenu({
   className = '',
   placement = 'bottom',
   disabled = false,
+  busy = false,
   showTriggerCapabilities = true,
   compactTrigger = false,
   reasoningEffort,
@@ -302,6 +280,7 @@ export function ModelPickerMenu({
   className?: string
   placement?: 'bottom' | 'top'
   disabled?: boolean
+  busy?: boolean
   showTriggerCapabilities?: boolean
   compactTrigger?: boolean
   reasoningEffort?: ReasoningEffort
@@ -324,11 +303,19 @@ export function ModelPickerMenu({
   const showReasoningValue = Boolean(
     (onReasoningEffortChange || onModelReasoningChange) && supportsReasoningEffort(selectedModel)
   )
+  const hasReasoningLayer = Boolean(onReasoningEffortChange || onModelReasoningChange)
+  const selectedModelSupportsReasoning = Boolean(selectedModel && supportsReasoningEffort(selectedModel))
 
   useEffect(() => {
     setQuery('')
     setOpen(false)
   }, [provider.id])
+
+  useEffect(() => {
+    if (!disabled) return
+    setQuery('')
+    setOpen(false)
+  }, [disabled])
 
   useEffect(() => {
     if (variant !== 'dropdown' || !open) return
@@ -354,9 +341,19 @@ export function ModelPickerMenu({
   function selectModel(modelId: string) {
     onChange(modelId)
     if (variant === 'dropdown') {
-      setOpen(false)
       setQuery('')
+      if (!hasReasoningLayer) setOpen(false)
     }
+  }
+
+  function selectReasoningEffort(effort: ReasoningEffort) {
+    if (!selectedModel || !selectedModelSupportsReasoning) return
+    if (onModelReasoningChange) {
+      onModelReasoningChange(selectedModel.id, effort)
+    } else {
+      onReasoningEffortChange?.(effort)
+    }
+    setOpen(false)
   }
 
   const searchField = (
@@ -385,20 +382,35 @@ export function ModelPickerMenu({
         ref={dropdownRef}
       >
         <button
+          aria-busy={busy || undefined}
           aria-expanded={open}
-          className="model-dropdown-trigger"
+          aria-label={busy
+            ? t('modelPicker.runningTitle', { model: selectedModel ? getModelTitle(selectedModel) : value })
+            : undefined}
+          className={`model-dropdown-trigger${busy ? ' is-running' : ''}`}
           disabled={disabled}
           onClick={() => setOpen((current) => !current)}
-          title={selectedModel
-            ? `${getModelDisplayLabel(selectedModel)}${showReasoningValue ? ` · ${t('modelPicker.reasoningEffort')}: ${t(selectedReasoningOption.labelKey)}` : ''}`
-            : t('modelPicker.select')}
+          title={busy
+            ? t('modelPicker.runningTitle', { model: selectedModel ? getModelTitle(selectedModel) : value })
+            : selectedModel
+              ? `${getModelDisplayLabel(selectedModel)}${showReasoningValue ? ` · ${t('modelPicker.reasoningEffort')}: ${t(selectedReasoningOption.labelKey)}` : ''}`
+              : t('modelPicker.select')}
           type="button"
         >
           <span className="model-dropdown-current">
             <strong>
-              {selectedModel ? compactTitle || getModelTitle(selectedModel) : value || t('modelPicker.select')}
+              <span className="model-current-name">
+                {selectedModel ? compactTitle || getModelTitle(selectedModel) : value || t('modelPicker.select')}
+              </span>
               {compactTrigger && selectedTier && <span className={`model-current-tier ${selectedTier}`}> · {t(`modelPicker.${selectedTier}`)}</span>}
-              {showReasoningValue && <span className="model-current-reasoning"> {t(selectedReasoningOption.labelKey)}</span>}
+              {showReasoningValue && (
+                <span
+                  className="model-current-reasoning"
+                  title={`${t('modelPicker.reasoningEffort')}: ${t(selectedReasoningOption.labelKey)}`}
+                >
+                  {t('modelPicker.reasoningCompact', { effort: t(selectedReasoningOption.labelKey) })}
+                </span>
+              )}
             </strong>
             {subtitle && <small>{subtitle}</small>}
           </span>
@@ -407,30 +419,59 @@ export function ModelPickerMenu({
               <ModelCapabilityBadges model={selectedModel} />
             </span>
           )}
-          <ChevronDown size={17} />
+          {busy ? (
+            <span className="model-running-state" aria-hidden="true">
+              <LoaderCircle className="model-running-spinner" size={14} />
+              <span>{t('modelPicker.running')}</span>
+            </span>
+          ) : <ChevronDown size={17} />}
         </button>
         {open && !disabled && (
-          <div className="model-dropdown-popover">
+          <div className={`model-dropdown-popover${hasReasoningLayer ? ' has-two-layers' : ''}`}>
             {searchField}
-            <ModelPickerList
-              provider={provider}
-              models={visibleModelOptions}
-              selectedModelId={value}
-              reasoningEffort={selectedReasoningEffort}
-              onSelect={selectModel}
-              onReasoningEffortChange={onReasoningEffortChange
-                ? (effort) => {
-                    onReasoningEffortChange(effort)
-                    setOpen(false)
-                  }
-                : undefined}
-              onModelReasoningChange={onModelReasoningChange
-                ? (modelId, effort) => {
-                    onModelReasoningChange(modelId, effort)
-                    setOpen(false)
-                  }
-                : undefined}
-            />
+            <div className="model-picker-layer model-picker-model-layer">
+              <div className="model-picker-layer-head">
+                <span className="model-picker-step-index">1</span>
+                <strong>{t('modelPicker.selectModel')}</strong>
+              </div>
+              <ModelPickerList
+                provider={provider}
+                models={visibleModelOptions}
+                selectedModelId={value}
+                onSelect={selectModel}
+              />
+            </div>
+            {hasReasoningLayer && (
+              <div
+                aria-disabled={!selectedModelSupportsReasoning}
+                className={`model-picker-layer model-picker-reasoning-layer${selectedModelSupportsReasoning ? '' : ' disabled'}`}
+              >
+                <div className="model-picker-layer-head">
+                  <span className="model-picker-step-index">2</span>
+                  <strong>{t('modelPicker.reasoningEffort')}</strong>
+                  <small>
+                    {selectedModelSupportsReasoning && selectedModel
+                      ? getModelTitle(selectedModel)
+                      : t('modelPicker.reasoningUnsupported')}
+                  </small>
+                </div>
+                <span className="model-inline-reasoning" aria-label={t('modelPicker.reasoningEffort')}>
+                  {reasoningEffortOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      aria-pressed={selectedReasoningEffort === option.value}
+                      className={selectedReasoningEffort === option.value ? 'active' : ''}
+                      disabled={!selectedModelSupportsReasoning}
+                      title={selectedModelSupportsReasoning ? t(option.titleKey) : t('modelPicker.reasoningUnsupported')}
+                      type="button"
+                      onClick={() => selectReasoningEffort(option.value)}
+                    >
+                      {t(option.labelKey)}
+                    </button>
+                  ))}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>

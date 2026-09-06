@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Versão atual do código: [V2.0.17](https://github.com/filwu8/G-LLM-Client/tree/main)
+Versão atual do código: [V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Versão estável mais recente: [V2.0.17](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.17), lançada em 3 de setembro de 2026.
 

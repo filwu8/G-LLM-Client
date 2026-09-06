@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import type { Conversation, ConversationWorkspace, WebSearchActivity } from '@shared/types'
+import type { Conversation, ConversationWorkspace, ReasoningEffort, WebSearchActivity } from '@shared/types'
 
 export type ConversationRunStatus = 'running' | 'completed' | 'error'
 
@@ -70,6 +70,25 @@ export function attachDraftWorkspace(
 ): Conversation {
   if (!draftWorkspace || conversation.workspace) return conversation
   return { ...conversation, workspace: draftWorkspace }
+}
+
+/** Materialize a model selection into durable conversation state. Advancing
+ * updatedAt also prevents an empty but configured conversation from being
+ * collapsed as an untouched UI draft. */
+export function applyConversationModelSelection(
+  conversation: Conversation,
+  modelProviderId: string,
+  modelId: string,
+  reasoningEffort: ReasoningEffort,
+  changedAt = Date.now()
+): Conversation {
+  return {
+    ...conversation,
+    modelProviderId,
+    modelId,
+    reasoningEffort,
+    updatedAt: Math.max(changedAt, conversation.createdAt + 1)
+  }
 }
 
 /** Keep the just-submitted conversation visible while React state and the

@@ -36,14 +36,18 @@ import {
   universalFallbackPrompt
 } from '../shared/assistantPromptPolicy'
 import {
+  canGenerateImages,
   inferModelCapabilitiesFromMetadata,
   inferModelTypeFromMetadata,
-  normalizeModelCapabilities
+  normalizeModelCapabilities,
+  resolveImageGenerationModel,
+  resolveImageGenerationToolModel
 } from '../shared/modelCapabilities'
 import { supportsReasoningEffort } from '../shared/featureFlags'
 import { isProviderApiKeyMissing } from '../shared/providers'
 import { saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
+import { isImageGenerationRequest } from './workspaceRequestPolicy'
 import {
   buildResilientSearchPlan,
   extractSearchDomains,
@@ -99,6 +103,8 @@ const quoteReferencePrefix = 'quote_'
 const conversationSearchCatalogLimit = 160
 const conversationSearchTextLimit = 120_000
 const recoverableModelStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
+const imageGenerationSize = '1024x1024'
+const imageGenerationQuality = 'high'
 
 function requestSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs)
@@ -131,10 +137,18 @@ interface ImageGenerationItem {
   revised_prompt?: unknown
 }
 
-interface ImageGenerationPayload {
+export interface ImageGenerationPayload {
   data?: unknown
+  output?: unknown
   created?: unknown
   error?: unknown
+}
+
+export interface ProviderImageGenerationResult {
+  model: string
+  mode: 'image-api' | 'responses-tool'
+  prompt: string
+  payload: ImageGenerationPayload
 }
 
 function padDatePart(value: number): string {
@@ -535,7 +549,7 @@ async function persistGeneratedImageSources(sources: string[], signal?: AbortSig
   return storedUrls
 }
 
-function collectGeneratedImageSources(value: unknown, depth = 0): string[] {
+export function collectGeneratedImageSources(value: unknown, depth = 0): string[] {
   if (depth > 5 || value === null || value === undefined) return []
 
   const direct = normalizeGeneratedImageSource(value)
@@ -596,9 +610,8 @@ function extractProviderErrorMessage(detail: string): string {
   return trimmed
 }
 
-function getImageGenerationFailureMessage(provider: ApiProvider, status: number, detail: string): string {
+function getImageGenerationFailureMessage(provider: ApiProvider, model: string, status: number, detail: string): string {
   const message = extractProviderErrorMessage(detail)
-  const model = provider.defaultModel
 
   if (/paid plan|upgrade|billing|quota|insufficient|permission|not available|access/i.test(message)) {
     return `${provider.name} 图片生成失败：当前模型「${model}」在上游渠道不可用或需要付费/权限开通。请检查该模型的上游账号权限、渠道配置，或改用其他图片生成模型。上游返回：${message}`
@@ -627,28 +640,59 @@ async function formatGeneratedImageResponse(prompt: string, payload: ImageGenera
   return blocks.join('\n\n')
 }
 
-async function generateImageMessage(request: ChatRequest, signal?: AbortSignal): Promise<string> {
-  const endpoint = buildProviderUrl(request.provider, request.provider.imageGenerationsPath ?? '/images/generations')
-  const prompt = getImageGenerationPrompt(request)
+export async function requestProviderImageGeneration(
+  provider: ApiProvider,
+  prompt: string,
+  signal?: AbortSignal
+): Promise<ProviderImageGenerationResult> {
+  const defaultModel = getDefaultProviderModel(provider)
+  const defaultCapabilities = normalizeModelCapabilities(defaultModel)
+  const directModel = defaultCapabilities.includes('image')
+    ? defaultModel
+    : defaultCapabilities.includes('image-tool')
+      ? undefined
+      : resolveImageGenerationModel(provider)
+  const toolModel = defaultCapabilities.includes('image-tool')
+    ? defaultModel
+    : directModel
+      ? undefined
+      : resolveImageGenerationToolModel(provider)
+
+  if (!directModel && !toolModel) {
+    throw new Error('当前供应商没有已识别的图片模型，也没有支持 image_generation 工具的对话模型')
+  }
+
+  const model = (directModel ?? toolModel)!.id
+  const mode = directModel ? 'image-api' : 'responses-tool'
+  const endpoint = buildProviderUrl(provider, directModel ? provider.imageGenerationsPath ?? '/images/generations' : '/responses')
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: getProviderHeaders(request.provider),
-    body: JSON.stringify({
-      model: request.provider.defaultModel,
-      prompt,
-      n: 1,
-      size: '1024x1024'
-    }),
-    signal: requestSignal(signal, 120_000)
+    headers: getProviderHeaders(provider),
+    body: JSON.stringify(directModel
+      ? { model, prompt, n: 1, size: imageGenerationSize, response_format: 'b64_json' }
+      : {
+          model,
+          input: prompt,
+          tools: [{ type: 'image_generation', size: imageGenerationSize, quality: imageGenerationQuality }],
+          tool_choice: { type: 'image_generation' },
+          stream: false
+        }),
+    signal: requestSignal(signal, 300_000)
   })
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(getImageGenerationFailureMessage(request.provider, response.status, detail))
+    throw new Error(getImageGenerationFailureMessage(provider, model, response.status, detail))
   }
 
   const payload = (await response.json()) as ImageGenerationPayload
-  return formatGeneratedImageResponse(prompt, payload, signal)
+  return { model, mode, prompt, payload }
+}
+
+async function generateImageMessage(request: ChatRequest, signal?: AbortSignal): Promise<string> {
+  const prompt = getImageGenerationPrompt(request)
+  const result = await requestProviderImageGeneration(request.provider, prompt, signal)
+  return formatGeneratedImageResponse(prompt, result.payload, signal)
 }
 
 function fallbackAssistantSuggestion(keyword: string, language: AppLanguage = 'system'): AssistantSuggestion {
@@ -2014,6 +2058,17 @@ export async function* streamGllmChat(
   signal?.throwIfAborted()
 
   if (request.purpose !== 'translation' && shouldUseImageGenerationEndpoint(request.provider)) {
+    yield { content: await generateImageMessage(request, signal) }
+    return
+  }
+
+  const latestUserRequest = getLastUserQuery(request.messages)
+  if (
+    request.purpose !== 'translation' &&
+    latestUserRequest &&
+    isImageGenerationRequest(latestUserRequest) &&
+    canGenerateImages(request.provider)
+  ) {
     yield { content: await generateImageMessage(request, signal) }
     return
   }

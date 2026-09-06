@@ -9,6 +9,7 @@ import test from 'node:test'
 
 import {
   acknowledgeConversationRun,
+  applyConversationModelSelection,
   attachDraftWorkspace,
   collapsePristineConversationDrafts,
   finishConversationRun,
@@ -47,6 +48,32 @@ test('keeps a draft workspace when changing model creates the first conversation
 
   assert.equal(materialized.workspace, workspace)
   assert.equal(conversation.workspace, undefined)
+})
+
+test('materializes an empty conversation when its model selection changes', () => {
+  const conversation: Conversation = {
+    id: 'conversation-model-draft',
+    assistantId: 'assistant-a',
+    title: 'new chat',
+    messages: [],
+    reasoningEffort: 'default',
+    createdAt: 10,
+    updatedAt: 10
+  }
+
+  const configured = applyConversationModelSelection(
+    conversation,
+    'provider-gllm',
+    'gpt-6-astra',
+    'high',
+    10
+  )
+
+  assert.equal(configured.modelProviderId, 'provider-gllm')
+  assert.equal(configured.modelId, 'gpt-6-astra')
+  assert.equal(configured.reasoningEffort, 'high')
+  assert.equal(configured.updatedAt, 11)
+  assert.equal(isPristineConversationDraft(configured), false)
 })
 
 test('collapses repeated untouched conversations but keeps the selected draft', () => {

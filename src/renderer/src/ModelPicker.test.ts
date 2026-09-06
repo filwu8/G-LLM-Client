@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getCompactModelTitle, getModelAccessTier } from './modelDisplay.ts'
+import { supportsReasoningEffort } from '../../shared/featureFlags.ts'
 import type { ApiProvider } from '@shared/types'
 
 const provider = (templateId: ApiProvider['templateId'], apiBaseUrl: string): ApiProvider => ({
@@ -46,4 +47,20 @@ test('model access tier only applies the free suffix rule to the G-Prophet API',
   assert.equal(getModelAccessTier(gprophet, { id: 'vendor/model' }), 'paid')
   assert.equal(getModelAccessTier(openRouter, { id: 'vendor/model:free' }), null)
   assert.equal(getModelAccessTier(local, { id: 'vendor/model' }), null)
+})
+
+test('reasoning effort is available for current ChatGPT and Codex OAuth models', () => {
+  for (const model of [
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.5',
+    'gpt-5.6-luna',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-6-astra'
+  ]) {
+    assert.equal(supportsReasoningEffort(model), true, model)
+  }
+
+  assert.equal(supportsReasoningEffort('nvidia/nemotron-3-super'), false)
 })

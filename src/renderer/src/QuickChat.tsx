@@ -10,6 +10,7 @@ import {
   BookOpen,
   Brain,
   Copy,
+  Download,
   ExternalLink,
   FolderOpen,
   ImagePlus,
@@ -42,7 +43,12 @@ import { ChatErrorRetry } from './ChatErrorRetry'
 import { getChatErrorPresentation } from './chatErrors'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import { replaceUserMessageBranch } from './conversationEditing'
-import { attachDraftWorkspace, stopConversationWebSearch, stopPendingWebSearch } from './conversationRuntime'
+import {
+  applyConversationModelSelection,
+  attachDraftWorkspace,
+  stopConversationWebSearch,
+  stopPendingWebSearch
+} from './conversationRuntime'
 import {
   getMessageSelectionSnapshot,
   writePlainTextToClipboard,
@@ -111,6 +117,13 @@ interface SelectionContextMenu {
   source: 'selection' | 'message'
 }
 
+interface RenderedImageContextMenu {
+  x: number
+  y: number
+  source: string
+  suggestedName?: string
+}
+
 function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
@@ -177,11 +190,12 @@ function createMessage(
   }
 }
 
-function createQuickConversation(assistant: Assistant, title: string): Conversation {
+function createQuickConversation(assistant: Assistant, title: string, projectId?: string): Conversation {
   const now = Date.now()
 
   return {
     id: createId('conversation'),
+    projectId,
     assistantId: assistant.id,
     title,
     messages: [],
@@ -305,6 +319,7 @@ export default function QuickChat() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageContent, setEditingMessageContent] = useState('')
   const [selectionMenu, setSelectionMenu] = useState<SelectionContextMenu | null>(null)
+  const [renderedImageMenu, setRenderedImageMenu] = useState<RenderedImageContextMenu | null>(null)
   const [imagePreview, setImagePreview] = useState<ImagePreviewSource | null>(null)
   const [pendingQuoteRefs, setPendingQuoteRefs] = useState<KnowledgeReference[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
@@ -540,9 +555,12 @@ export default function QuickChat() {
   }, [draft])
 
   useEffect(() => {
-    if (!selectionMenu) return
+    if (!selectionMenu && !renderedImageMenu) return
 
-    const closeMenu = () => setSelectionMenu(null)
+    const closeMenu = () => {
+      setSelectionMenu(null)
+      setRenderedImageMenu(null)
+    }
     const closeMenuOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') closeMenu()
     }
@@ -555,7 +573,7 @@ export default function QuickChat() {
       window.removeEventListener('resize', closeMenu)
       window.removeEventListener('keydown', closeMenuOnEscape)
     }
-  }, [selectionMenu])
+  }, [selectionMenu, renderedImageMenu])
 
   useEffect(() => {
     if (isStreaming) return
@@ -940,7 +958,11 @@ export default function QuickChat() {
       lastRunStartedAt: now,
       updatedAt: now
     }
-    const baseConversation = conversation ?? createQuickConversation(assistant, value.goal.slice(0, 28))
+    const baseConversation = conversation ?? createQuickConversation(
+      assistant,
+      value.goal.slice(0, 28),
+      activeProjectId || undefined
+    )
     const goalMessage = createMessage('user', t('goalMode.executionPrompt', {
       goal: value.goal,
       criteria: value.acceptanceCriteria,
@@ -1241,15 +1263,39 @@ export default function QuickChat() {
 
   function saveQuickConversationModel(modelId: string, reasoningEffort: ReasoningEffort) {
     const currentConversation = conversationRef.current ?? conversation
-    if (!currentConversation) return
-    const sourceConversation = attachDraftWorkspace(currentConversation, draftWorkspace)
-    const nextConversation: Conversation = {
-      ...sourceConversation,
-      modelProviderId: provider.id,
+    const sourceConversation = attachDraftWorkspace(
+      currentConversation ?? createQuickConversation(
+        assistant,
+        assistantDisplay.name,
+        activeProjectId || undefined
+      ),
+      draftWorkspace
+    )
+    const nextConversation = applyConversationModelSelection(
+      sourceConversation,
+      provider.id,
       modelId,
-      reasoningEffort,
-      updatedAt: Date.now()
+      reasoningEffort
+    )
+
+    if (!currentConversation) {
+      const target: ComposerSessionTarget = {
+        conversationId: nextConversation.id,
+        projectId: nextConversation.projectId,
+        assistantId: nextConversation.assistantId
+      }
+      const nextDraftStorageKey = getComposerDraftStorageKey(getComposerSessionKey(
+        target.conversationId,
+        target.projectId,
+        target.assistantId
+      ))
+      persistComposerDraft(nextDraftStorageKey, draft)
+      if (nextDraftStorageKey !== quickDraftStorageKey) persistComposerDraft(quickDraftStorageKey, '')
+      setComposerTarget(target)
+      window.gllm.setQuickComposerTarget(target)
+      setDraftWorkspace(undefined)
     }
+
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
@@ -1438,7 +1484,8 @@ export default function QuickChat() {
 
     const baseConversation = conversation ?? createQuickConversation(
       assistant,
-      t('quickChat.conversationTitle', { text: messageText.slice(0, 18) })
+      t('quickChat.conversationTitle', { text: messageText.slice(0, 18) }),
+      activeProjectId || undefined
     )
     const userMessage = createMessage('user', messageText, pendingAttachments, pendingQuoteRefs)
     const nextConversation: Conversation = {
@@ -1532,6 +1579,8 @@ export default function QuickChat() {
   }
 
   function openSelectionContextMenu(event: ReactMouseEvent, message: ChatMessage) {
+    if (openRenderedImageMenu(event)) return
+
     const selection = getMessageSelectionForMessage(message.id)
     const text = selection?.text || message.content.trim()
     if (!text) {
@@ -1547,6 +1596,38 @@ export default function QuickChat() {
       html: selection?.html ?? '',
       source: selection ? 'selection' : 'message'
     })
+  }
+
+  function openRenderedImageMenu(event: ReactMouseEvent): boolean {
+    const target = event.target
+    if (!(target instanceof HTMLImageElement)) return false
+
+    const source = target.currentSrc || target.src
+    if (!source) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    setSelectionMenu(null)
+    setRenderedImageMenu({
+      x: Math.min(event.clientX, window.innerWidth - 174),
+      y: Math.min(event.clientY, window.innerHeight - 58),
+      source,
+      suggestedName: target.alt || undefined
+    })
+    return true
+  }
+
+  async function saveRenderedImageAs() {
+    const image = renderedImageMenu
+    if (!image) return
+
+    setRenderedImageMenu(null)
+    try {
+      const savedPath = await window.gllm.saveImageAs({ source: image.source, suggestedName: image.suggestedName })
+      if (savedPath) setStatus(t('notices.imageSaved'))
+    } catch {
+      setStatus(t('notices.imageSaveFailed'))
+    }
   }
 
   async function copySelectionMenuText() {
@@ -1930,7 +2011,26 @@ export default function QuickChat() {
           </button>
         </div>
       )}
-      {imagePreview && <ImagePreviewDialog image={imagePreview} onClose={() => setImagePreview(null)} />}
+      {renderedImageMenu && (
+        <div
+          className="selection-context-menu image-context-menu"
+          style={{ left: renderedImageMenu.x, top: renderedImageMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <button type="button" onClick={() => void saveRenderedImageAs()}>
+            <Download size={15} />
+            {t('app.saveImageAs')}
+          </button>
+        </div>
+      )}
+      {imagePreview && (
+        <ImagePreviewDialog
+          image={imagePreview}
+          onClose={() => setImagePreview(null)}
+          onImageContextMenu={openRenderedImageMenu}
+        />
+      )}
 
       {status && (
         <div className="quick-status">
@@ -2110,6 +2210,7 @@ export default function QuickChat() {
             variant="dropdown"
             placement="top"
             disabled={!settings || isStreaming}
+            busy={isStreaming}
             showTriggerCapabilities={false}
             reasoningEffort={selectedReasoningEffort}
             onReasoningEffortChange={changeReasoningEffort}

@@ -25,7 +25,7 @@ import {
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { join, resolve } from 'node:path'
+import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
 
@@ -42,6 +42,7 @@ import type {
   FloatingMascotAppearance,
   FloatingMascotHintEvent,
   FloatingMascotSkin,
+  ImageSaveRequest,
   LegalDocument,
   MainConversationOpenRequest,
   PreparedAttachment,
@@ -1565,6 +1566,80 @@ function copyImageDataUrlToClipboard(dataUrl: string): void {
   clipboard.writeImage(image)
 }
 
+const imageSaveExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif'])
+const imageSaveExtensionByMimeType: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif'
+}
+const maximumImageSaveBytes = 64 * 1024 * 1024
+
+function normalizeImageSaveExtension(value: string): string | null {
+  const normalized = value.toLowerCase().replace(/^\./, '')
+  if (!imageSaveExtensions.has(normalized)) return null
+  return normalized === 'jpeg' ? 'jpg' : normalized
+}
+
+function getImageSavePayload(request: ImageSaveRequest): { buffer: Buffer; extension: string } {
+  if (!request || typeof request.source !== 'string' || !request.source) {
+    throw new Error('Invalid image source')
+  }
+
+  const dataUrlMatch = request.source.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i)
+  if (dataUrlMatch) {
+    if (request.source.length > maximumImageSaveBytes * 1.5) throw new Error('Image is too large to save')
+    const extension = imageSaveExtensionByMimeType[dataUrlMatch[1].toLowerCase()]
+    const buffer = Buffer.from(dataUrlMatch[2].replace(/\s+/g, ''), 'base64')
+    if (!extension || buffer.byteLength === 0 || buffer.byteLength > maximumImageSaveBytes) {
+      throw new Error('Invalid image data')
+    }
+    return { buffer, extension }
+  }
+
+  let filePath: string | null = null
+  try {
+    filePath = getDataResourceFilePathFromUrl(request.source)
+  } catch {
+    filePath = null
+  }
+  const extension = filePath ? normalizeImageSaveExtension(extname(filePath)) : null
+  if (!filePath || !extension) throw new Error('Unsupported image source')
+
+  const fileInfo = statSync(filePath)
+  if (!fileInfo.isFile() || fileInfo.size <= 0 || fileInfo.size > maximumImageSaveBytes) {
+    throw new Error('Invalid image file')
+  }
+  return { buffer: readFileSync(filePath), extension }
+}
+
+function getSuggestedImageSaveName(value: unknown, extension: string): string {
+  const rawName = typeof value === 'string' ? value.trim().split(/[\\/]/).at(-1) ?? '' : ''
+  const nameWithoutExtension = rawName.replace(/\.(?:png|jpe?g|webp|gif)$/i, '')
+  const safeName = nameWithoutExtension
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/[.\s]+$/g, '')
+    .slice(0, 80)
+    .trim()
+  return `${safeName || `G-LLM-image-${Date.now()}`}.${extension}`
+}
+
+async function saveImageAsForWindow(owner: BrowserWindow | null, request: ImageSaveRequest): Promise<string | null> {
+  const image = getImageSavePayload(request)
+  const language = getSettings().language
+  const options: Electron.SaveDialogOptions = {
+    title: mainT('native.saveImage', language),
+    buttonLabel: mainT('native.saveImageButton', language),
+    defaultPath: getSuggestedImageSaveName(request.suggestedName, image.extension),
+    filters: [{ name: mainT('native.images', language), extensions: [image.extension] }]
+  }
+  const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+  if (result.canceled || !result.filePath) return null
+  writeFileSync(result.filePath, image.buffer)
+  return result.filePath
+}
+
 if (gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const result = inspectGllmDeepLinkArguments(argv)
@@ -2114,6 +2189,8 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('attachment:screenshot', (event) => captureScreenshotForWindow(BrowserWindow.fromWebContents(event.sender)))
   ipcMain.handle('clipboard:copy-image', (_, dataUrl: string) => copyImageDataUrlToClipboard(dataUrl))
+  ipcMain.handle('image:save-as', (event, request: ImageSaveRequest) =>
+    saveImageAsForWindow(BrowserWindow.fromWebContents(event.sender), request))
   ipcMain.on('response:cancel', (_, conversationId: string) => cancelActiveResponse(conversationId))
 
   ipcMain.on('chat:stream', async (event, request) => {

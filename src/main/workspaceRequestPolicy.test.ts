@@ -10,6 +10,7 @@ import test from 'node:test'
 import {
   getReasoningLengthRecoveryPrompt,
   getWorkspaceMaxTokenOption,
+  isImageGenerationRequest,
   isReasoningOnlyLengthOutcome,
   isWorkspaceActionRequest
 } from './workspaceRequestPolicy.ts'
@@ -18,6 +19,14 @@ test('recognizes Chinese development and packaging requests as workspace actions
   assert.equal(isWorkspaceActionRequest('我需要你直接帮我开发，然后做成可执行的程序'), true)
   assert.equal(isWorkspaceActionRequest('构建并打包这个项目'), true)
   assert.equal(isWorkspaceActionRequest('解释一下这个目录的用途'), false)
+})
+
+test('recognizes image generation requests without confusing other generated artifacts', () => {
+  assert.equal(isImageGenerationRequest('帮我生成一张赛博朋克城市图片'), true)
+  assert.equal(isImageGenerationRequest('帮我画一只戴礼帽的猫'), true)
+  assert.equal(isImageGenerationRequest('Design a poster for the product launch'), true)
+  assert.equal(isImageGenerationRequest('生成一份季度报告'), false)
+  assert.equal(isImageGenerationRequest('分析这张图片'), false)
 })
 
 test('detects output budget exhaustion that contains reasoning only', () => {

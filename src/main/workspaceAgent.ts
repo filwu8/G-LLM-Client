@@ -23,13 +23,19 @@ import type {
   WorkspaceToolActivity
 } from '../shared/types'
 import { supportsReasoningEffort } from '../shared/featureFlags'
-import { resolveImageGenerationModel } from '../shared/modelCapabilities'
+import { canGenerateImages } from '../shared/modelCapabilities'
 import { createWorkspacePlan, finishPlan, updatePlanStep } from '../shared/agentPlanning'
 import { GOAL_EXECUTION_TIME_LIMIT, normalizeGoalExecutionLimits } from '../shared/goalMode'
 import { authorizeAssistantDelegation, createDelegationContext } from '../shared/assistantDelegation'
 import { compressImageToTarget, renderPdfToTarget } from './localFileTasks'
 import { addDocxHeaderImage, createDocxDocument, inspectDocxBuffer } from './docxDocument'
-import { getConversationProjectMemoryContext, prepareConversationContext, searchWebForWorkspace } from './gllmClient'
+import {
+  collectGeneratedImageSources,
+  getConversationProjectMemoryContext,
+  prepareConversationContext,
+  requestProviderImageGeneration,
+  searchWebForWorkspace
+} from './gllmClient'
 import { mainT } from './i18n'
 import {
   readWorkspaceModelEventStream,
@@ -121,7 +127,7 @@ const toolDefinitions: WorkspaceToolDefinition[] = [
   { type: 'function', function: { name: 'compress_image', description: '把工作区内图片压缩到指定字节数，输出为 JPEG', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' } } } } },
   { type: 'function', function: { name: 'compress_pdf', description: '在不超过目标大小的前提下搜索分辨率和 JPEG 质量，选择画质最高的 PDF；会丢失文本搜索、表单、链接和签名。minimumBytes 只是接近上限的画质偏好，绝不能通过填充无意义字节满足。', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' }, minimumBytes: { type: 'number', description: '可选的期望最小大小，仅用于从真实压缩候选中择优' } } } } },
   { type: 'function', function: { name: 'run_javascript', description: '在隔离执行器中运行临时 JavaScript，适合没有专用工具的批量文件、文本、JSON、CSV 和代码处理任务。代码中可使用异步 workspace API：list(path,{recursive,limit})、stat(path)、readText(path)、writeText(path,content)、readBase64(path)、writeBase64(path,base64)、mkdir(path)、copy(from,to)、move(from,to)，以及 console.log。不能使用 import、require、process、网络、系统命令或工作区外路径。最后可 return 简短结果。', parameters: { type: 'object', required: ['purpose', 'code'], properties: { purpose: { type: 'string', description: '本次脚本要完成的工作' }, code: { type: 'string', description: '直接执行的 JavaScript 代码；顶层可使用 await 和 return' } } } } },
-  { type: 'function', function: { name: 'generate_image', description: '调用当前供应商中真正支持生图的模型并把图片保存到工作区。你应先理解用户需求，并在 prompt 中提供完整、适合图片模型的生成提示词；不要只把提示词作为最终答案返回。', parameters: { type: 'object', required: ['prompt', 'output'], properties: { prompt: { type: 'string', description: '根据用户目标整理后的完整生图提示词' }, output: { type: 'string', description: '建议使用 .png 文件名' } } } } }
+  { type: 'function', function: { name: 'generate_image', description: '调用当前供应商中的图片模型，或通过支持 Responses image_generation 的对话模型生成图片，并保存到工作区。你应先理解用户需求，在 prompt 中提供完整、适合图片生成的提示词；不要只把提示词作为最终答案返回。', parameters: { type: 'object', required: ['prompt', 'output'], properties: { prompt: { type: 'string', description: '根据用户目标整理后的完整生图提示词' }, output: { type: 'string', description: '建议使用 .png 文件名' } } } } }
 ]
 
 const delegationToolDefinition: WorkspaceToolDefinition = {
@@ -159,7 +165,7 @@ function getWorkspaceToolDefinitions(request: WorkspaceAgentRequest) {
       }
     }))
   return [
-    ...toolDefinitions.filter((tool) => tool.function.name !== 'generate_image' || Boolean(resolveImageGenerationModel(request.provider))),
+    ...toolDefinitions.filter((tool) => tool.function.name !== 'generate_image' || canGenerateImages(request.provider)),
     ...(hasAvailableDelegate ? [delegationToolDefinition] : []),
     ...extensionDefinitions
   ]
@@ -867,26 +873,20 @@ async function executeTool(
   }
   if (name === 'generate_image') {
     requireWrite()
-    const imageModel = resolveImageGenerationModel(request.provider)
-    if (!imageModel) throw new Error('当前供应商没有已识别为“生图”的模型，请先同步模型列表或为图片模型设置生图能力')
+    if (!canGenerateImages(request.provider)) throw new Error('当前供应商没有图片模型，也没有支持 image_generation 工具的对话模型')
     const prompt = String(args.prompt ?? '').trim()
     if (!prompt) throw new Error('图片提示词不能为空')
     const output = await resolveWritable(root, args.output)
-    const path = request.provider.imageGenerationsPath ?? '/images/generations'
-    const endpoint = `${request.provider.apiBaseUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { ...(request.provider.apiKey ? { Authorization: `Bearer ${request.provider.apiKey}` } : {}), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: imageModel.id, prompt, n: 1, response_format: 'b64_json' }),
-      signal: requestSignal(signal, 180_000)
-    })
-    if (!response.ok) throw new Error(`图片生成失败（模型 ${imageModel.id}）：${response.status} ${(await response.text()).slice(0, 240)}`)
-    const payload = await response.json() as { data?: Array<{ b64_json?: string; url?: string }> }
-    const item = payload.data?.[0]
+    const generation = await requestProviderImageGeneration(request.provider, prompt, signal)
+    const source = collectGeneratedImageSources(generation.payload)[0]
+    if (!source) throw new Error('图片生成接口没有返回图片数据')
     let buffer: Buffer
-    if (item?.b64_json) buffer = Buffer.from(item.b64_json, 'base64')
-    else if (item?.url && /^https?:\/\//i.test(item.url)) {
-      const imageResponse = await fetch(item.url, { signal: requestSignal(signal, 120_000) })
+    if (source.startsWith('data:image/')) {
+      const encoded = source.match(/^data:image\/[^;,]+;base64,(.*)$/s)?.[1]
+      if (!encoded) throw new Error('图片生成接口返回了无效的图片数据')
+      buffer = Buffer.from(encoded.replace(/\s+/g, ''), 'base64')
+    } else if (/^https?:\/\//i.test(source)) {
+      const imageResponse = await fetch(source, { signal: requestSignal(signal, 120_000) })
       if (!imageResponse.ok) throw new Error(`生成图片下载失败：${imageResponse.status}`)
       buffer = Buffer.from(await imageResponse.arrayBuffer())
     } else throw new Error('图片生成接口没有返回图片数据')
@@ -895,7 +895,8 @@ async function executeTool(
     canvas.getContext('2d').drawImage(image, 0, 0)
     const normalized = canvas.toBuffer('image/png')
     await writeFile(output, normalized, { flag: 'wx' })
-    return { output: `已通过 ${imageModel.id} 生成图片 ${relative(root, output)}（${normalized.length} 字节）`, changedFile: relative(root, output) }
+    const route = generation.mode === 'responses-tool' ? 'Responses image_generation 工具' : 'Image API'
+    return { output: `已通过 ${generation.model} 的 ${route} 生成图片 ${relative(root, output)}（${normalized.length} 字节）`, changedFile: relative(root, output) }
   }
   throw new Error(`不支持的工具：${name}`)
 }

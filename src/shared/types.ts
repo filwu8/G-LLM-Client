@@ -62,6 +62,11 @@ export interface PreparedAttachment {
   localExecutable?: boolean
 }
 
+export interface ImageSaveRequest {
+  source: string
+  suggestedName?: string
+}
+
 export interface MessageRetryAttempt {
   attemptedAt: number
   error: string
@@ -447,7 +452,7 @@ export type ProviderTemplateId =
 
 export type ProviderTemplateCategory = 'default' | 'global' | 'china' | 'aggregator' | 'local'
 export type ProviderModelType = 'chat' | 'vision' | 'image' | 'embedding' | 'audio' | 'rerank' | 'other'
-export type ProviderModelCapability = ProviderModelType
+export type ProviderModelCapability = ProviderModelType | 'image-tool'
 
 export interface ProviderTemplate {
   id: ProviderTemplateId
