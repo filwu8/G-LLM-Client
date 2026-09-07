@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.19](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.18](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.18), released on 2026-09-06.
 
@@ -23,6 +23,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.19 More Reliable Image Workflows and On-Device Insights
+
+- Image orchestration now distinguishes explicit creation requests from feedback, questions, and criticism about an image, reducing accidental generation.
+- Follow-up image requests carry forward the latest original requirements and reference images. Providers that expose only `/images/generations` now report their reference-editing limitation clearly.
+- Save Image As suggestions include a local millisecond timestamp to prevent accidental overwrites, while sent images use a compact preview that still opens at full size.
+- Explicit requests for a brief or one-sentence answer no longer receive a forced three-part structure, and the model-wait shimmer moves at a calmer pace.
+- On-device usage insights now count successfully generated images from regular chats and workspace tools, including compatible historical local records.
 
 ## V2.0.18 Image Tools and Clearer Model Selection
 

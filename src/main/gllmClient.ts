@@ -31,6 +31,7 @@ import { applyWorkspaceSearchScope, buildWorkspaceSearchQuery, getGoalSearchResu
 import type { AppLanguage } from '../shared/i18n'
 import { buildAssistantSkillContext } from '../shared/assistantCapabilities'
 import {
+  getExplicitResponseStyleInstruction,
   sanitizeAssistantSystemPrompt,
   universalAssistantPolicy,
   universalFallbackPrompt
@@ -38,16 +39,18 @@ import {
 import {
   canGenerateImages,
   inferModelCapabilitiesFromMetadata,
-  inferModelTypeFromMetadata,
-  normalizeModelCapabilities,
-  resolveImageGenerationModel,
-  resolveImageGenerationToolModel
+  inferModelTypeFromMetadata
 } from '../shared/modelCapabilities'
 import { supportsReasoningEffort } from '../shared/featureFlags'
 import { isProviderApiKeyMissing } from '../shared/providers'
 import { saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
-import { isImageGenerationRequest } from './workspaceRequestPolicy'
+import {
+  buildImageGenerationContext,
+  buildImageGenerationRequestBody,
+  resolveImageGenerationTarget,
+  shouldGenerateImageForConversation
+} from './imageGenerationContext'
 import {
   buildResilientSearchPlan,
   extractSearchDomains,
@@ -312,6 +315,7 @@ function buildAssistantSystemInstruction(
   projectMemory?: ConversationProjectMemory
 ): string {
   const basePrompt = assistant.systemPrompt.trim() || universalFallbackPrompt
+  const responseStyleInstruction = getExplicitResponseStyleInstruction(getLastUserQuery(messages))
   return [
     universalAssistantPolicy,
     sanitizeAssistantSystemPrompt(basePrompt),
@@ -321,7 +325,8 @@ function buildAssistantSystemInstruction(
     getAssistantMemoryContext(assistantMemories),
     buildAssistantSkillContext(assistantSkills),
     getConversationProjectMemoryContext(projectMemory),
-    '\n\n如果用户开启了联网搜索，本客户端会在用户消息后附加“联网搜索资料”。回答时优先结合这些资料，并说明信息可能存在时效性，避免声称自己无法联网。请按“来源相关性、时效性、来源一致性”判断；同一观点仅来自单一来源时要标注不确定，并建议继续验证。'
+    '\n\n如果用户开启了联网搜索，本客户端会在用户消息后附加“联网搜索资料”。回答时优先结合这些资料，并说明信息可能存在时效性，避免声称自己无法联网。请按“来源相关性、时效性、来源一致性”判断；同一观点仅来自单一来源时要标注不确定，并建议继续验证。',
+    responseStyleInstruction ? `\n\n[本轮输出格式]\n${responseStyleInstruction}` : ''
   ].join('\n')
 }
 
@@ -423,46 +428,6 @@ function assertProviderReady(provider: ApiProvider, language: AppLanguage = 'sys
   if (isProviderApiKeyMissing(provider)) {
     throw new Error(mainT('main.provider.apiKeyRequired', language, { provider: provider.name }))
   }
-}
-
-function getDefaultProviderModel(provider: ApiProvider): ProviderModel {
-  return provider.models.find((model) => model.id === provider.defaultModel) ?? { id: provider.defaultModel }
-}
-
-function shouldUseImageGenerationEndpoint(provider: ApiProvider): boolean {
-  return normalizeModelCapabilities(getDefaultProviderModel(provider)).includes('image')
-}
-
-function getImageGenerationAttachmentContext(attachments: PreparedAttachment[] = []): string {
-  const blocks = attachments
-    .map((attachment, index) => {
-      const head = `附件 ${index + 1}：${attachment.name}（${attachment.mimeType}，${formatAttachmentSize(attachment.size)}）`
-      if (attachment.kind === 'image') {
-        return `${head}\n当前图片生成测试仅发送文字提示，暂不把参考图作为编辑输入上传。`
-      }
-      return attachment.text ? `${head}\n${attachment.text}` : `${head}\n当前版本未能解析该文件正文，只能提供文件名和类型。`
-    })
-    .filter(Boolean)
-
-  return blocks.length > 0 ? `\n\n[用户上传附件]\n${blocks.join('\n\n---\n\n')}` : ''
-}
-
-function getImageGenerationPrompt(request: ChatRequest): string {
-  const lastUserMessage = request.messages
-    .slice()
-    .reverse()
-    .find((message) => message.role === 'user')
-  if (!lastUserMessage) return '生成一张简洁、清晰、高质量的图片。'
-
-  const prompt = [
-    lastUserMessage.content,
-    getKnowledgeContext(lastUserMessage),
-    getImageGenerationAttachmentContext(lastUserMessage.attachments)
-  ]
-    .join('')
-    .trim()
-
-  return prompt || '生成一张简洁、清晰、高质量的图片。'
 }
 
 function normalizeGeneratedImageSource(value: unknown): string | null {
@@ -643,40 +608,27 @@ async function formatGeneratedImageResponse(prompt: string, payload: ImageGenera
 export async function requestProviderImageGeneration(
   provider: ApiProvider,
   prompt: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  referenceImages: PreparedAttachment[] = []
 ): Promise<ProviderImageGenerationResult> {
-  const defaultModel = getDefaultProviderModel(provider)
-  const defaultCapabilities = normalizeModelCapabilities(defaultModel)
-  const directModel = defaultCapabilities.includes('image')
-    ? defaultModel
-    : defaultCapabilities.includes('image-tool')
-      ? undefined
-      : resolveImageGenerationModel(provider)
-  const toolModel = defaultCapabilities.includes('image-tool')
-    ? defaultModel
-    : directModel
-      ? undefined
-      : resolveImageGenerationToolModel(provider)
-
-  if (!directModel && !toolModel) {
+  const target = resolveImageGenerationTarget(provider, referenceImages.length > 0)
+  if (!target) {
     throw new Error('当前供应商没有已识别的图片模型，也没有支持 image_generation 工具的对话模型')
   }
 
-  const model = (directModel ?? toolModel)!.id
-  const mode = directModel ? 'image-api' : 'responses-tool'
-  const endpoint = buildProviderUrl(provider, directModel ? provider.imageGenerationsPath ?? '/images/generations' : '/responses')
+  const { model, mode } = target
+  const usesDirectApi = mode === 'image-api'
+  const endpoint = buildProviderUrl(provider, usesDirectApi ? provider.imageGenerationsPath ?? '/images/generations' : '/responses')
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: getProviderHeaders(provider),
-    body: JSON.stringify(directModel
-      ? { model, prompt, n: 1, size: imageGenerationSize, response_format: 'b64_json' }
-      : {
-          model,
-          input: prompt,
-          tools: [{ type: 'image_generation', size: imageGenerationSize, quality: imageGenerationQuality }],
-          tool_choice: { type: 'image_generation' },
-          stream: false
-        }),
+    body: JSON.stringify(buildImageGenerationRequestBody(
+      target,
+      prompt,
+      referenceImages,
+      imageGenerationSize,
+      imageGenerationQuality
+    )),
     signal: requestSignal(signal, 300_000)
   })
 
@@ -690,9 +642,16 @@ export async function requestProviderImageGeneration(
 }
 
 async function generateImageMessage(request: ChatRequest, signal?: AbortSignal): Promise<string> {
-  const prompt = getImageGenerationPrompt(request)
-  const result = await requestProviderImageGeneration(request.provider, prompt, signal)
-  return formatGeneratedImageResponse(prompt, result.payload, signal)
+  const context = buildImageGenerationContext(request.messages)
+  try {
+    const result = await requestProviderImageGeneration(request.provider, context.prompt, signal, context.referenceImages)
+    return formatGeneratedImageResponse(context.prompt, result.payload, signal)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'REFERENCE_IMAGE_UNSUPPORTED') {
+      return mainT('main.imageGeneration.referenceUnsupported', request.settings.language, { count: context.referenceImages.length })
+    }
+    throw error
+  }
 }
 
 function fallbackAssistantSuggestion(keyword: string, language: AppLanguage = 'system'): AssistantSuggestion {
@@ -2057,16 +2016,11 @@ export async function* streamGllmChat(
   assertProviderReady(request.provider, request.settings.language)
   signal?.throwIfAborted()
 
-  if (request.purpose !== 'translation' && shouldUseImageGenerationEndpoint(request.provider)) {
-    yield { content: await generateImageMessage(request, signal) }
-    return
-  }
-
   const latestUserRequest = getLastUserQuery(request.messages)
   if (
     request.purpose !== 'translation' &&
     latestUserRequest &&
-    isImageGenerationRequest(latestUserRequest) &&
+    shouldGenerateImageForConversation(request.messages) &&
     canGenerateImages(request.provider)
   ) {
     yield { content: await generateImageMessage(request, signal) }

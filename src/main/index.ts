@@ -28,6 +28,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
+import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 
 import type {
   ApiProvider,
@@ -1612,17 +1613,6 @@ function getImageSavePayload(request: ImageSaveRequest): { buffer: Buffer; exten
     throw new Error('Invalid image file')
   }
   return { buffer: readFileSync(filePath), extension }
-}
-
-function getSuggestedImageSaveName(value: unknown, extension: string): string {
-  const rawName = typeof value === 'string' ? value.trim().split(/[\\/]/).at(-1) ?? '' : ''
-  const nameWithoutExtension = rawName.replace(/\.(?:png|jpe?g|webp|gif)$/i, '')
-  const safeName = nameWithoutExtension
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
-    .replace(/[.\s]+$/g, '')
-    .slice(0, 80)
-    .trim()
-  return `${safeName || `G-LLM-image-${Date.now()}`}.${extension}`
 }
 
 async function saveImageAsForWindow(owner: BrowserWindow | null, request: ImageSaveRequest): Promise<string | null> {

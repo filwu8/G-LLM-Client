@@ -1807,7 +1807,7 @@ img.space-logo {
   background-clip: text;
   background-size: 240% 100%;
   color: transparent;
-  animation: web-search-shimmer 1.8s linear infinite;
+  animation: web-search-shimmer 3.6s ease-in-out infinite;
   -webkit-background-clip: text;
 }
 
@@ -2596,7 +2596,7 @@ img.space-logo {
   cursor: context-menu;
 }
 
-.attachment-chip.image-chip img {
+.composer-attachments .attachment-chip.image-chip img {
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
@@ -2604,17 +2604,18 @@ img.space-logo {
   object-fit: cover;
 }
 
-/* Sent screenshots should remain legible in the transcript. Composer previews
- * stay compact because they are outside .message-attachments. */
+/* Sent images keep their natural size until they reach the transcript bounds.
+ * Composer previews stay compact because they are outside .message-attachments. */
 .message:has(.message-attachments .image-chip) .message-stack {
   width: min(100%, 94%);
 }
 
 .message-attachments .attachment-chip.image-chip {
   display: grid;
-  width: 100%;
-  max-width: none;
-  flex: 1 1 100%;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100%, 192px);
+  max-width: min(100%, 192px);
+  flex: 0 1 auto;
   align-items: stretch;
   gap: 7px;
   overflow: hidden;
@@ -2624,10 +2625,10 @@ img.space-logo {
 
 .message-attachments .attachment-chip.image-chip img {
   display: block;
-  width: 100%;
+  width: auto;
   max-width: 100%;
   height: auto;
-  max-height: min(72vh, 760px);
+  max-height: min(17.4vh, 156px);
   border: 0;
   border-radius: 8px;
   margin: 0;
@@ -2636,6 +2637,7 @@ img.space-logo {
 }
 
 .message-attachments .attachment-chip.image-chip > span {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   padding: 2px 4px 1px;
@@ -2646,6 +2648,7 @@ img.space-logo {
 .attachment-image-preview {
   display: block;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   cursor: zoom-in;
@@ -2653,6 +2656,22 @@ img.space-logo {
   border-radius: 8px;
   background: transparent;
   padding: 0;
+}
+
+.message-attachments .attachment-image-preview {
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+
+.message-attachments .attachment-image-preview:hover {
+  background: transparent;
 }
 
 .composer-attachments .attachment-image-preview {
@@ -2752,8 +2771,13 @@ img.space-logo {
   width: min(100%, 96%);
 }
 
+.quick-message-attachments .attachment-chip.image-chip {
+  width: min(100%, 126px);
+  max-width: min(100%, 126px);
+}
+
 .quick-message-attachments .attachment-chip.image-chip img {
-  max-height: min(64vh, 620px);
+  max-height: min(14.4vh, 108px);
 }
 
 .message.user .attachment-chip {
@@ -2799,7 +2823,7 @@ img.space-logo {
   white-space: nowrap;
 }
 
-.attachment-chip button {
+.attachment-chip > button:not(.attachment-image-preview) {
   display: grid;
   width: 18px;
   height: 18px;
@@ -2811,7 +2835,7 @@ img.space-logo {
   color: hsl(var(--muted-foreground));
 }
 
-.attachment-chip button:hover {
+.attachment-chip > button:not(.attachment-image-preview):hover {
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
 }
@@ -7680,7 +7704,7 @@ img.space-logo {
 
 .usage-metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;

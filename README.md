@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.19](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.18](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.18)，发布于 2026-09-06。
 
@@ -23,6 +23,14 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.19 更可靠的生图体验与本机统计
+
+- 生图编排会区分明确的生成需求与评价、质疑、询问图片等普通对话，不再轻易误触发。
+- 多轮生图会延续最近的原始需求和参考图片；当上游仅支持 `/images/generations`、无法编辑参考图时，客户端会明确说明能力限制。
+- 图片另存为默认文件名包含毫秒级本地时间戳，连续保存不易误覆盖；用户发出的图片采用适中的预览尺寸，点击仍可查看完整大图。
+- 用户要求“简短”或“一句话”时不再强制套用固定三段式；等待模型响应的扫光提示也更加舒缓。
+- “本机使用统计”新增成功生成图片数量，并覆盖普通聊天与工作区生图，历史本地记录会自动回溯计算。
 
 ## V2.0.18 生图工具与更清晰的模型选择
 

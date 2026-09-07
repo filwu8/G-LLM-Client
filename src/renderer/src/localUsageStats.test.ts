@@ -19,7 +19,12 @@ test('calculates local tokens, durations, streaks, and rankings', () => {
       { id: 'u1', role: 'user', content: 'hello', tokenCount: 10, createdAt: now - 86_400_000 },
       { id: 'a1', role: 'assistant', content: 'done', tokenCount: 20, createdAt: now - 86_400_000, responseStartedAt: now - 86_400_000 - 5000, responseCompletedAt: now - 86_400_000, workspaceActivities: [{ id: 't1', tool: 'write_file', label: '写入文件', status: 'completed' }] },
       { id: 'u2', role: 'user', content: 'again', inputTokens: 5, createdAt: now },
-      { id: 'a2', role: 'assistant', content: 'done', outputTokens: 15, createdAt: now, responseStartedAt: now - 3000, responseCompletedAt: now }
+      {
+        id: 'a2', role: 'assistant',
+        content: '已生成图片：\n\n![生成图片 1](gllm-data://generated-images/one.png)\n\n![生成图片 2](gllm-data://generated-images/two.png)',
+        outputTokens: 15, createdAt: now, responseStartedAt: now - 3000, responseCompletedAt: now,
+        workspaceActivities: [{ id: 't2', tool: 'generate_image', label: '生成图片', status: 'completed' }]
+      }
     ]
   }]
 
@@ -31,7 +36,9 @@ test('calculates local tokens, durations, streaks, and rankings', () => {
   assert.equal(stats.currentStreak, 2)
   assert.equal(stats.longestStreak, 2)
   assert.equal(stats.completedResponses, 2)
-  assert.equal(stats.toolCalls, 1)
+  assert.equal(stats.generatedImages, 3)
+  assert.equal(stats.days.at(-1)?.generatedImages, 3)
+  assert.equal(stats.toolCalls, 2)
   assert.deepEqual(stats.topModels[0], { id: 'gpt-5.4', label: 'gpt-5.4', count: 2 })
   assert.deepEqual(stats.topAssistants[0], { id: 'a1', label: '开发助手', count: 2 })
 })

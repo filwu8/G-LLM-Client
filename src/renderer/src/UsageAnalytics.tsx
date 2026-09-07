@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { BarChart3, Bot, Clock3, Database, MessageSquareText, Wrench } from 'lucide-react'
+import { BarChart3, Bot, Clock3, Database, ImageIcon, MessageSquareText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { LocalUsageStats, UsageRankingItem } from './localUsageStats'
@@ -81,6 +81,7 @@ export function UsageAnalyticsPanel({
         <div><strong>{formatDuration(stats.longestConversationDurationMs, i18n.language)}</strong><span>{t('analytics.longestConversation')}</span></div>
         <div><strong>{stats.currentStreak}</strong><span>{t('analytics.currentStreakDays')}</span></div>
         <div><strong>{stats.longestStreak}</strong><span>{t('analytics.longestStreakDays')}</span></div>
+        <div><strong>{stats.generatedImages}</strong><span>{t('analytics.generatedImages')}</span></div>
       </section>
 
       <section className="usage-activity-card">
@@ -97,10 +98,10 @@ export function UsageAnalyticsPanel({
               <div className="usage-heatmap-week" key={week[0]?.key ?? weekIndex}>
                 {week.map((day) => (
                   <span
-                    aria-label={t('analytics.dayDetail', { date: formatter.format(day.timestamp), tokens: day.tokens, messages: day.messages })}
+                    aria-label={t(day.generatedImages > 0 ? 'analytics.dayDetailWithImages' : 'analytics.dayDetail', { date: formatter.format(day.timestamp), tokens: day.tokens, messages: day.messages, images: day.generatedImages })}
                     className={`usage-heatmap-day level-${heatLevel(day.tokens, maximum)}`}
                     key={day.key}
-                    title={t('analytics.dayDetail', { date: formatter.format(day.timestamp), tokens: compactNumber(day.tokens), messages: day.messages })}
+                    title={t(day.generatedImages > 0 ? 'analytics.dayDetailWithImages' : 'analytics.dayDetail', { date: formatter.format(day.timestamp), tokens: compactNumber(day.tokens), messages: day.messages, images: day.generatedImages })}
                   />
                 ))}
                 {(weekIndex === 0 || weekIndex === weeks.length - 1 || weekIndex % 4 === 0) && (
@@ -123,6 +124,7 @@ export function UsageAnalyticsPanel({
           <div className="usage-insight-list">
             <div><Clock3 size={17} /><span>{t('analytics.currentStreak')}</span><strong>{t('analytics.daysValue', { count: stats.currentStreak })}</strong></div>
             <div><BarChart3 size={17} /><span>{t('analytics.longestStreak')}</span><strong>{t('analytics.daysValue', { count: stats.longestStreak })}</strong></div>
+            <div><ImageIcon size={17} /><span>{t('analytics.generatedImages')}</span><strong>{t('analytics.imagesUnit', { count: stats.generatedImages })}</strong></div>
             <div><Wrench size={17} /><span>{t('analytics.toolCalls')}</span><strong>{stats.toolCalls}</strong></div>
             <div><MessageSquareText size={17} /><span>{t('analytics.localObjects')}</span><strong>{conversationCount + assistantCount + skillCount + toolCount}</strong></div>
           </div>

@@ -27,6 +27,12 @@ test('recognizes image generation requests without confusing other generated art
   assert.equal(isImageGenerationRequest('Design a poster for the product launch'), true)
   assert.equal(isImageGenerationRequest('生成一份季度报告'), false)
   assert.equal(isImageGenerationRequest('分析这张图片'), false)
+  assert.equal(isImageGenerationRequest('你生成的图片已经无法辨识和原有旧 logo 之间的区别'), false)
+  assert.equal(isImageGenerationRequest('我想问你生成的图片为什么和旧 logo 不一样'), false)
+  assert.equal(isImageGenerationRequest('我之前发的旧 logo 你收到了没有？'), false)
+  assert.equal(isImageGenerationRequest('不要生成图片，只分析这张图'), false)
+  assert.equal(isImageGenerationRequest('重新生成一张更接近原 logo 的图片'), true)
+  assert.equal(isImageGenerationRequest('生成品牌 logo'), true)
 })
 
 test('detects output budget exhaustion that contains reasoning only', () => {
