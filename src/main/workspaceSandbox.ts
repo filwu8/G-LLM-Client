@@ -104,6 +104,8 @@ export async function runSandboxCommand(options: WorkspaceProcessOptions, root: 
     } else {
       // Only the trusted helper reads this config. Selected credentials remain in the
       // inherited clean environment, never in this file or command line.
+      // PowerShell's module analysis cache must also stay in writable scratch.
+      Object.assign(env, { PSModuleAnalysisCachePath: resolve(snapshot.scratch, 'ModuleAnalysisCache') })
       const config = resolve(snapshot.directory, 'launch.json')
       await writeFile(config, JSON.stringify({ executable: options.executable, args: options.args, cwd, work: snapshot.work, scratch: snapshot.scratch, network, timeoutMs: options.timeoutMs ?? 120000 }), { mode: 0o600 })
       // The trusted .NET compiler must use the host temp location. Its protected

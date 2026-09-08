@@ -66,7 +66,7 @@ test('project config is bounded, root-scoped and parsed without executing shell 
 test('credential paths and runtime-control variables are protected', () => {
   for (const path of ['.env', 'nested/.env.production', '.ssh/key', '.git/config', 'nested\\.aws\\credentials']) assert.equal(isProtectedWorkspacePath(path), true)
   for (const path of ['.env.example', 'data.csv', 'src/environment.ts']) assert.equal(isProtectedWorkspacePath(path), false)
-  for (const name of ['PATH', 'BASH_ENV', 'NODE_OPTIONS', 'PYTHONPATH', 'DYLD_INSERT_LIBRARIES', 'ELECTRON_RUN_AS_NODE', 'LOCALAPPDATA', 'SystemDrive']) {
+  for (const name of ['PATH', 'BASH_ENV', 'NODE_OPTIONS', 'PYTHONPATH', 'DYLD_INSERT_LIBRARIES', 'ELECTRON_RUN_AS_NODE', 'LOCALAPPDATA', 'SystemDrive', 'windir', 'PSModulePath', 'PSModuleAnalysisCachePath']) {
     assert.throws(() => selectWorkspaceEnvironment({ [name]: 'unsafe' }, [name]), /runtime/)
   }
   assert.throws(() => selectWorkspaceEnvironment({}, ['MISSING']), /missing/)
