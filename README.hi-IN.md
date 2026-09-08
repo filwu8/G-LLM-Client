@@ -4,7 +4,7 @@
 
 वर्तमान कोड संस्करण: [V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-नवीनतम स्थिर संस्करण: [V2.0.19](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.19), 7 सितंबर 2026 को जारी।
+नवीनतम स्थिर संस्करण: [V2.0.20](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.20), 8 सितंबर 2026 को जारी।
 
 [क्लाइंट डाउनलोड करें](https://llm.gprophet.com/download) | [पूरा बदलाव विवरण](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
