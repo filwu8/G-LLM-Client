@@ -48,10 +48,11 @@ test('Python executes a business CSV calculation and creates a verified output',
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-python-test-'))
   try {
     await writeFile(resolve(root, 'sales.csv'), 'customer,amount\nA,12.50\nB,7.50\n')
-    const command = await prepareNativeCommand(root, 'run_python', { code: 'import csv, json\nfrom decimal import Decimal\nwith open("sales.csv") as f:\n total = sum(Decimal(row["amount"]) for row in csv.DictReader(f))\nwith open("summary.json", "w") as f:\n json.dump({"total": str(total)}, f)\nprint("created summary.json")' }, [])
+    const command = await prepareNativeCommand(root, 'run_python', { code: 'import csv, json\nfrom decimal import Decimal\nwith open("sales.csv") as f:\n total = sum(Decimal(row["amount"]) for row in csv.DictReader(f))\nwith open("summary.json", "w") as f:\n json.dump({"total": str(total)}, f)\nprint("created summary.json · 完成")' }, [])
     const result = await runNativeCommand(command, {})
     assert.equal(result.exitCode, 0, result.output)
     assert.deepEqual(JSON.parse(await readFile(resolve(root, 'summary.json'), 'utf8')), { total: '20.00' })
+    assert.match(result.output, /完成/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

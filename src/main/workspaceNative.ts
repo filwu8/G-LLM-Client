@@ -62,7 +62,7 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
   const python = command.language === 'python' ? await findPython() : await findPython().catch(() => undefined)
   const executable = command.language === 'python' ? python!
     : windows ? resolve(systemRoot, 'System32', 'cmd.exe') : '/bin/sh'
-  const args = command.language === 'python' ? ['-I', '-u', '-c', command.code]
+  const args = command.language === 'python' ? ['-I', '-X', 'utf8', '-u', '-c', command.code]
     : windows ? ['/d', '/s', '/c', command.code] : ['-c', command.code]
   const env: NodeJS.ProcessEnv = {
     PATH: [ ...(python ? [dirname(python)] : []), ...(windows ? [resolve(systemRoot, 'System32'), systemRoot] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']) ].join(delimiter),
