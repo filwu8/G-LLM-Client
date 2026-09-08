@@ -34,7 +34,9 @@ export async function diagnoseWorkspaceExecution(root: string, options: Workspac
       add('network', mode === 'sandbox' && !network ? 'skipped' : report.network === true ? 'passed' : 'failed', typeof report.network === 'string' ? report.network : '')
     } catch (error) { add('python', 'failed', String(error)) }
     try {
-      const result = await runNativeCommand(await prepareNativeCommand(work, 'run_shell', { code: process.platform === 'win32' ? 'python --version' : 'python3 --version' }, [], settings), {}, undefined, { timeoutMs: 15000 })
+      // A cold Windows PowerShell session loads .NET and system modules before
+      // reaching Python; allow that measured startup cost within a bounded probe.
+      const result = await runNativeCommand(await prepareNativeCommand(work, 'run_shell', { code: process.platform === 'win32' ? 'python --version' : 'python3 --version' }, [], settings), {}, undefined, { timeoutMs: process.platform === 'win32' ? 30000 : 15000 })
       add('shell', result.exitCode === 0 && /Python 3\./.test(result.output) ? 'passed' : 'failed', result.output)
     } catch (error) { add('shell', 'failed', String(error)) }
   } finally { await rm(directory, { recursive: true, force: true }) }
