@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { prepareNativeCommand, runNativeCommand } from './workspaceNative.ts'
@@ -64,6 +64,7 @@ test('Windows CMD preserves multiline code, Unicode and quoted paths in host and
       const result = await runNativeCommand(command, {})
       assert.equal(result.exitCode, 0, result.output)
       assert.match(result.output, /Python 3\./); assert.match(result.output, /second-line/)
+      assert.ok((await readdir(root)).includes(`中文 ${executionMode}.txt`), JSON.stringify({ output: result.output, files: await readdir(root) }))
       assert.equal((await readFile(resolve(root, `中文 ${executionMode}.txt`), 'utf8')).trim(), '中文结果')
     }
     const failed = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'echo discard>discard.txt\nexit /b 7' }, []), {})
