@@ -68,7 +68,7 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
     LANG: 'en_US.UTF-8',
     // Windows requires LOCALAPPDATA when creating an AppContainer process.
     // Keep only OS runtime paths; never inherit the host's business environment.
-    ...(windows ? { SystemRoot: systemRoot, windir: systemRoot, SystemDrive: systemRoot.slice(0, 2), LOCALAPPDATA: process.env.LOCALAPPDATA, PSModulePath: resolve(systemRoot, 'System32/WindowsPowerShell/v1.0/Modules'), TEMP: process.env.TEMP, TMP: process.env.TMP } : { TMPDIR: process.env.TMPDIR || '/tmp' }),
+    ...(windows ? { SystemRoot: systemRoot, windir: systemRoot, SystemDrive: systemRoot.slice(0, 2), LOCALAPPDATA: process.env.LOCALAPPDATA, PATHEXT: '.COM;.EXE;.BAT;.CMD', PSModulePath: resolve(systemRoot, 'System32/WindowsPowerShell/v1.0/Modules'), TEMP: process.env.TEMP, TMP: process.env.TMP } : { TMPDIR: process.env.TMPDIR || '/tmp' }),
     ...selected
   }
   const options = { ...execution, executable, args, cwd: command.cwd, env, signal }
