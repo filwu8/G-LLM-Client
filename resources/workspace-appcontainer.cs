@@ -109,9 +109,11 @@ public static class GllmAppContainer {
       limits.Basic.ActiveProcessLimit=64; limits.JobMemory=new UIntPtr(1024UL*1024*1024);
       Check(SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(typeof(EXTENDED_LIMIT))));
       var startup=new STARTUPINFOEX(); startup.Startup.cb=Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.Attributes=attributes;
-      startup.Startup.flags=0x100; startup.Startup.stdin=inherited[2]; startup.Startup.stdout=inherited[0]; startup.Startup.stderr=inherited[1];
+      startup.Startup.flags=0x101; startup.Startup.showWindow=0; // inherited stdio + SW_HIDE
+      startup.Startup.stdin=inherited[2]; startup.Startup.stdout=inherited[0]; startup.Startup.stderr=inherited[1];
       var command=new StringBuilder(Quote(executable));
-      if(string.Equals(Path.GetFileName(executable),"cmd.exe",StringComparison.OrdinalIgnoreCase)) {
+      bool batch=string.Equals(Path.GetFileName(executable),"cmd.exe",StringComparison.OrdinalIgnoreCase);
+      if(batch) {
         // cmd /s /c has its own outer-quote rules, unlike CommandLineToArgvW.
         // Execute the generated batch file so multiline code and inner quotes
         // are preserved verbatim. /d disables host AutoRun registry commands.
@@ -119,7 +121,11 @@ public static class GllmAppContainer {
         command.Append(" /d /s /c \"\"").Append(args[3]).Append("\"\"");
       } else foreach(string argument in args) command.Append(" ").Append(Quote(argument));
       stage="creating restricted process";
-      Check(CreateProcess(executable,command,IntPtr.Zero,IntPtr.Zero,true,0x80000 | 0x4 | 0x08000000,IntPtr.Zero,cwd,ref startup,out process));
+      // CMD needs a hidden console for chcp/UTF-8 batch decoding. NO_WINDOW
+      // removes the console and makes code-page changes fail. Both variants
+      // retain the same AppContainer token, inherited pipes and job limits.
+      uint creationFlags=0x80000u | 0x4u | (batch ? 0x10u : 0x08000000u);
+      Check(CreateProcess(executable,command,IntPtr.Zero,IntPtr.Zero,true,creationFlags,IntPtr.Zero,cwd,ref startup,out process));
       IntPtr token;
       stage="verifying restricted token";
       Check(OpenProcessToken(process.Process,8,out token));
