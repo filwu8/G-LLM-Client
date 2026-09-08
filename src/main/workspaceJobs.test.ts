@@ -82,8 +82,15 @@ test('background Python retains OS sandbox and writes back only a completed succ
   try {
     const command = await prepareNativeCommand(root, 'run_python', { code: 'import time\nprint("phase1", flush=True)\ntime.sleep(0.15)\nopen("result.txt","w").write("sandbox")\nprint("phase2", flush=True)' }, [])
     const { id } = JSON.parse(jobs.start((signal, onOutput) => runNativeCommand(command, {}, signal, { onOutput, timeoutMs: 5000 })))
-    const page = JSON.parse((await jobs.read({ id, waitMs: 10000 })).output)
-    assert.equal(page.status, 'completed', page.error ?? page.result); assert.match(page.stdout, /phase1[\s\S]*phase2/)
+    let page = JSON.parse((await jobs.read({ id, waitMs: 10000 })).output)
+    let stdout = page.stdout
+    // Windows also prepares the trusted .NET launcher before the script's own
+    // five-second execution deadline starts. Collect incremental output while it runs.
+    for (let attempt = 0; page.status === 'running' && attempt < 2; attempt++) {
+      page = JSON.parse((await jobs.read({ id, waitMs: 30000 })).output)
+      stdout += page.stdout
+    }
+    assert.equal(page.status, 'completed', page.error ?? page.result); assert.match(stdout, /phase1[\s\S]*phase2/)
     assert.equal(await readFile(resolve(root, 'result.txt'), 'utf8'), 'sandbox')
   } finally { await jobs.dispose(); await rm(root, { recursive: true, force: true }) }
 })

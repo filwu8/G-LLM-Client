@@ -75,12 +75,15 @@ public static class GllmAppContainer {
     IntPtr sid=IntPtr.Zero, capabilities=IntPtr.Zero, capabilityBlock=IntPtr.Zero, attributes=IntPtr.Zero, job=IntPtr.Zero, handleList=IntPtr.Zero;
     IntPtr[] networkSids=new IntPtr[2]; IntPtr[] inherited=new IntPtr[3];
     PROCESS_INFORMATION process=new PROCESS_INFORMATION(); bool attributesReady=false;
+    string stage="creating profile";
     try {
       int hr=CreateAppContainerProfile(name,name,"Temporary G-LLM execution sandbox",IntPtr.Zero,0,out sid);
       if(hr<0) Marshal.ThrowExceptionForHR(hr);
       var identity=new SecurityIdentifier(sid);
+      stage="granting snapshot access";
       Grant(work,identity); Grant(scratch,identity);
       var security=new SECURITY_CAPABILITIES(); security.Sid=sid;
+      stage="configuring capabilities and handles";
       if(network) {
         // Explicit user opt-in: outbound Internet and private network access.
         // No loopback exemptions, firewall edits or machine-wide capabilities.
@@ -100,6 +103,7 @@ public static class GllmAppContainer {
       for(int i=0;i<3;i++) Check(DuplicateHandle(GetCurrentProcess(),GetStdHandle(i==0 ? -11 : i==1 ? -12 : -10),GetCurrentProcess(),out inherited[i],0,true,2));
       handleList=Marshal.AllocHGlobal(IntPtr.Size*3); Marshal.Copy(inherited,0,handleList,3);
       Check(UpdateProcThreadAttribute(attributes,0,new IntPtr(0x20002),handleList,new IntPtr(IntPtr.Size*3),IntPtr.Zero,IntPtr.Zero));
+      stage="configuring job limits";
       job=CreateJobObject(IntPtr.Zero,null); Check(job!=IntPtr.Zero);
       var limits=new EXTENDED_LIMIT(); limits.Basic.Flags=0x2000 | 0x8 | 0x200; // kill on close, process count, job memory
       limits.Basic.ActiveProcessLimit=64; limits.JobMemory=new UIntPtr(1024UL*1024*1024);
@@ -107,18 +111,24 @@ public static class GllmAppContainer {
       var startup=new STARTUPINFOEX(); startup.Startup.cb=Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.Attributes=attributes;
       startup.Startup.flags=0x100; startup.Startup.stdin=inherited[2]; startup.Startup.stdout=inherited[0]; startup.Startup.stderr=inherited[1];
       var command=new StringBuilder(Quote(executable)); foreach(string argument in args) command.Append(" ").Append(Quote(argument));
+      stage="creating restricted process";
       Check(CreateProcess(executable,command,IntPtr.Zero,IntPtr.Zero,true,0x80000 | 0x4 | 0x08000000,IntPtr.Zero,cwd,ref startup,out process));
       IntPtr token;
+      stage="verifying restricted token";
       Check(OpenProcessToken(process.Process,8,out token));
       try { int appContainer, returned; Check(GetTokenInformation(token,29,out appContainer,4,out returned)); if(appContainer!=1) throw new Exception("Windows did not create an AppContainer token"); }
       finally { CloseHandle(token); }
+      stage="assigning process to job";
       Check(AssignProcessToJobObject(job,process.Process));
       Check(ResumeThread(process.Thread)!=0xffffffff);
+      stage="running restricted process";
       uint wait=WaitForSingleObject(process.Process,(uint)Math.Max(1000,Math.Min(600000,timeoutMs)));
       if(wait!=0) { TerminateJobObject(job,124); throw new Exception("AppContainer execution timed out or wait failed"); }
       uint exitCode; Check(GetExitCodeProcess(process.Process,out exitCode));
       TerminateJobObject(job,0); // stop any remaining descendants before copying outputs
       return unchecked((int)exitCode);
+    } catch(Exception error) {
+      throw new Exception("AppContainer " + stage + ": " + error.Message, error);
     } finally {
       if(process.Process!=IntPtr.Zero) { TerminateProcess(process.Process,125); CloseHandle(process.Process); }
       if(process.Thread!=IntPtr.Zero) CloseHandle(process.Thread);

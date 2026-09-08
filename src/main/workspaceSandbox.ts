@@ -106,7 +106,10 @@ export async function runSandboxCommand(options: WorkspaceProcessOptions, root: 
       // inherited clean environment, never in this file or command line.
       const config = resolve(snapshot.directory, 'launch.json')
       await writeFile(config, JSON.stringify({ executable: options.executable, args: options.args, cwd, work: snapshot.work, scratch: snapshot.scratch, network, timeoutMs: options.timeoutMs ?? 120000 }), { mode: 0o600 })
-      result = await runWorkspaceProcess({ ...options, executable: resolve(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', resourcePath('workspace-appcontainer.ps1'), '-Config', config], cwd, env })
+      // The trusted .NET compiler must use the host temp location. Its protected
+      // compilation directories must never be relabelled as AppContainer scratch.
+      // The helper switches TEMP/TMP before creating the restricted child.
+      result = await runWorkspaceProcess({ ...options, timeoutMs: (options.timeoutMs ?? 120000) + 60000, executable: resolve(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', resourcePath('workspace-appcontainer.ps1'), '-Config', config], cwd, env: { ...env, TEMP: process.env.TEMP, TMP: process.env.TMP } })
     }
     options.signal?.throwIfAborted()
     if (result.exitCode === 0) await applySandboxSnapshot(snapshot)
