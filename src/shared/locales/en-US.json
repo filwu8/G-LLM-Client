@@ -582,7 +582,7 @@
     "agentLoadRules": "Load root AGENTS.md automatically",
     "agentRulesDescription": "Project rules are loaded once per run and shown in the activity log. Rules cannot expand tool permissions. Edits take effect on the next run.",
     "agentNative": "Enable Python / Shell",
-    "agentNativeDescription": "Requires local Python 3; uses sh on macOS/Linux and PowerShell on Windows. Host mode has no sandbox and can access host files and the network. Ask for approval and Approve for me ask each time; Full authorization runs directly.",
+    "agentNativeDescription": "Requires local Python 3; uses sh on macOS/Linux and CMD on Windows. Host mode has no sandbox and can access host files and the network. Ask for approval and Approve for me ask each time; Full authorization runs directly.",
     "agentEnvNames": "Variable names allowed from the root .env",
     "agentEnvDescription": "Enter variable names, never secret values. Enabled variables are injected when the command is authorized by the selected mode. Client credentials are not inherited. Literal output is redacted, but scripts can use injected credentials.",
     "agentEnvInvalid": "Enter up to 32 valid variable names: letters, digits and underscores, not starting with a digit.",

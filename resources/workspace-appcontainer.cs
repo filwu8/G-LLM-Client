@@ -110,7 +110,14 @@ public static class GllmAppContainer {
       Check(SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(typeof(EXTENDED_LIMIT))));
       var startup=new STARTUPINFOEX(); startup.Startup.cb=Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.Attributes=attributes;
       startup.Startup.flags=0x100; startup.Startup.stdin=inherited[2]; startup.Startup.stdout=inherited[0]; startup.Startup.stderr=inherited[1];
-      var command=new StringBuilder(Quote(executable)); foreach(string argument in args) command.Append(" ").Append(Quote(argument));
+      var command=new StringBuilder(Quote(executable));
+      if(string.Equals(Path.GetFileName(executable),"cmd.exe",StringComparison.OrdinalIgnoreCase)) {
+        // cmd /s /c has its own outer-quote rules, unlike CommandLineToArgvW.
+        // Execute the generated batch file so multiline code and inner quotes
+        // are preserved verbatim. /d disables host AutoRun registry commands.
+        if(args.Length!=4 || args[3].IndexOf('"')>=0) throw new Exception("Invalid batch launcher arguments");
+        command.Append(" /d /s /c \"\"").Append(args[3]).Append("\"\"");
+      } else foreach(string argument in args) command.Append(" ").Append(Quote(argument));
       stage="creating restricted process";
       Check(CreateProcess(executable,command,IntPtr.Zero,IntPtr.Zero,true,0x80000 | 0x4 | 0x08000000,IntPtr.Zero,cwd,ref startup,out process));
       IntPtr token;

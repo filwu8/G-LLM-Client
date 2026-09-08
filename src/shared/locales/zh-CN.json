@@ -582,7 +582,7 @@
     "agentLoadRules": "自动加载根目录 AGENTS.md",
     "agentRulesDescription": "每轮开始加载一次项目规则，记录在活动日志中。规则不能扩大工具权限；本轮修改的规则从下一轮生效。",
     "agentNative": "启用 Python / Shell",
-    "agentNativeDescription": "需要本机安装 Python 3；macOS/Linux 使用 sh，Windows 使用 PowerShell。主机模式没有沙箱，脚本可访问本机文件和网络。请求批准、帮我批准会逐次询问；完全授权直接执行。",
+    "agentNativeDescription": "需要本机安装 Python 3；macOS/Linux 使用 sh，Windows 使用 CMD。主机模式没有沙箱，脚本可访问本机文件和网络。请求批准、帮我批准会逐次询问；完全授权直接执行。",
     "agentEnvNames": "允许从根目录 .env 注入的变量名",
     "agentEnvDescription": "填写变量名，不填写密钥值。仅在命令按当前授权方式获准后注入已启用变量；不会继承客户端凭据。输出对原文值脱敏，但脚本仍能使用被注入的凭据。",
     "agentEnvInvalid": "最多填写 32 个有效变量名：字母、数字、下划线，不能以数字开头。",

@@ -19,6 +19,7 @@ export interface WorkspaceProcessOptions {
   onOutput?: (stream: 'stdout' | 'stderr', chunk: Buffer) => void
   outputOverflow?: 'truncate' | 'stop'
   extraInputFile?: string
+  windowsVerbatimArguments?: boolean
 }
 
 // A managed HOST process, not a sandbox. Descendants which deliberately detach can escape
@@ -29,6 +30,7 @@ export function runWorkspaceProcess(options: WorkspaceProcessOptions): Promise<{
     const inputFd = options.extraInputFile ? openSync(options.extraInputFile, 'r') : undefined
     const child = spawn(options.executable, options.args, {
       cwd: options.cwd, env: options.env, windowsHide: true,
+      windowsVerbatimArguments: options.windowsVerbatimArguments,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(inputFd === undefined ? [] : [inputFd])]
     })
     if (inputFd !== undefined) closeSync(inputFd)

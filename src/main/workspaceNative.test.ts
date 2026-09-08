@@ -55,6 +55,22 @@ test('Python executes a business CSV calculation and creates a verified output',
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('Windows CMD preserves multiline code, Unicode and quoted paths in host and sandbox modes', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell space-&-'))
+  try {
+    for (const executionMode of ['host', 'sandbox'] as const) {
+      const command = await prepareNativeCommand(root, 'run_shell', { code: `echo 中文结果>"中文 ${executionMode}.txt"\npython --version\necho second-line` }, [], { executionMode })
+      const result = await runNativeCommand(command, {})
+      assert.equal(result.exitCode, 0, result.output)
+      assert.match(result.output, /Python 3\./); assert.match(result.output, /second-line/)
+      assert.equal((await readFile(resolve(root, `中文 ${executionMode}.txt`), 'utf8')).trim(), '中文结果')
+    }
+    const failed = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'echo discard>discard.txt\nexit /b 7' }, []), {})
+    assert.equal(failed.exitCode, 7, failed.output)
+    await assert.rejects(readFile(resolve(root, 'discard.txt')), { code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('managed processes stop on timeout, output overflow and pre-cancellation', async () => {
   const base = { executable: process.execPath, cwd: tmpdir(), env: {}, args: ['-e', 'setInterval(()=>{},1000)'] }
   await assert.rejects(runWorkspaceProcess({ ...base, timeoutMs: 100 }), /timed out/)

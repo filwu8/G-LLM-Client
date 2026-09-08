@@ -120,15 +120,11 @@ test('seccomp blocks Unix IPC and cross-process access while preserving ordinary
 test('platform shell creates a result inside the sandbox', { skip: !supported }, async () => {
   const root = await fixture()
   try {
-    const code = process.platform === 'win32' ? '[System.IO.File]::WriteAllText("shell.txt", "sandbox-shell"); Write-Output "shell-ok"' : 'printf sandbox-shell > shell.txt; echo shell-ok'
+    const code = process.platform === 'win32' ? 'echo sandbox-shell>"shell.txt"\necho shell-ok' : 'printf sandbox-shell > shell.txt; echo shell-ok'
     const result = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code }, []), {})
-    if (process.platform === 'win32' && result.exitCode !== 0) {
-      const diagnosis = '[Console]::WriteLine("PSHOME="+$PSHOME); [Console]::WriteLine("ModulePath="+$env:PSModulePath); [Console]::WriteLine("PATHEXT="+$env:PATHEXT); try { [Console]::WriteLine([IO.File]::ReadAllText($PSHOME+"\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1")); Import-Module ($PSHOME+"\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1") -ErrorAction Stop; Write-Output "import-ok" } catch { [Console]::Error.WriteLine($_.Exception.ToString()) }'
-      const detail = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: diagnosis }, []), {})
-      assert.fail(result.output + '\nShell module diagnostic: ' + detail.output)
-    }
     assert.equal(result.exitCode, 0, result.output)
-    assert.equal(await readFile(resolve(root, 'shell.txt'), 'utf8'), 'sandbox-shell')
+    assert.equal((await readFile(resolve(root, 'shell.txt'), 'utf8')).trimEnd(), 'sandbox-shell')
+    assert.match(result.output, /shell-ok/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

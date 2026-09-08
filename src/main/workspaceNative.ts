@@ -4,12 +4,14 @@
  * Change Date: 2030-08-01
  */
 
-import { access, realpath, stat } from 'node:fs/promises'
+import { access, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { constants } from 'node:fs'
 import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { normalizeEnvNames, selectWorkspaceEnvironment, redactWorkspaceSecrets } from './workspaceAgentPolicy.ts'
 import { runSandboxCommand } from './workspaceSandbox.ts'
 import { runWorkspaceProcess, type WorkspaceProcessOptions } from './workspaceProcess.ts'
+import { windowsBatchScript } from './workspaceWindowsShell.ts'
 
 export interface NativeCommand {
   language: 'python' | 'shell'
@@ -59,9 +61,9 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
   const systemRoot = process.env.SystemRoot || 'C:\\Windows'
   const python = command.language === 'python' ? await findPython() : await findPython().catch(() => undefined)
   const executable = command.language === 'python' ? python!
-    : windows ? resolve(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : '/bin/sh'
+    : windows ? resolve(systemRoot, 'System32', 'cmd.exe') : '/bin/sh'
   const args = command.language === 'python' ? ['-I', '-u', '-c', command.code]
-    : windows ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command.code] : ['-c', command.code]
+    : windows ? ['/d', '/s', '/c', command.code] : ['-c', command.code]
   const env: NodeJS.ProcessEnv = {
     PATH: [ ...(python ? [dirname(python)] : []), ...(windows ? [resolve(systemRoot, 'System32'), systemRoot] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']) ].join(delimiter),
     HOME: command.cwd,
@@ -72,7 +74,17 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
     ...selected
   }
   const options = { ...execution, executable, args, cwd: command.cwd, env, signal }
-  const result = command.executionMode === 'host' ? await runWorkspaceProcess(options) : await runSandboxCommand(options, command.root ?? command.cwd, command.sandboxNetwork === true)
+  let result: Awaited<ReturnType<typeof runWorkspaceProcess>>
+  if (windows && command.language === 'shell' && command.executionMode === 'host') {
+    const temporary = await mkdtemp(resolve(tmpdir(), 'gllm-host-shell-'))
+    try {
+      const script = resolve(temporary, 'command.cmd')
+      await writeFile(script, windowsBatchScript(command.code))
+      result = await runWorkspaceProcess({ ...options, args: ['/d', '/s', '/c', `""${script}""`], windowsVerbatimArguments: true })
+    } finally { await rm(temporary, { recursive: true, force: true }) }
+  } else {
+    result = command.executionMode === 'host' ? await runWorkspaceProcess(options) : await runSandboxCommand(options, command.root ?? command.cwd, command.sandboxNetwork === true)
+  }
   return {
     exitCode: result.exitCode,
     output: redactWorkspaceSecrets(`Exit code: ${result.exitCode}\n${result.stdout}\n${result.stderr}`, values)

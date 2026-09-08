@@ -33,6 +33,8 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Background jobs and incremental logs stay within the active run. Batch text edits require previews and version checks.
 - Python/Shell remains opt-in after upgrading; sandbox networking defaults to off. Linux needs Bubblewrap and user namespaces, while Windows needs an AppContainer-readable Python installation. Sandbox failures never fall back to host execution. See [Agent setup and compatibility](./docs/agent-execution.md).
 
+Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs directly.
+
 ## V2.0.19 More Reliable Image Workflows and On-Device Insights
 
 - Image orchestration now distinguishes explicit creation requests from feedback, questions, and criticism about an image, reducing accidental generation.

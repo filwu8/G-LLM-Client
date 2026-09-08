@@ -37,7 +37,7 @@ Python 工具和 Shell 的 PATH 优先使用同一套已发现的 Python 安装�
 | --- | --- | --- |
 | macOS | 系统 `sandbox-exec` / Seatbelt，默认拒绝策略 | 读取必要的系统及 Python 运行库、写入临时工作区；阻止其他用户目录、Unix socket、Apple Events 及非允许的 Mach 服务。接口已弃用，需持续兼容性测试。 |
 | Linux | `/usr/bin/bwrap` + seccomp | x64/arm64；需 Bubblewrap 和系统允许的非特权用户命名空间。独立 PID/挂载等命名空间、丢弃 capabilities；seccomp 阻止 Unix socket、ptrace、setns 等操作。Python 使用 `/usr` 下系统安装。 |
-| Windows | AppContainer + Job Object | Windows 10/11、Windows PowerShell/.NET Framework。受信 C# 启动器创建临时 AppContainer，检查进程 token 后才恢复执行；只对临时副本授予目录 ACL。Job 限制 64 个进程、1 GiB 总内存并在关闭时终止子进程。Python 安装须可被 AppContainer 读取，客户端不会修改其安装目录 ACL。 |
+| Windows | AppContainer + Job Object | Windows 10/11；Shell 使用系统 CMD 批处理语法，受信启动器使用 Windows PowerShell/.NET Framework。受信 C# 启动器创建临时 AppContainer，检查进程 token 后才恢复执行；只对临时副本授予目录 ACL。Job 限制 64 个进程、1 GiB 总内存并在关闭时终止子进程。Python 安装须可被 AppContainer 读取，客户端不会修改其安装目录 ACL。 |
 
 缺少后端、系统策略不允许或启动失败时明确报错，**不退回宿主执行**。设置中的“后端已找到”是依赖检查，不表示通过了当前系统的执行验证。
 
@@ -82,3 +82,5 @@ Each command runs in a filtered snapshot excluding known credential paths and li
 The model declares variable names/purposes; users enter values locally and choose which may be injected. Values are encrypted through Electron safeStorage, scoped to a canonical workspace path, and never returned to the renderer, chat or templates. Plaintext/basic_text fallback is refused. Existing .env remains supported; encrypted values take precedence. Encryption protects stored data, not approved code that receives credentials or an attacker controlling the OS account. Literal output redaction cannot prevent encoded or network exfiltration. JavaScript retains its existing runner and does not acquire these Python/Shell OS isolation guarantees.
 
 Validation: `pnpm test:sandbox`, `pnpm test`, `pnpm build`. macOS has been exercised locally; Linux and Windows have CI jobs and still need native execution results before being considered release-ready.
+
+Windows 的 Shell 使用 CMD（`/d` 禁用 AutoRun），多行代码在临时批处理文件中执行。旧版 Windows PowerShell 在 AppContainer 中存在磁盘驱动器发现缺陷，不能作为可靠的默认沙箱 Shell；参见 [PowerShell #27253](https://github.com/PowerShell/PowerShell/issues/27253)。这不会授予磁盘根目录访问权限或改动系统 ACL。

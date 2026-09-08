@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runWorkspaceProcess, type WorkspaceProcessOptions } from './workspaceProcess.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
+import { windowsBatchScript } from './workspaceWindowsShell.ts'
 
 export type SandboxPlatform = 'darwin' | 'linux' | 'win32'
 export interface SandboxStatus { backend: string; available: boolean; detail: string }
@@ -107,7 +108,13 @@ export async function runSandboxCommand(options: WorkspaceProcessOptions, root: 
       // PowerShell's module analysis cache must also stay in writable scratch.
       Object.assign(env, { PSModuleAnalysisCachePath: resolve(snapshot.scratch, 'ModuleAnalysisCache') })
       const config = resolve(snapshot.directory, 'launch.json')
-      await writeFile(config, JSON.stringify({ executable: options.executable, args: options.args, cwd, work: snapshot.work, scratch: snapshot.scratch, network, timeoutMs: options.timeoutMs ?? 120000 }), { mode: 0o600 })
+      let args = options.args
+      if (options.executable.toLowerCase().endsWith('\\cmd.exe')) {
+        const script = resolve(snapshot.scratch, 'command.cmd')
+        await writeFile(script, windowsBatchScript(options.args[3]))
+        args = ['/d', '/s', '/c', script]
+      }
+      await writeFile(config, JSON.stringify({ executable: options.executable, args, cwd, work: snapshot.work, scratch: snapshot.scratch, network, timeoutMs: options.timeoutMs ?? 120000 }), { mode: 0o600 })
       // The trusted .NET compiler must use the host temp location. Its protected
       // compilation directories must never be relabelled as AppContainer scratch.
       // The helper switches TEMP/TMP before creating the restricted child.

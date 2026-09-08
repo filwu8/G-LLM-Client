@@ -33,6 +33,8 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 - 支持本轮内后台任务和增量日志、批量替换预演及版本冲突检查。
 - 升级后 Python/Shell 需主动启用，沙箱联网默认关闭。Linux 需 Bubblewrap 与用户命名空间，Windows 需 AppContainer 可读取的 Python 安装；沙箱不可用时不会自动退回主机执行。详见 [Agent 配置与兼容性](./docs/agent-execution.md)。
 
+Windows Shell 使用系统 CMD 批处理语法，macOS/Linux 使用 sh；Python 直接执行。
+
 ## V2.0.19 更可靠的生图体验与本机统计
 
 - 生图编排会区分明确的生成需求与评价、质疑、询问图片等普通对话，不再轻易误触发。
