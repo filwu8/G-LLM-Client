@@ -1,5 +1,9 @@
 # AI Development Rules
 
+## Prefer existing macOS Keychain credentials for GitHub
+
+For GitHub operations on macOS, prefer the existing credentials supplied by `git credential-osxkeychain` over GitHub CLI OAuth credentials. Check the available credential sources and their actual scopes before requesting browser authorization; a GitHub CLI scope failure does not mean the Keychain credential lacks permission. Never print credential values or store them in repository files. GitHub CLI authentication is separate from Git credential helpers; if CLI operations need the Keychain credential, supply it only to the required process without exposing or persisting it.
+
 ## Keep root README files in sync with every version update
 
 Whenever a change bumps, prepares, or publishes a new application version, update the root-level `README.md` and `README.en-US.md` in the same change.

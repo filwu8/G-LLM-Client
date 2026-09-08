@@ -82,6 +82,7 @@ import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
   acknowledgeConversationRun,
   attachDraftWorkspace,
+  conversationWorkspace,
   collapsePristineConversationDrafts,
   finishConversationRun,
   isPristineConversationDraft,
@@ -889,7 +890,6 @@ export default function App() {
   const workspaceChangedFiles = activeConversationId
     ? workspaceChangedFilesByConversation[activeConversationId] ?? []
     : []
-  const workspaceApprovalPrompt = workspaceApprovalPrompts[0] ?? null
   const isStreaming = isConversationRunning(conversationRunStates, activeConversationId)
 
   function setDraft(update: SessionStateUpdate<string>) {
@@ -1029,7 +1029,8 @@ export default function App() {
     streamingConversationDraftsRef.current
   )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
-  const currentWorkspace = activeConversation?.workspace ?? draftWorkspace
+  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace)
+  const workspaceApprovalPrompt = currentWorkspace ? workspaceApprovalPrompts.find(prompt => prompt.conversationId === activeConversation?.id) ?? null : null
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
     [activeConversation, assistantDefaultProvider, providers]
@@ -2818,9 +2819,9 @@ export default function App() {
     }
   }
 
-  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>) {
+  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork'>) {
     if (!currentWorkspace) return
-    const workspace = { ...currentWorkspace, approvalMode, lastVerifiedAt: Date.now() }
+    const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
     if (!activeConversation) {
       setDraftWorkspace(workspace)
       return
@@ -2836,6 +2837,10 @@ export default function App() {
       setDraftWorkspace(undefined)
       return
     }
+    window.gllm.cancelResponse(activeConversation.id)
+    for (const prompt of workspaceApprovalPrompts.filter(item => item.conversationId === activeConversation.id)) window.gllm.respondWorkspaceApproval(prompt.id, false)
+    setWorkspaceApprovalPrompts(current => current.filter(item => item.conversationId !== activeConversation.id))
+    setDraftWorkspace(undefined)
     const nextConversation = { ...activeConversation, workspace: undefined, updatedAt: Date.now() }
     try {
       const saved = await window.gllm.saveConversation(nextConversation)
@@ -2894,6 +2899,7 @@ export default function App() {
     const now = Date.now()
     const displayName = value.rootPath.split(/[\\/]/).filter(Boolean).at(-1) || t('workspace.defaultName')
     const workspace: ConversationWorkspace = {
+      ...(currentWorkspace?.rootPath === value.rootPath ? currentWorkspace : {}),
       rootPath: value.rootPath,
       displayName,
       permission: 'read-write',
@@ -3916,6 +3922,8 @@ export default function App() {
                 workspace={currentWorkspace}
                 onOpen={() => void openWorkspaceDirectory(currentWorkspace.rootPath)}
                 onApprovalModeChange={(mode) => void changeConversationWorkspaceApproval(mode)}
+                onAgentSettingsChange={(settings) => changeConversationWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings)}
+                running={isStreaming}
                 onUnbind={() => void unbindConversationWorkspace()}
               />
             )}
@@ -4254,7 +4262,7 @@ export default function App() {
           onSelect={(mode) => void confirmConversationWorkspace(mode)}
         />
       )}
-      {workspaceApprovalPrompt && (
+      {currentWorkspace && workspaceApprovalPrompt && (
         <WorkspaceOperationApprovalDialog
           prompt={workspaceApprovalPrompt}
           onRespond={(approved) => {

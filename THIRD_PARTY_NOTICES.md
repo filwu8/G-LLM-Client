@@ -166,6 +166,7 @@ This file is generated from the locked production dependency graph by
 | html-url-attributes@3.0.1 | MIT | [link](https://github.com/rehypejs/rehype-minify/tree/main#readme) |
 | i18next@26.3.6 | MIT | [link](https://www.i18next.com) |
 | iconv-lite@0.6.3 | MIT | [link](https://github.com/ashtuchkin/iconv-lite) |
+| ignore@7.0.8 | MIT | [link](https://github.com/kaelzhang/node-ignore#readme) |
 | immediate@3.0.6 | MIT | [link](https://github.com/calvinmetcalf/immediate#readme) |
 | import-meta-resolve@4.2.0 | MIT | [link](https://github.com/wooorm/import-meta-resolve#readme) |
 | inherits@2.0.4 | ISC | [link](https://github.com/isaacs/inherits#readme) |
@@ -178,6 +179,7 @@ This file is generated from the locked production dependency graph by
 | is-hexadecimal@2.0.1 | MIT | [link](https://github.com/wooorm/is-hexadecimal#readme) |
 | is-plain-obj@4.1.0 | MIT | [link](https://github.com/sindresorhus/is-plain-obj#readme) |
 | isarray@1.0.0 | MIT | [link](https://github.com/juliangruber/isarray) |
+| js-tiktoken@1.0.21 | MIT | [link](https://github.com/dqbd/tiktoken#readme) |
 | js-yaml@4.3.1 | MIT | [link](https://github.com/nodeca/js-yaml#readme) |
 | json-schema-traverse@1.0.0 | MIT | [link](https://github.com/epoberezkin/json-schema-traverse#readme) |
 | json-schema-typed@8.0.2 | BSD-2-Clause | [link](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) |
@@ -2885,6 +2887,32 @@ SOFTWARE.
 
 ````text
 Copyright (c) 2011 Alexander Shtuchkin
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+````
+
+### ignore@7.0.8
+
+````text
+Copyright (c) 2013 Kael Zhang <i@kael.me>, contributors
+http://kael.me/
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -5823,4 +5851,5 @@ ship a root-level license or notice file in the installed package:
 - dingbat-to-unicode@1.0.1: BSD-2-Clause
 - html-parse-stringify@3.0.1: MIT
 - isarray@1.0.0: MIT
+- js-tiktoken@1.0.21: MIT
 - lazy-val@1.0.5: MIT

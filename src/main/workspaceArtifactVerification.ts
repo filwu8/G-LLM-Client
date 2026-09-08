@@ -9,6 +9,7 @@ import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
 import { loadImage } from '@napi-rs/canvas'
 import mammoth from 'mammoth'
 
+import { isPrivateEnvFile } from './workspaceEnvFiles.ts'
 import { inspectDocxBuffer } from './docxDocument.ts'
 
 export interface RequestedArtifactContract {
@@ -113,9 +114,10 @@ export async function verifyWorkspaceArtifacts(
   for (const artifact of artifacts) {
     const target = await resolveVerifiedArtifact(root, artifact)
     const info = await stat(target)
-    if (!info.isFile() || info.size === 0) throw new Error(`产物验证失败：${artifact} 不是有效的非空文件`)
-
     const extension = extname(target).toLocaleLowerCase()
+    const emptyEnvTemplate = isPrivateEnvFile(artifact) && !['.docx', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(extension)
+    if (!info.isFile() || (info.size === 0 && !emptyEnvTemplate)) throw new Error(`产物验证失败：${artifact} 不是有效的非空文件`)
+
     if (extension === '.docx') {
       const buffer = await readFile(target)
       const structure = await inspectDocxBuffer(buffer)

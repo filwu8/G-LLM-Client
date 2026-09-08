@@ -4,6 +4,7 @@
  * Change Date: 2030-08-01
  */
 
+import { normalizeEnvNames } from './workspaceAgentPolicy'
 import { app } from 'electron'
 import Store from 'electron-store'
 import type { TOptions } from 'i18next'
@@ -1125,6 +1126,11 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
           approvalMode: ['ask', 'auto', 'full'].includes(conversation.workspace.approvalMode ?? '')
             ? conversation.workspace.approvalMode
             : 'ask' as const,
+          executionMode: conversation.workspace.executionMode === 'host' ? 'host' as const : 'sandbox' as const,
+          sandboxNetwork: conversation.workspace.sandboxNetwork === true,
+          nativeExecution: conversation.workspace.nativeExecution === true,
+          loadAgentsMd: conversation.workspace.loadAgentsMd !== false,
+          envNames: normalizeEnvNames(conversation.workspace.envNames),
           grantedAt: Number.isFinite(conversation.workspace.grantedAt) ? conversation.workspace.grantedAt : now,
           lastVerifiedAt: Number.isFinite(conversation.workspace.lastVerifiedAt) ? conversation.workspace.lastVerifiedAt : now
         }

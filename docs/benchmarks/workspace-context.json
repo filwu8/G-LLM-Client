@@ -1,0 +1,48 @@
+{
+  "referenceTokenizer": "js-tiktoken 1.0.21 (offline rank tables; not provider billing)",
+  "methodology": "Serialized tool-call arguments and results only; excludes model reasoning, system prompts and tool schema overhead. Known task: inspect credential selection and timeout/output limits. Initial selective context is not equivalent to reading every source byte.",
+  "cases": [
+    {
+      "name": "targeted-source-inspection",
+      "requiredFactsPreserved": true,
+      "baselineCalls": 2,
+      "optimizedCalls": 3,
+      "characters": {
+        "baseline": 8706,
+        "optimized": 4333
+      },
+      "tokenizers": {
+        "o200k_base": {
+          "baseline": 2310,
+          "optimized": 1245,
+          "reductionPercent": 46.1
+        },
+        "cl100k_base": {
+          "baseline": 2296,
+          "optimized": 1233,
+          "reductionPercent": 46.3
+        }
+      }
+    },
+    {
+      "name": "long-command-output-first-page",
+      "note": "Initial response only. The new output retains the final summary and supports exact retrieval of the omitted middle. Reading all pages costs additional tokens.",
+      "characters": {
+        "baseline": 24000,
+        "optimized": 11957
+      },
+      "tokenizers": {
+        "o200k_base": {
+          "baseline": 6353,
+          "optimized": 3198,
+          "reductionPercent": 49.7
+        },
+        "cl100k_base": {
+          "baseline": 6353,
+          "optimized": 3199,
+          "reductionPercent": 49.6
+        }
+      }
+    }
+  ]
+}

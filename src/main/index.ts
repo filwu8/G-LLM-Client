@@ -2052,6 +2052,7 @@ app.whenReady().then(() => {
     pending.resolve(Boolean(approved))
   })
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
+    if (!request.workspace?.rootPath?.trim()) throw new Error('Authorize a workspace folder before using local Agent tools')
     const requestStartedAt = Date.now()
     const runLedger = getAgentRunLedger()
     const run = runLedger.start({
@@ -2092,7 +2093,7 @@ app.whenReady().then(() => {
             label: progress.activity.label
           })
         },
-        async (approval) => {
+        async (approval, approvalSignal = active.controller.signal) => {
           const id = randomUUID()
           const prompt: WorkspaceApprovalPrompt = { id, conversationId: request.conversationId, ...approval }
           runLedger.record(run.id, 'approval_waiting', 'waiting_approval', {
@@ -2103,13 +2104,14 @@ app.whenReady().then(() => {
           return await new Promise<boolean>((resolvePromise) => {
             const finish = (approved: boolean) => {
               pendingWorkspaceApprovals.delete(id)
-              active.controller.signal.removeEventListener('abort', handleAbort)
+              approvalSignal.removeEventListener('abort', handleAbort)
               runLedger.record(run.id, 'approval_resolved', 'running_tool', { approved })
               resolvePromise(approved)
             }
             const handleAbort = () => finish(false)
+            if (approvalSignal.aborted) { finish(false); return }
             pendingWorkspaceApprovals.set(id, { senderId: event.sender.id, resolve: finish })
-            active.controller.signal.addEventListener('abort', handleAbort, { once: true })
+            approvalSignal.addEventListener('abort', handleAbort, { once: true })
             event.sender.send('workspace-agent:approval-requested', prompt)
           })
         },
@@ -2165,6 +2167,22 @@ app.whenReady().then(() => {
     } finally {
       releaseActiveResponse(active.key, active.controller)
     }
+  })
+  ipcMain.handle('workspace:check-execution', async (_, rootPath: string, options: import('../shared/types').WorkspaceDiagnosticOptions) => {
+    if (!rootPath || !options || !['sandbox', 'host'].includes(options.executionMode) || typeof options.sandboxNetwork !== 'boolean') throw new Error('Invalid execution check settings')
+    const { diagnoseWorkspaceExecution } = await import('./workspaceDiagnostics')
+    return diagnoseWorkspaceExecution(rootPath, options)
+  })
+  ipcMain.handle('workspace:agent-settings-status', async (_, rootPath: string) => {
+    const { workspaceVault } = await import('./workspaceSecrets')
+    const { sandboxStatus } = await import('./workspaceSandbox')
+    const { loadWorkspaceEnvExampleNames } = await import('./workspaceAgentPolicy')
+    const [vault, sandbox, suggestedNames] = await Promise.all([workspaceVault().status(rootPath), sandboxStatus(), loadWorkspaceEnvExampleNames(rootPath).catch(() => [])])
+    return { ...vault, sandbox, suggestedNames }
+  })
+  ipcMain.handle('workspace:save-variables', async (_, rootPath: string, updates: unknown) => {
+    const { workspaceVault } = await import('./workspaceSecrets')
+    await workspaceVault().update(rootPath, updates)
   })
   ipcMain.handle('workspace:reveal-file', async (_, rootPath: string, relativePath: string) => {
     const { resolveWorkspaceItem } = await import('./workspaceAgent')

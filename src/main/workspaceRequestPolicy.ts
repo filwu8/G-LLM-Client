@@ -55,3 +55,9 @@ export function getReasoningLengthRecoveryPrompt(model: string, actionRequested:
     : '不要继续展开分析；立即给出简洁、完整的最终答复。'
   return `${noThink}上一轮推理过长并达到输出上限，没有产生正文或工具调用。${nextAction}`
 }
+
+/** Report the observed tool failure instead of diagnosing the model from a missing artifact. */
+export function getWorkspaceFileFailureMessage(fallback: string, activities: Array<{ tool: string; status: string; detail?: string }>): string {
+  const failure = activities.slice().reverse().find((activity) => activity.status === 'failed' && activity.detail?.trim())
+  return failure ? `${fallback}\n${failure.tool}: ${failure.detail!.trim().slice(0, 1200)}` : fallback
+}

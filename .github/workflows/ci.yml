@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     name: Test and build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
 
     steps:
@@ -39,6 +39,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Linux sandbox dependency
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
       - name: Run tests
         run: pnpm test
 
@@ -59,3 +62,36 @@ jobs:
 
       - name: Verify generated notices are committed
         run: git diff --exit-code -- THIRD_PARTY_NOTICES.md
+
+  native-sandbox:
+    name: Native sandbox (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 10.29.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.13.0
+          cache: pnpm
+      - name: Install Linux sandbox dependency
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Grant CI Python runtime read access to AppContainers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # On this disposable runner only. The client never changes installed runtime ACLs.
+          $runtime = Split-Path (Get-Command python.exe).Source
+          icacls $runtime /grant '*S-1-15-2-1:(OI)(CI)RX' /T /Q
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to grant CI Python runtime access' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:sandbox

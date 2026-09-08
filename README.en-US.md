@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.19](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.19](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.19), released on 2026-09-07.
 
@@ -23,6 +23,17 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.20 Local Agents, Sandboxing, and Context Efficiency
+
+- Authorized workspaces can enable Python/Shell with OS sandboxing by default. Ask for approval, Approve for me, and Full authorization share one policy; conversations without a folder grant do not show workspace approvals.
+- Root `AGENTS.md` is loaded automatically. Models declare variable names while users enter values locally for encrypted storage; descriptions appear on hover. Values can be reused within one workspace, with injection permissions controlled per conversation.
+- Agent settings exercise Python, Shell, temporary file writeback, folder isolation, and enabled DNS/TCP networking. macOS Shell Python selection and sandbox DNS permissions are corrected.
+- FastCtx-inspired file-range batches, focused search, shared output budgets, and recoverable logs reduce unnecessary context. Known models use reference tokenization and unknown models use byte budgets; provider usage remains the billing reference.
+- Background jobs and incremental logs stay within the active run. Batch text edits require previews and version checks.
+- Python/Shell remains opt-in after upgrading; sandbox networking defaults to off. Linux needs Bubblewrap and user namespaces, while Windows needs an AppContainer-readable Python installation. Sandbox failures never fall back to host execution. See [Agent setup and compatibility](./docs/agent-execution.md).
+
+Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs directly.
 
 ## V2.0.19 More Reliable Image Workflows and On-Device Insights
 

@@ -545,6 +545,11 @@ export interface ConversationWorkspace {
   displayName: string
   permission: 'read' | 'read-write'
   approvalMode?: 'ask' | 'auto' | 'full'
+  executionMode?: 'sandbox' | 'host'
+  sandboxNetwork?: boolean
+  nativeExecution?: boolean
+  loadAgentsMd?: boolean
+  envNames?: string[]
   grantedAt: number
   lastVerifiedAt: number
 }
@@ -576,6 +581,14 @@ export interface AgentExecutionPlan {
 }
 
 export interface WorkspaceApprovalPrompt {
+  preview?: string
+  backgroundTimeoutMs?: number
+  executionMode?: 'sandbox' | 'host'
+  sandboxNetwork?: boolean
+  nativeExecution?: boolean
+  code?: string
+  cwd?: string
+  envNames?: string[]
   id: string
   conversationId: string
   purpose: string
@@ -880,4 +893,10 @@ export interface AssistantTemplateImportResult {
   skills: SkillConfig[]
   tools: ToolConfig[]
   warnings: string[]
+}
+
+export interface WorkspaceDiagnosticOptions { executionMode: 'sandbox' | 'host'; sandboxNetwork: boolean }
+export interface WorkspaceDiagnosticResult {
+  checkedAt: number
+  checks: Array<{ id: 'folder' | 'python' | 'shell' | 'writeback' | 'isolation' | 'dns' | 'network'; status: 'passed' | 'failed' | 'skipped'; detail: string }>
 }

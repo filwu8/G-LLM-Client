@@ -171,3 +171,8 @@ export function removeConversationRun(
 export function isConversationRunning(states: ConversationRunStates, conversationId?: string | null): boolean {
   return Boolean(conversationId && states[conversationId]?.status === 'running')
 }
+
+/** An existing conversation never inherits an unrelated draft folder grant. */
+export function conversationWorkspace(conversation: Pick<Conversation, 'workspace'> | undefined | null, draftWorkspace?: ConversationWorkspace): ConversationWorkspace | undefined {
+  return conversation ? conversation.workspace : draftWorkspace
+}
