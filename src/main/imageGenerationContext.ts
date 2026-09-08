@@ -4,49 +4,142 @@
  * Change Date: 2030-08-01
  */
 
-import type { ChatMessage } from '../shared/types.ts'
+import type { ApiProvider, ChatMessage, PreparedAttachment } from '../shared/types.ts'
+import {
+  normalizeModelCapabilities,
+  resolveImageGenerationModel,
+  resolveImageGenerationToolModel
+} from '../shared/modelCapabilities.ts'
 import { isImageGenerationRequest } from './workspaceRequestPolicy.ts'
 
-type ImageMessage = Pick<ChatMessage, 'role' | 'content'>
+const generatedImageResponsePattern = /!\[生成图片\s*\d*\]\(|已生成图片|!\[generated image\s*\d*\]\(/i
+const imageContinuationPattern = /(?:^|[，,。.!！?？]\s*)(?:请)?(?:再来一张|再生成|重新生成|重做|换一张|继续生成|改成|调整为|修改为|把[^。！？!?\n]{0,24}改成)|\b(?:again|regenerate|generate another|make another|change it to|adjust it to|edit it|revise it)\b/i
+const imageQuestionOrFeedbackPattern = /(?:为什么|为何|是否|有没有|有没|收到|看到了吗|区别|差别|怎么样|如何评价|能否辨识|无法辨识)|\b(?:why|did you receive|can you see|what(?:'s| is) the difference|how does|feedback|critique)\b/i
+const continuationReferencePattern = /(?:再|重新|继续|之前|刚才|上次|原图|原始|参考|保持|基于|这张|那个|它|同样|改成|调整|修改)|\b(?:again|previous|original|reference|same|based on|this image|it|change|adjust|edit|revise)\b/i
 
-// A follow-up may omit the word “image”, but must still ask for an action.
-const followUpPattern = /(?:同样|相同|刚才|之前|这个|这张|上[一张幅]).{0,30}(?:场景|风格|画面|图片|图像)|(?:按照|按|照着).{0,30}(?:方向|方案|提示词|描述).{0,15}(?:生成|画|制作)|(?:改成|换成|改为|换个|调整|加上|去掉|移除|变成|再来|再画|再生成|重新生成)|\b(?:make|change|turn|add|remove|replace|regenerate|redraw)\b|\b(?:same scene|another (?:one|image|version)|generate (?:it|that))\b/i
-const textOnlyPattern = /(?:不要|不用|别|先不|停止).{0,8}(?:生成|画|绘制|制作)|(?:只|仅).{0,8}(?:提示词|文字|解释|分析)|(?:解释|分析|评价|为什么|如何|怎么).{0,30}(?:图片|图像|风格|生成|画)|\b(?:do not|don't|stop)\s+(?:generate|draw|paint)|\b(?:explain|analyze|describe|why|how)\b|\b(?:prompt|text) only\b/i
-const otherArtifactPattern = /(?:生成|创建|编写|写|制作|修改|改成).{0,12}(?:报告|邮件|代码|程序|文章|文档|表格)|\b(?:write|create|generate|modify|make)\b.{0,30}\b(?:report|email|code|document|spreadsheet)\b/i
+export interface ImageGenerationContext {
+  prompt: string
+  referenceImages: PreparedAttachment[]
+  isContinuation: boolean
+}
 
-/** Find the current image task, ending it when the user changes topic. */
-export function getImageGenerationConversationStart(messages: readonly ImageMessage[]): number {
-  let start = -1
-  for (let index = 0; index < messages.length; index++) {
+export interface ImageGenerationTarget {
+  model: string
+  mode: 'image-api' | 'responses-tool'
+}
+
+export function buildImageGenerationRequestBody(
+  target: ImageGenerationTarget,
+  prompt: string,
+  referenceImages: PreparedAttachment[],
+  size: string,
+  quality: string
+): Record<string, unknown> {
+  if (target.mode === 'image-api') {
+    if (referenceImages.length > 0) throw new Error('REFERENCE_IMAGE_UNSUPPORTED')
+    return { model: target.model, prompt, n: 1, size, response_format: 'b64_json' }
+  }
+
+  const input = referenceImages.length > 0
+    ? [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: prompt },
+          ...referenceImages.map((image) => ({ type: 'input_image', image_url: image.dataUrl }))
+        ]
+      }]
+    : prompt
+  return {
+    model: target.model,
+    input,
+    tools: [{ type: 'image_generation', size, quality }],
+    tool_choice: { type: 'image_generation' },
+    stream: false
+  }
+}
+
+export function resolveImageGenerationTarget(provider: ApiProvider, hasReferenceImages: boolean): ImageGenerationTarget | undefined {
+  const defaultModel = provider.models.find((model) => model.id === provider.defaultModel) ?? { id: provider.defaultModel }
+  const defaultCapabilities = normalizeModelCapabilities(defaultModel)
+
+  if (hasReferenceImages) {
+    const toolModel = resolveImageGenerationToolModel(provider)
+    if (toolModel) return { model: toolModel.id, mode: 'responses-tool' }
+    const directModel = resolveImageGenerationModel(provider)
+    return directModel ? { model: directModel.id, mode: 'image-api' } : undefined
+  }
+
+  if (defaultCapabilities.includes('image')) return { model: defaultModel.id, mode: 'image-api' }
+  if (defaultCapabilities.includes('image-tool')) return { model: defaultModel.id, mode: 'responses-tool' }
+  const directModel = resolveImageGenerationModel(provider)
+  if (directModel) return { model: directModel.id, mode: 'image-api' }
+  const toolModel = resolveImageGenerationToolModel(provider)
+  return toolModel ? { model: toolModel.id, mode: 'responses-tool' } : undefined
+}
+
+function latestUserMessageIndex(messages: ChatMessage[]): number {
+  return messages.map((message) => message.role).lastIndexOf('user')
+}
+
+function hasEarlierGeneratedImage(messages: ChatMessage[], beforeIndex: number): boolean {
+  return messages.slice(0, beforeIndex).some((message) =>
+    message.role === 'assistant' && generatedImageResponsePattern.test(message.content)
+  )
+}
+
+export function shouldGenerateImageForConversation(messages: ChatMessage[]): boolean {
+  const latestIndex = latestUserMessageIndex(messages)
+  if (latestIndex < 0) return false
+  const request = messages[latestIndex].content.trim()
+  if (!request) return false
+  if (isImageGenerationRequest(request)) return true
+  if (!hasEarlierGeneratedImage(messages, latestIndex)) return false
+  if (imageQuestionOrFeedbackPattern.test(request)) return false
+  return imageContinuationPattern.test(request)
+}
+
+function findContinuationAnchor(messages: ChatMessage[], latestIndex: number): number {
+  for (let index = latestIndex - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.role !== 'user') continue
-    const text = message.content.trim()
-    if (textOnlyPattern.test(text) || otherArtifactPattern.test(text)) {
-      start = -1
-    } else if (isImageGenerationRequest(text)) {
-      if (start < 0 || !followUpPattern.test(text)) start = index
-    } else if (start < 0 || !followUpPattern.test(text)) {
-      start = -1
+    const hasImage = message.attachments?.some((attachment) => attachment.kind === 'image' && attachment.dataUrl)
+    if (hasImage || isImageGenerationRequest(message.content)) return index
+  }
+  return latestIndex
+}
+
+function uniqueReferenceImages(messages: ChatMessage[]): PreparedAttachment[] {
+  const seen = new Set<string>()
+  const result: PreparedAttachment[] = []
+  for (const message of messages) {
+    for (const attachment of message.attachments ?? []) {
+      if (attachment.kind !== 'image' || !attachment.dataUrl) continue
+      const identity = attachment.id || attachment.dataUrl
+      if (seen.has(identity)) continue
+      seen.add(identity)
+      result.push(attachment)
     }
   }
-  return start
+  return result.slice(-4)
 }
 
-export function isImageGenerationConversation(messages: readonly ImageMessage[]): boolean {
-  return getImageGenerationConversationStart(messages) >= 0
-}
+export function buildImageGenerationContext(messages: ChatMessage[]): ImageGenerationContext {
+  const latestIndex = latestUserMessageIndex(messages)
+  if (latestIndex < 0) {
+    return { prompt: '生成一张简洁、清晰、高质量的图片。', referenceImages: [], isContinuation: false }
+  }
 
-/** Preserve scene and proposed style, without sending local image URLs as text. */
-export function buildImageGenerationConversationPrompt(messages: readonly ImageMessage[]): string {
-  const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
-  if (lastUserIndex < 0) return '生成一张简洁、清晰、高质量的图片。'
-  const relevantMessages = messages.slice(0, lastUserIndex + 1)
-  const start = getImageGenerationConversationStart(relevantMessages)
-  if (start < 0 || start === lastUserIndex) return messages[lastUserIndex].content.trim()
+  const latest = messages[latestIndex]
+  const isContinuation = continuationReferencePattern.test(latest.content) && hasEarlierGeneratedImage(messages, latestIndex)
+  const anchor = isContinuation ? findContinuationAnchor(messages, latestIndex) : latestIndex
+  const relevantMessages = messages.slice(anchor, latestIndex + 1).filter((message) => message.role === 'user').slice(-6)
+  const requirements = relevantMessages
+    .map((message, index) => `${index === relevantMessages.length - 1 ? '当前要求' : '此前要求'}：${message.content.trim()}`)
+    .filter((line) => !line.endsWith('：'))
 
-  const context = relevantMessages.slice(start).filter((message) => message.role !== 'system').map((message) => {
-    const content = message.content.replace(/!\[[^\]]*\]\([^\n]+\)/g, '[已生成图片]')
-    return `${message.role === 'user' ? '用户' : '助手'}：${content}`
-  }).join('\n\n')
-  return `请实际生成图片。以下是本次图片任务的对话上下文，请结合之前的场景、主体和风格，以用户最新要求为准。历史助手内容仅供理解用户认可的方案。\n\n${context}`
+  return {
+    prompt: requirements.join('\n') || '生成一张简洁、清晰、高质量的图片。',
+    referenceImages: uniqueReferenceImages(relevantMessages),
+    isContinuation
+  }
 }

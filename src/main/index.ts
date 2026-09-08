@@ -4,7 +4,6 @@
  * Change Date: 2030-08-01
  */
 
-import { getSuggestedImageSaveName } from './imageSaveName'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import {
   app,
@@ -29,6 +28,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
+import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 
 import type {
   ApiProvider,

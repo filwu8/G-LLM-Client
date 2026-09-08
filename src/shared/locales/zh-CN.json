@@ -902,16 +902,19 @@
     "longestStreakDays": "最长连续天数",
     "activeDays84": "近 84 天活跃天数",
     "completedResponses": "完成回答数",
+    "generatedImages": "成功生成图片",
     "conversations": "本地对话",
     "tokenActivity": "Token 活动",
     "last84Days": "最近 12 周，颜色越深表示当日 Token 越多",
     "dayDetail": "{{date}}：{{tokens}} Token，{{messages}} 条消息",
+    "dayDetailWithImages": "{{date}}：{{tokens}} Token，{{messages}} 条消息，生成 {{images}} 张图片",
     "less": "较少",
     "more": "较多",
     "insights": "活动洞察",
     "currentStreak": "当前连续活跃",
     "longestStreak": "最长连续活跃",
     "daysValue": "{{count}} 天",
+    "imagesUnit": "{{count}} 张",
     "toolCalls": "已完成工具调用",
     "localObjects": "本地对话与配置对象",
     "topModels": "常用模型",
@@ -1095,6 +1098,9 @@
       "connected": "连接成功，发现 {{count}} 个模型",
       "modelUnavailableFallback": "模型 {{model}} 已不可用，模型列表已刷新并自动切换到 {{fallback}}。"
     },
+    "imageGeneration": {
+      "referenceUnsupported": "我收到了 {{count}} 张参考图片，但当前供应商只支持 `/images/generations` 文字生图，不支持把参考图作为编辑输入。为避免生成一张看似参考了原图、实际却没有读取原图的图片，本次没有发起生成。当前请改用支持 Responses `image_generation` 图片输入的模型；仅提供 `/images/edits` 的供应商还需要客户端后续接入。"
+    },
     "assistant": {
       "outputLanguage": "简体中文",
       "defaultName": "专业助手",
@@ -1102,7 +1108,7 @@
       "medicalTone": "谨慎、清晰、负责任",
       "businessTone": "结构化、重判断",
       "defaultTone": "清晰、专业",
-      "fallbackSystemPrompt": "你是 G-LLM Client 的「{{keyword}}」助手。先澄清场景目标，再给出结论、依据和下一步动作三段式回答。默认使用用户当前语言回答。回答要清晰、可执行、可验证；涉及高风险事项时必须先说明局限，并建议用户咨询专业人士或核实权威信息。必要时主动给出可执行清单和验收标准。",
+      "fallbackSystemPrompt": "你是 G-LLM Client 的「{{keyword}}」助手。先理解用户真正的目标，再根据问题复杂度选择合适的回答结构。默认使用用户当前语言回答，并严格服从用户对长度和格式的明确要求。回答要清晰、可执行、可验证；涉及高风险事项时必须先说明局限，并建议用户咨询专业人士或核实权威信息。必要时主动给出可执行清单和验收标准。",
       "starterAnalyze": "帮我分析一个{{keyword}}相关问题",
       "starterAdvice": "给我一份{{keyword}}的处理建议",
       "starterPlan": "把下面内容整理成{{keyword}}工作方案"

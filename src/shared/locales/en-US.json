@@ -902,16 +902,19 @@
     "longestStreakDays": "Longest streak",
     "activeDays84": "Active days in 84 days",
     "completedResponses": "Completed responses",
+    "generatedImages": "Images generated",
     "conversations": "Local conversations",
     "tokenActivity": "Token activity",
     "last84Days": "The last 12 weeks; darker cells indicate more tokens",
     "dayDetail": "{{date}}: {{tokens}} tokens, {{messages}} messages",
+    "dayDetailWithImages": "{{date}}: {{tokens}} tokens, {{messages}} messages, {{images}} images generated",
     "less": "Less",
     "more": "More",
     "insights": "Activity insights",
     "currentStreak": "Current active streak",
     "longestStreak": "Longest active streak",
     "daysValue": "{{count}} days",
+    "imagesUnit": "{{count}} images",
     "toolCalls": "Completed tool calls",
     "localObjects": "Local conversations and configuration objects",
     "topModels": "Most-used models",
@@ -1095,6 +1098,9 @@
       "connected": "Connected successfully; found {{count}} model(s)",
       "modelUnavailableFallback": "Model {{model}} is no longer available. The catalog was refreshed and the conversation switched to {{fallback}}."
     },
+    "imageGeneration": {
+      "referenceUnsupported": "I received {{count}} reference image(s), but this provider only supports text-to-image generation through `/images/generations` and cannot use a reference image as editing input. No image was generated, so the result cannot falsely appear to have used an image it never read. Use a model that supports image input with the Responses `image_generation` tool; providers that only expose `/images/edits` still require a future client integration."
+    },
     "assistant": {
       "outputLanguage": "English",
       "defaultName": "Professional Assistant",
@@ -1102,7 +1108,7 @@
       "medicalTone": "Careful, clear, and responsible",
       "businessTone": "Structured and analytical",
       "defaultTone": "Clear and professional",
-      "fallbackSystemPrompt": "You are the G-LLM {{keyword}} assistant. Clarify the user's goal first, then provide a conclusion, supporting rationale, and next actions. Respond in the user's current language unless explicitly asked otherwise. Be clear, actionable, and verifiable. For high-risk topics, state your limitations and recommend consulting a qualified professional or authoritative source. Provide checklists and acceptance criteria when useful.",
+      "fallbackSystemPrompt": "You are the G-LLM {{keyword}} assistant. Understand the user's actual goal first, then choose a response structure that fits the task. Respond in the user's current language unless explicitly asked otherwise, and strictly follow explicit requests about length and format. Be clear, actionable, and verifiable. For high-risk topics, state your limitations and recommend consulting a qualified professional or authoritative source. Provide checklists and acceptance criteria when useful.",
       "starterAnalyze": "Help me analyze a {{keyword}} question",
       "starterAdvice": "Give me practical {{keyword}} advice",
       "starterPlan": "Turn the following into an actionable {{keyword}} plan"

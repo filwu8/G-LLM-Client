@@ -12,6 +12,7 @@ export interface UsageDay {
   tokens: number
   messages: number
   responses: number
+  generatedImages: number
   durationMs: number
 }
 
@@ -30,6 +31,7 @@ export interface LocalUsageStats {
   currentStreak: number
   longestStreak: number
   completedResponses: number
+  generatedImages: number
   toolCalls: number
   days: UsageDay[]
   topModels: UsageRankingItem[]
@@ -54,6 +56,10 @@ function messageTokens(message: Conversation['messages'][number]): number {
   const input = Number(message.inputTokens)
   const output = Number(message.outputTokens)
   return Math.max(0, (Number.isFinite(input) ? Math.round(input) : 0) + (Number.isFinite(output) ? Math.round(output) : 0))
+}
+
+function generatedImageCount(content: string): number {
+  return content.match(/!\[(?:生成图片|generated image)\s*\d*\]\(gllm-data:\/\/generated-images\//gi)?.length ?? 0
 }
 
 function addRanking(map: Map<string, UsageRankingItem>, id: string, label: string, count = 1) {
@@ -97,7 +103,7 @@ export function calculateLocalUsageStats(
   const normalizedDayCount = Math.max(7, Math.min(366, Math.round(dayCount)))
   const days: UsageDay[] = Array.from({ length: normalizedDayCount }, (_, index) => {
     const timestamp = now - (normalizedDayCount - index - 1) * 86_400_000
-    return { key: dateKey(timestamp, timeZone), timestamp, tokens: 0, messages: 0, responses: 0, durationMs: 0 }
+    return { key: dateKey(timestamp, timeZone), timestamp, tokens: 0, messages: 0, responses: 0, generatedImages: 0, durationMs: 0 }
   })
   const daysByKey = new Map(days.map((day) => [day.key, day]))
   const historicalTokensByDay = new Map<string, number>()
@@ -110,6 +116,7 @@ export function calculateLocalUsageStats(
   let totalDurationMs = 0
   let longestConversationDurationMs = 0
   let completedResponses = 0
+  let generatedImages = 0
   let toolCalls = 0
 
   for (const conversation of conversations) {
@@ -147,10 +154,18 @@ export function calculateLocalUsageStats(
         addRanking(assistantRanking, conversation.assistantId, assistantName)
       }
 
+      const messageGeneratedImages = message.role === 'assistant' ? generatedImageCount(message.content) : 0
+      generatedImages += messageGeneratedImages
+      if (day) day.generatedImages += messageGeneratedImages
+
       for (const activity of message.workspaceActivities ?? []) {
         if (activity.status !== 'completed' || activity.tool === 'understand_goal') continue
         toolCalls += 1
         addRanking(toolRanking, activity.tool, activity.label || activity.tool)
+        if (activity.tool === 'generate_image') {
+          generatedImages += 1
+          if (day) day.generatedImages += 1
+        }
       }
     }
     longestConversationDurationMs = Math.max(longestConversationDurationMs, conversationDurationMs)
@@ -166,6 +181,7 @@ export function calculateLocalUsageStats(
     currentStreak: streaks.current,
     longestStreak: streaks.longest,
     completedResponses,
+    generatedImages,
     toolCalls,
     days,
     topModels: sortedRanking(modelRanking),

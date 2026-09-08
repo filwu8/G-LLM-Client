@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Текущая версия кода: [V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
+Текущая версия кода: [V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Последняя стабильная версия: [V2.0.18](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.18), выпущена 6 сентября 2026 года.
+Последняя стабильная версия: [V2.0.19](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.19), выпущена 7 сентября 2026 года.
 
 [Скачать клиент](https://llm.gprophet.com/download) | [Полный журнал изменений](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

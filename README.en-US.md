@@ -30,8 +30,16 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Root `AGENTS.md` is loaded automatically. Models declare variable names while users enter values locally for encrypted storage; descriptions appear on hover. Values can be reused within one workspace, with injection permissions controlled per conversation.
 - Agent settings exercise Python, Shell, temporary file writeback, folder isolation, and enabled DNS/TCP networking. macOS Shell Python selection and sandbox DNS permissions are corrected.
 - FastCtx-inspired file-range batches, focused search, shared output budgets, and recoverable logs reduce unnecessary context. Known models use reference tokenization and unknown models use byte budgets; provider usage remains the billing reference.
-- Background jobs and incremental logs stay within the active run. Batch text edits require previews and version checks. Image follow-up context and saved-image filenames are improved.
+- Background jobs and incremental logs stay within the active run. Batch text edits require previews and version checks.
 - Python/Shell remains opt-in after upgrading; sandbox networking defaults to off. Linux needs Bubblewrap and user namespaces, while Windows needs an AppContainer-readable Python installation. Sandbox failures never fall back to host execution. See [Agent setup and compatibility](./docs/agent-execution.md).
+
+## V2.0.19 More Reliable Image Workflows and On-Device Insights
+
+- Image orchestration now distinguishes explicit creation requests from feedback, questions, and criticism about an image, reducing accidental generation.
+- Follow-up image requests carry forward the latest original requirements and reference images. Providers that expose only `/images/generations` now report their reference-editing limitation clearly.
+- Save Image As suggestions include a local millisecond timestamp to prevent accidental overwrites, while sent images use a compact preview that still opens at full size.
+- Explicit requests for a brief or one-sentence answer no longer receive a forced three-part structure, and the model-wait shimmer moves at a calmer pace.
+- On-device usage insights now count successfully generated images from regular chats and workspace tools, including compatible historical local records.
 
 ## V2.0.18 Image Tools and Clearer Model Selection
 
