@@ -66,7 +66,9 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
     PATH: [ ...(python ? [dirname(python)] : []), ...(windows ? [resolve(systemRoot, 'System32'), systemRoot] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']) ].join(delimiter),
     HOME: command.cwd,
     LANG: 'en_US.UTF-8',
-    ...(windows ? { SystemRoot: systemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP } : { TMPDIR: process.env.TMPDIR || '/tmp' }),
+    // Windows requires LOCALAPPDATA when creating an AppContainer process.
+    // Keep only OS runtime paths; never inherit the host's business environment.
+    ...(windows ? { SystemRoot: systemRoot, SystemDrive: systemRoot.slice(0, 2), LOCALAPPDATA: process.env.LOCALAPPDATA, TEMP: process.env.TEMP, TMP: process.env.TMP } : { TMPDIR: process.env.TMPDIR || '/tmp' }),
     ...selected
   }
   const options = { ...execution, executable, args, cwd: command.cwd, env, signal }
