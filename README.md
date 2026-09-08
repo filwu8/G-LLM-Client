@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.18](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.18](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.18)，发布于 2026-09-06。
+最近稳定发布：[V2.0.19](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.19)，发布于 2026-09-07。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.20 本地 Agent、沙箱与上下文优化
+
+- 工作区可启用 Python/Shell，默认采用操作系统沙箱；提供请求批准、帮我批准和完全授权三档，普通未授权目录的会话不展示工作区审批。
+- 自动加载根目录 `AGENTS.md`，由模型声明所需变量名称，用户在本地输入并加密保存；变量描述悬停显示，配置可跨同一工作区的助手复用，注入权限仍按会话控制。
+- Agent 设置实际检查 Python、Shell、临时文件回写、目录隔离及已启用的 DNS/TCP 联网；修复 macOS Shell Python 路径和沙箱 DNS 权限不一致的问题。
+- 借鉴 FastCtx 的批量范围读取、定点搜索、共享输出预算与可恢复日志；已知模型使用参考分词预算，未知模型使用字节预算，实际计费用量仍以供应商 usage 为准。
+- 支持本轮内后台任务和增量日志、批量替换预演及版本冲突检查；改进生图追问上下文和图片保存文件名。
+- 升级后 Python/Shell 需主动启用，沙箱联网默认关闭。Linux 需 Bubblewrap 与用户命名空间，Windows 需 AppContainer 可读取的 Python 安装；沙箱不可用时不会自动退回主机执行。详见 [Agent 配置与兼容性](./docs/agent-execution.md)。
 
 ## V2.0.18 生图工具与更清晰的模型选择
 

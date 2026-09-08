@@ -8,6 +8,8 @@ import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, LoaderCircle, Sh
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { WorkspaceAgentSettingsDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+
 import type { AgentExecutionPlan, ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
 
 type WorkspaceApprovalMode = NonNullable<ConversationWorkspace['approvalMode']>
@@ -118,7 +120,13 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
           <strong>{prompt.purpose}</strong>
         </div>
         <p>{prompt.canWrite ? t('workspace.operationWriteAccess') : t('workspace.operationReadAccess')}</p>
-        <p>{t('workspace.operationBoundary')}</p>
+        <p className={prompt.nativeExecution ? 'workspace-native-warning' : ''}>{t(prompt.nativeExecution ? (prompt.executionMode === 'host' ? 'workspace.agentNativeBoundary' : 'workspace.agentSandboxBoundary') : 'workspace.operationBoundary')}</p>
+        {prompt.nativeExecution && prompt.executionMode !== 'host' && <p>{t(prompt.sandboxNetwork ? 'workspace.agentNetworkOn' : 'workspace.agentNetworkOff')}</p>}
+        {prompt.cwd && <p><strong>{t('workspace.agentWorkingDirectory')}</strong> {prompt.cwd}</p>}
+        {prompt.nativeExecution && <p>{t('workspace.agentInjectedNames')}: {prompt.envNames?.join(', ') || t('workspace.agentNoEnv')}</p>}
+        {prompt.backgroundTimeoutMs && <p>{t('workspace.agentBackgroundLimit', { seconds: prompt.backgroundTimeoutMs / 1000 })}</p>}
+        {prompt.preview && <pre className="workspace-code-preview"><code>{prompt.preview}</code></pre>}
+        {prompt.code && <pre className="workspace-code-preview"><code>{prompt.code}</code></pre>}
         <footer>
           <button className="secondary-action" onClick={() => onRespond(false)} type="button">{t('workspace.operationDeny')}</button>
           <button className="primary-action" onClick={() => onRespond(true)} type="button">{t('workspace.operationAllow')}</button>
@@ -128,13 +136,16 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   )
 }
 
-export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange }: {
+export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange, onAgentSettingsChange, running = false }: {
   workspace: ConversationWorkspace
+  running?: boolean
+  onAgentSettingsChange?: (settings: WorkspaceAgentSettings) => Promise<void>
   onOpen?: () => void
   onUnbind: () => void
   onApprovalModeChange?: (mode: WorkspaceApprovalMode) => void
 }) {
   const { t } = useTranslation()
+  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
   const [approvalPickerOpen, setApprovalPickerOpen] = useState(false)
   const approvalLabel = workspace.approvalMode === 'full'
     ? t('workspace.approvalFull')
@@ -160,9 +171,11 @@ export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange
             <span>{approvalLabel}</span>
             <ChevronDown size={12} />
           </button>
+          {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
           <button title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>
         </div>
       </section>
+      {agentSettingsOpen && onAgentSettingsChange && <WorkspaceAgentSettingsDialog workspace={workspace} onSave={onAgentSettingsChange} onClose={() => setAgentSettingsOpen(false)} />}
       {approvalPickerOpen && (
         <WorkspaceApprovalDialog
           currentMode={workspace.approvalMode ?? 'ask'}

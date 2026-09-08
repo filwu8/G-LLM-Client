@@ -46,6 +46,7 @@ import { replaceUserMessageBranch } from './conversationEditing'
 import {
   applyConversationModelSelection,
   attachDraftWorkspace,
+  conversationWorkspace,
   stopConversationWebSearch,
   stopPendingWebSearch
 } from './conversationRuntime'
@@ -391,7 +392,7 @@ export default function QuickChat() {
   const messageSendShortcut = settings?.messageSendShortcut ?? 'enter'
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
   const messages = conversation?.messages ?? []
-  const currentWorkspace = conversation?.workspace ?? draftWorkspace
+  const currentWorkspace = conversationWorkspace(conversation, draftWorkspace)
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
   const quickDraftStorageKey = composerTarget
     ? getComposerDraftStorageKey(getComposerSessionKey(
@@ -858,9 +859,9 @@ export default function QuickChat() {
     }
   }
 
-  async function changeQuickWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>) {
+  async function changeQuickWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork'>) {
     if (!currentWorkspace) return
-    const workspace = { ...currentWorkspace, approvalMode, lastVerifiedAt: Date.now() }
+    const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
     if (!conversation) {
       setDraftWorkspace(workspace)
       return
@@ -881,6 +882,10 @@ export default function QuickChat() {
       setDraftWorkspace(undefined)
       return
     }
+    window.gllm.cancelResponse(conversation.id)
+    if (workspaceApprovalPrompt?.conversationId === conversation.id) window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, false)
+    setWorkspaceApprovalPrompt(null)
+    setDraftWorkspace(undefined)
     const nextConversation = { ...conversation, workspace: undefined, updatedAt: Date.now() }
     setConversation(nextConversation)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
@@ -928,6 +933,7 @@ export default function QuickChat() {
 
     const now = Date.now()
     const workspace: ConversationWorkspace = {
+      ...(currentWorkspace?.rootPath === value.rootPath ? currentWorkspace : {}),
       rootPath: value.rootPath,
       displayName: value.rootPath.split(/[\\/]/).filter(Boolean).at(-1) || t('workspace.defaultName'),
       permission: 'read-write',
@@ -1269,7 +1275,7 @@ export default function QuickChat() {
         assistantDisplay.name,
         activeProjectId || undefined
       ),
-      draftWorkspace
+      currentConversation ? undefined : draftWorkspace
     )
     const nextConversation = applyConversationModelSelection(
       sourceConversation,
@@ -2048,7 +2054,7 @@ export default function QuickChat() {
           onSelect={(mode) => void confirmQuickWorkspace(mode)}
         />
       )}
-      {workspaceApprovalPrompt && (
+      {currentWorkspace && workspaceApprovalPrompt && workspaceApprovalPrompt.conversationId === conversation?.id && (
         <WorkspaceOperationApprovalDialog
           prompt={workspaceApprovalPrompt}
           onRespond={(approved) => {
@@ -2092,6 +2098,8 @@ export default function QuickChat() {
               setStatus(error instanceof Error ? error.message : t('workspace.openDirectoryFailed'))
             })}
             onApprovalModeChange={(mode) => void changeQuickWorkspaceApproval(mode)}
+            onAgentSettingsChange={(settings) => changeQuickWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings)}
+            running={isStreaming}
             onUnbind={() => void unbindQuickWorkspace()}
           />
         )}

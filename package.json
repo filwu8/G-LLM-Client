@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.18",
+  "version": "2.0.20",
   "description": "G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -17,7 +17,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm i18n:check && pnpm licenses:generate && tsc --noEmit && electron-vite build && pnpm bundle:verify",
-    "test": "node --test --experimental-strip-types src/shared/goalWebSearch.test.ts src/shared/modelCapabilities.test.ts src/main/activeResponse.test.ts src/main/agentRunLedger.test.ts src/main/chatStreamParser.test.ts src/main/conversationContext.test.ts src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/documentHtml.test.ts src/main/docxDocument.test.ts src/main/logRedaction.test.ts src/main/screenshotPlatform.test.ts src/main/updatePolicy.test.ts src/main/webSearchPolicy.test.ts src/main/webSearchParser.test.ts src/main/webResearch.test.ts src/main/workspaceArtifacts.test.ts src/main/workspaceArtifactVerification.test.ts src/main/workspaceContext.test.ts src/main/workspaceModelStream.test.ts src/main/workspaceRequestPolicy.test.ts src/main/workspaceScriptRunner.test.ts src/renderer/src/ModelPicker.test.ts src/renderer/src/chatErrors.test.ts src/renderer/src/chatPerformance.test.ts src/renderer/src/conversationEditing.test.ts src/renderer/src/conversationRuntime.test.ts src/renderer/src/markdownStrongBoundary.test.ts src/renderer/src/streamingMarkdown.test.ts src/shared/conversationHandoff.test.ts src/shared/providers.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts src/shared/webSearchMode.test.ts",
+    "test": "node --test --experimental-strip-types src/shared/goalWebSearch.test.ts src/shared/modelCapabilities.test.ts src/main/activeResponse.test.ts src/main/agentRunLedger.test.ts src/main/chatStreamParser.test.ts src/main/conversationContext.test.ts src/main/imageGenerationContext.test.ts src/main/imageSaveName.test.ts src/main/deepLink.test.ts src/main/deepLinkHandoff.test.ts src/main/documentHtml.test.ts src/main/docxDocument.test.ts src/main/logRedaction.test.ts src/main/screenshotPlatform.test.ts src/main/updatePolicy.test.ts src/main/webSearchPolicy.test.ts src/main/webSearchParser.test.ts src/main/webResearch.test.ts src/main/workspaceArtifacts.test.ts src/main/workspaceArtifactVerification.test.ts src/main/workspaceContext.test.ts src/main/workspaceModelStream.test.ts src/main/workspaceRequestPolicy.test.ts src/main/workspaceScriptRunner.test.ts src/main/workspaceAgentPolicy.test.ts src/main/workspaceNative.test.ts src/main/workspaceEnvFiles.test.ts src/renderer/src/ModelPicker.test.ts src/renderer/src/chatErrors.test.ts src/renderer/src/chatPerformance.test.ts src/renderer/src/conversationEditing.test.ts src/renderer/src/conversationRuntime.test.ts src/renderer/src/markdownStrongBoundary.test.ts src/renderer/src/streamingMarkdown.test.ts src/shared/conversationHandoff.test.ts src/shared/providers.test.ts src/shared/sidebarOrdering.test.ts src/shared/themeEntitlement.test.ts src/shared/webSearchMode.test.ts src/main/workspaceSandbox.test.ts src/main/workspaceVault.test.ts src/main/workspaceRepository.test.ts src/main/workspaceOutputStore.test.ts src/main/workspaceJobs.test.ts src/main/workspaceReplacements.test.ts src/main/workspaceTokenBudget.test.ts src/main/workspaceDiagnostics.test.ts",
     "test:assistant-platform": "node --test --experimental-strip-types src/shared/assistantCapabilities.test.ts src/shared/agentPlanning.test.ts src/shared/assistantDelegation.test.ts src/shared/skillLifecycle.test.ts src/shared/assistantTemplates.test.ts src/shared/skillMarkdown.test.ts",
     "test:analytics": "node --test --experimental-strip-types src/renderer/src/localUsageStats.test.ts",
     "test:goal-mode": "node --test --experimental-strip-types src/shared/goalMode.test.ts src/shared/goalContext.test.ts",
@@ -28,7 +28,9 @@
     "preview": "electron-vite preview",
     "package:win": "pnpm build && electron-builder --win --x64 --publish never",
     "package:mac": "pnpm build && electron-builder --mac --arm64 --x64 --publish never",
-    "package:linux": "pnpm build && electron-builder --linux --x64 --publish never"
+    "package:linux": "pnpm build && electron-builder --linux --x64 --publish never",
+    "test:sandbox": "node --test --experimental-strip-types src/main/workspaceNative.test.ts src/main/workspaceSandbox.test.ts src/main/workspaceVault.test.ts src/main/workspaceJobs.test.ts src/main/workspaceDiagnostics.test.ts",
+    "benchmark:context": "node --experimental-strip-types scripts/benchmark-workspace-context.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -37,6 +39,8 @@
     "electron-store": "^10.1.0",
     "electron-updater": "^6.8.9",
     "i18next": "^26.3.6",
+    "ignore": "7.0.8",
+    "js-tiktoken": "1.0.21",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "mammoth": "^1.12.0",
@@ -141,6 +145,14 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "legal/THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "resources/workspace-appcontainer.ps1",
+        "to": "resources/workspace-appcontainer.ps1"
+      },
+      {
+        "from": "resources/workspace-appcontainer.cs",
+        "to": "resources/workspace-appcontainer.cs"
       }
     ],
     "files": [

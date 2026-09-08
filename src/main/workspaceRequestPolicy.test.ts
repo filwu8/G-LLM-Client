@@ -9,6 +9,7 @@ import test from 'node:test'
 
 import {
   getReasoningLengthRecoveryPrompt,
+  getWorkspaceFileFailureMessage,
   getWorkspaceMaxTokenOption,
   isImageGenerationRequest,
   isReasoningOnlyLengthOutcome,
@@ -19,6 +20,21 @@ test('recognizes Chinese development and packaging requests as workspace actions
   assert.equal(isWorkspaceActionRequest('我需要你直接帮我开发，然后做成可执行的程序'), true)
   assert.equal(isWorkspaceActionRequest('构建并打包这个项目'), true)
   assert.equal(isWorkspaceActionRequest('解释一下这个目录的用途'), false)
+})
+
+test('distinguishes the reported ERP onboarding question from the actual template creation request', () => {
+  assert.equal(isWorkspaceActionRequest('我想让你帮我操作ERP，我需要做一些什么'), false)
+  assert.equal(isWorkspaceActionRequest('你帮我创建一个 .env，然后我会自己填写进去'), true)
+})
+
+test('an incomplete file operation reports the tool error rather than blaming the model', () => {
+  const message = getWorkspaceFileFailureMessage('File operation incomplete.', [
+    { tool: 'read_file', status: 'completed', detail: 'Template read' },
+    { tool: 'write_file', status: 'failed', detail: '.env already exists; it was not overwritten' }
+  ])
+  assert.match(message, /write_file: .env already exists/)
+  assert.doesNotMatch(message, /Switch models/)
+  assert.equal(getWorkspaceFileFailureMessage('File operation incomplete.', []), 'File operation incomplete.')
 })
 
 test('recognizes image generation requests without confusing other generated artifacts', () => {

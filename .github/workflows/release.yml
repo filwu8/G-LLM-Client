@@ -114,7 +114,7 @@ jobs:
             package_script: package:mac
           - id: linux
             name: Linux x64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             package_script: package:linux
 
     steps:
@@ -136,6 +136,19 @@ jobs:
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install Linux sandbox dependency
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
+      - name: Grant CI Python runtime read access to AppContainers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Disposable runner only; the application never changes runtime installation ACLs.
+          $runtime = Split-Path (Get-Command python.exe).Source
+          icacls $runtime /grant '*S-1-15-2-1:(OI)(CI)RX' /T /Q
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to grant CI Python runtime access' }
 
       - name: Test approved source
         run: pnpm test

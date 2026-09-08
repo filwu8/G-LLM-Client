@@ -11,6 +11,7 @@ import {
   acknowledgeConversationRun,
   applyConversationModelSelection,
   attachDraftWorkspace,
+  conversationWorkspace,
   collapsePristineConversationDrafts,
   finishConversationRun,
   isPristineConversationDraft,
@@ -260,4 +261,13 @@ test('does not create a streaming draft for an idle conversation update', () => 
   const drafts = {}
 
   assert.equal(syncConversationUpdateIntoStreamingDrafts(drafts, conversation), drafts)
+})
+
+test('folder approval belongs to its conversation and never falls back to an unrelated draft', () => {
+  const draft = { rootPath: '/draft', displayName: 'draft', permission: 'read-write' as const, grantedAt: 1, lastVerifiedAt: 1 }
+  const bound = { ...draft, rootPath: '/bound' }
+  assert.equal(conversationWorkspace(undefined, draft), draft)
+  assert.equal(conversationWorkspace({ workspace: undefined }, draft), undefined)
+  assert.equal(conversationWorkspace({ workspace: bound }, draft), bound)
+  assert.equal(conversationWorkspace({ workspace: undefined }), undefined)
 })

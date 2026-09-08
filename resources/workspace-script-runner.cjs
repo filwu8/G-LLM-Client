@@ -6,7 +6,7 @@
 
 'use strict'
 
-const { copyFile, mkdir, readFile, readdir, realpath, rename, stat, writeFile } = require('node:fs/promises')
+const { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } = require('node:fs/promises')
 const { extname, isAbsolute, relative, resolve } = require('node:path')
 const vm = require('node:vm')
 
@@ -42,15 +42,31 @@ function assertGenericBinaryTarget(path) {
   }
 }
 
+function assertAllowed(root, path) {
+  const parts = relative(root, resolve(root, String(path))).split(/[\\/]/)
+  if (parts.some((part) => /^(?:\.env(?:\..*)?|\.ssh|\.aws|\.gnupg|\.git|id_rsa|id_ed25519)$/i.test(part) && !/^\.env\.(?:example|sample|template)$/i.test(part))) {
+    throw new Error('Protected credentials or repository metadata cannot be accessed by workspace scripts')
+  }
+}
+
 async function existingPath(root, input = '.') {
+  assertAllowed(root, input || '.')
   const target = await realpath(resolve(root, String(input || '.')))
+  assertAllowed(root, target)
   if (!isInside(target, root)) throw new Error(`路径超出工作区：${input}`)
   return target
 }
 
 async function writablePath(root, input) {
   const target = resolve(root, String(input || ''))
+  assertAllowed(root, target)
   const parent = await realpath(resolve(target, '..'))
+  assertAllowed(root, parent)
+  try {
+    if ((await lstat(target)).isSymbolicLink()) throw new Error('Cannot write to a symbolic link')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   if (!isInside(target, root) || !isInside(parent, root)) throw new Error(`路径超出工作区：${input}`)
   return target
 }
@@ -63,6 +79,7 @@ async function walk(root, start, recursive, limit = 2000) {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       if (entry.name === '.gllm') continue
       const full = resolve(current, entry.name)
+      try { assertAllowed(root, full) } catch { continue }
       result.push({
         path: relative(root, full),
         type: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other'
@@ -120,6 +137,22 @@ async function main() {
     },
     mkdir: async (path) => {
       const target = resolve(root, String(path || ''))
+      assertAllowed(root, target)
+      // Validate each existing ancestor before recursive mkdir follows it.
+      let ancestor = target
+      while (true) {
+        try {
+          const canonical = await realpath(ancestor)
+          if (!isInside(canonical, root)) throw new Error('Directory escapes workspace')
+          assertAllowed(root, canonical)
+          break
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error
+          const parent = resolve(ancestor, '..')
+          if (parent === ancestor) throw error
+          ancestor = parent
+        }
+      }
       if (!isInside(target, root)) throw new Error(`路径超出工作区：${path}`)
       await mkdir(target, { recursive: true })
       return relative(root, target)

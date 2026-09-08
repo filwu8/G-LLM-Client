@@ -47,7 +47,7 @@ import { supportsReasoningEffort } from '../shared/featureFlags'
 import { isProviderApiKeyMissing } from '../shared/providers'
 import { saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
-import { isImageGenerationRequest } from './workspaceRequestPolicy'
+import { buildImageGenerationConversationPrompt, isImageGenerationConversation } from './imageGenerationContext'
 import {
   buildResilientSearchPlan,
   extractSearchDomains,
@@ -455,7 +455,7 @@ function getImageGenerationPrompt(request: ChatRequest): string {
   if (!lastUserMessage) return '生成一张简洁、清晰、高质量的图片。'
 
   const prompt = [
-    lastUserMessage.content,
+    buildImageGenerationConversationPrompt(request.messages),
     getKnowledgeContext(lastUserMessage),
     getImageGenerationAttachmentContext(lastUserMessage.attachments)
   ]
@@ -2062,11 +2062,9 @@ export async function* streamGllmChat(
     return
   }
 
-  const latestUserRequest = getLastUserQuery(request.messages)
   if (
     request.purpose !== 'translation' &&
-    latestUserRequest &&
-    isImageGenerationRequest(latestUserRequest) &&
+    isImageGenerationConversation(request.messages) &&
     canGenerateImages(request.provider)
   ) {
     yield { content: await generateImageMessage(request, signal) }

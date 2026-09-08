@@ -97,7 +97,7 @@ export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initia
         </div>
 
         <div className="goal-limit-grid">
-          <label><span>{t('goalMode.approvalMode')}</span><select value={approvalMode} onChange={(event) => setApprovalMode(event.target.value as typeof approvalMode)}><option value="ask">{t('workspace.approvalAsk')}</option><option value="auto">{t('workspace.approvalAuto')}</option><option value="full">{t('workspace.approvalFull')}</option></select></label>
+          {rootPath && <label><span>{t('goalMode.approvalMode')}</span><select value={approvalMode} onChange={(event) => setApprovalMode(event.target.value as typeof approvalMode)}><option value="ask">{t('workspace.approvalAsk')}</option><option value="auto">{t('workspace.approvalAuto')}</option><option value="full">{t('workspace.approvalFull')}</option></select></label>}
           <label><span>{t('goalMode.maxSteps')}</span><select value={maxSteps} onChange={(event) => setMaxSteps(Number(event.target.value))}><option value={5}>5</option><option value={8}>8</option><option value={12}>12</option><option value={14}>14</option></select></label>
           <label><span>{t('goalMode.maxDuration')}</span><select value={maxDurationMinutes} onChange={(event) => setMaxDurationMinutes(Number(event.target.value))}><option value={15}>15 {t('goalMode.minutes')}</option><option value={30}>30 {t('goalMode.minutes')}</option><option value={60}>60 {t('goalMode.minutes')}</option><option value={120}>120 {t('goalMode.minutes')}</option></select></label>
         </div>

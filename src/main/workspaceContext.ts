@@ -110,7 +110,7 @@ export function normalizeOpenAiSystemMessages<T extends WorkspaceContextMessage>
  * results and already-executed payloads become verifiable previews; the full
  * in-memory transcript remains untouched and files can be read again.
  */
-export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMessage>(messages: T[]): PreparedWorkspaceContext<T> {
+export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMessage>(messages: T[], resultReference?: (callId: string) => string | undefined): PreparedWorkspaceContext<T> {
   const originalCharacters = characterLength(messages)
   const normalizedMessages = normalizeOpenAiSystemMessages(messages)
   const lastToolResultIndex = normalizedMessages.findLastIndex((message) => message.role === 'tool')
@@ -124,6 +124,7 @@ export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMes
     }
   }
 
+  const completedCalls = new Set(normalizedMessages.filter(message => message.role === 'tool').map(message => message.tool_call_id))
   let compactedItems = 0
   const prepared = normalizedMessages.map((message, index) => {
     let content = message.content
@@ -133,11 +134,12 @@ export function prepareWorkspaceMessagesForRequest<T extends WorkspaceContextMes
       typeof content === 'string' &&
       content.length > oldToolResultCharacterThreshold
     ) {
-      content = `${compactStoredValue(content, '旧工具结果')}\n如需逐字内容，请再次调用对应读取工具。`
+      content = `${compactStoredValue(content, '旧工具结果')}\n${resultReference?.(message.tool_call_id ?? '') ?? '原结果未保留；只可重新执行只读查询。不要为恢复输出而重复有副作用的操作。'}`
       compactedItems += 1
     }
 
     const toolCalls = message.tool_calls?.map((call) => {
+      if (!completedCalls.has(call.id)) return call
       const compacted = compactToolArguments(call.function.arguments)
       compactedItems += compacted.compactedItems
       return compacted.value === call.function.arguments
