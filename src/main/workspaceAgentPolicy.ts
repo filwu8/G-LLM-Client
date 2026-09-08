@@ -59,7 +59,7 @@ export function selectWorkspaceEnvironment(values: Record<string, string>, names
   const selected: Record<string, string> = Object.create(null)
   for (const name of normalizeEnvNames(names)) {
     // Loader/startup controls are not business credentials.
-    if (/^(?:PATH|HOME|SHELL|ENV|BASH_ENV|IFS|CDPATH|NODE_OPTIONS|NODE_PATH|ELECTRON_.*|PYTHON.*|LD_.*|DYLD_.*|COMSPEC|SYSTEMROOT|TEMP|TMP|TMPDIR)$/i.test(name)) {
+    if (/^(?:PATH|HOME|SHELL|ENV|BASH_ENV|IFS|CDPATH|NODE_OPTIONS|NODE_PATH|ELECTRON_.*|PYTHON.*|LD_.*|DYLD_.*|COMSPEC|SYSTEMROOT|SYSTEMDRIVE|LOCALAPPDATA|TEMP|TMP|TMPDIR)$/i.test(name)) {
       throw new Error(`Environment variable ${name} controls the runtime and cannot be injected`)
     }
     if (!Object.hasOwn(values, name)) throw new Error(`Environment variable ${name} is missing; configure it in Agent settings or .env`)
