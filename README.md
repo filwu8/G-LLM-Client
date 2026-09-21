@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.21](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.20](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.20)，发布于 2026-09-08。
+最近稳定发布：[V2.0.21](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.21)，发布于 2026-09-21。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.21 工作区 Agent 流式续接与交付可靠性
+
+- 工作区 Agent 正确处理 Chat Completions 流式工具调用：分块累积工具参数，完整后再执行，并通过原调用 ID 续接模型请求，保留工具定义与会话上下文。
+- 区分连接/响应头等待、首个流数据、流空闲和整轮超时；SSE 心跳只刷新传输活跃状态，不会被展示为模型内容，也不会因暂时没有文本而误判卡死。
+- 工具执行失败会作为工具结果交回模型尝试恢复；请求中断不会盲目重放，避免重复执行有副作用的操作；未满足交付条件的目标不会记为成功。
+- Windows 工作区改进 Python/AppContainer 可用性探测、PowerShell helper 启动和 UTF-8 错误输出；不能读取的材料会明确报告，不伪装成已检查。
+- 工作区文件阅读新增标准 `.xlsx` 表格支持；扫描版 PDF 仍需 OCR 能力，客户端会明确区分无法读取的内容。
+- 同步修复快速窗口导航时序和模型列表窄布局问题。
 
 ## V2.0.20 本地 Agent、沙箱与上下文优化
 

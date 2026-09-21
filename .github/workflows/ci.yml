@@ -45,6 +45,12 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Run Workspace Agent stream and continuation tests
+        run: pnpm test:workspace-agent-stream
+
+      - name: Run Workspace Agent completion and document-reader guardrails
+        run: pnpm test:workspace-agent-guardrails
+
       - name: Run assistant platform tests
         run: pnpm test:assistant-platform
 

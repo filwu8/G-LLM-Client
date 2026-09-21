@@ -57,8 +57,21 @@ function getSseData(eventBlock: string): string[] {
   if (dataLines.length > 0) return [dataLines.join('\n')]
 
   const trimmed = eventBlock.trim()
+  // SSE comments (often used as keep-alive heartbeats, e.g. `: PING`) are
+  // transport activity, not model payloads. In particular, never surface a
+  // comment as content through the raw-record compatibility path below.
+  if (!trimmed || trimmed.startsWith(':')) return []
   return trimmed ? [trimmed] : []
 }
+
+const CHAT_COMPLETIONS_FINISH_REASONS = new Set([
+  'stop',
+  'length',
+  'tool_calls',
+  'content_filter',
+  // Kept for compatibility with older Chat Completions providers.
+  'function_call'
+])
 
 function isCompleteDataRecord(data: string): boolean {
   const trimmed = data.trim()
@@ -91,9 +104,14 @@ export class WorkspaceModelStreamParser {
   private finishReason: string | null = null
   private buffer = ''
   private isFinished = false
+  private toolCallsComplete = false
 
   get finished(): boolean {
     return this.isFinished
+  }
+
+  get hasValidFinishReason(): boolean {
+    return this.finishReason !== null && CHAT_COMPLETIONS_FINISH_REASONS.has(this.finishReason)
   }
 
   push(text: string, final = false): void {
@@ -110,10 +128,17 @@ export class WorkspaceModelStreamParser {
   }
 
   result(): WorkspaceModelMessage | undefined {
-    const calls = Array.from(this.toolCalls.entries())
-      .sort(([left], [right]) => left - right)
-      .map(([, call]) => call)
-      .filter((call) => call.function.name)
+    // Partial streamed calls are not executable. Only expose a call once the
+    // Chat Completions protocol has explicitly ended the tool-call turn.
+    const calls = this.toolCallsComplete
+      ? Array.from(this.toolCalls.entries())
+          .sort(([left], [right]) => left - right)
+          .map(([, call]) => call)
+          // A protocol-finished call with malformed JSON still needs a
+          // correlated tool error result. JSON is parsed only by the agent
+          // after the stream completion marker, never while fragments arrive.
+          .filter(hasToolCallIdentity)
+      : []
 
     if (!this.content && calls.length === 0 && this.reasoningCharacters === 0) return undefined
     return {
@@ -167,6 +192,7 @@ export class WorkspaceModelStreamParser {
     const trimmed = data.trim()
     if (!trimmed) return
     if (trimmed === '[DONE]') {
+      this.toolCallsComplete = true
       this.isFinished = true
       return
     }
@@ -183,16 +209,23 @@ export class WorkspaceModelStreamParser {
       const message = choice.delta ?? choice.message
       this.content += extractTextContent(message?.content)
       this.reasoningCharacters += extractTextContent(message?.reasoning_content).length
-      if (typeof choice.finish_reason === 'string') this.finishReason = choice.finish_reason
+      let responseFinished = false
+      if (typeof choice.finish_reason === 'string') {
+        this.finishReason = choice.finish_reason
+        responseFinished = CHAT_COMPLETIONS_FINISH_REASONS.has(choice.finish_reason)
+        if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'function_call') this.toolCallsComplete = true
+      }
 
       for (const part of message?.tool_calls ?? []) {
-        const index = Number.isInteger(part.index) ? Number(part.index) : this.resolveToolCallIndex(part.id)
+        const index = Number.isInteger(part.index) && Number(part.index) >= 0
+          ? Number(part.index)
+          : this.resolveToolCallIndex(part.id)
         const existing = this.toolCalls.get(index) ?? {
-          id: part.id ?? `stream_tool_${index}`,
+          id: part.id ?? '',
           type: 'function' as const,
           function: { name: '', arguments: '' }
         }
-        if (part.id) existing.id = part.id
+        if (part.id) existing.id = appendStreamFragment(existing.id, part.id)
         if (part.function?.name) {
           existing.function.name = appendStreamFragment(existing.function.name, part.function.name)
         }
@@ -200,6 +233,10 @@ export class WorkspaceModelStreamParser {
           existing.function.arguments = appendStreamFragment(existing.function.arguments, part.function.arguments)
         }
         this.toolCalls.set(index, existing)
+      }
+      if (responseFinished) {
+        this.isFinished = true
+        return
       }
     }
   }
@@ -209,11 +246,21 @@ export class WorkspaceModelStreamParser {
       for (const [index, call] of this.toolCalls) {
         if (call.id === id) return index
       }
-      return this.toolCalls.size
+      return this.nextToolCallIndex()
     }
     if (this.toolCalls.size === 1) return this.toolCalls.keys().next().value ?? 0
-    return this.toolCalls.size
+    return this.nextToolCallIndex()
   }
+
+  private nextToolCallIndex(): number {
+    let index = 0
+    while (this.toolCalls.has(index)) index += 1
+    return index
+  }
+}
+
+function hasToolCallIdentity(call: WorkspaceToolCall): boolean {
+  return Boolean(call.id.trim() && call.function.name.trim())
 }
 
 /** Read until the protocol is complete rather than waiting for the provider to
@@ -232,6 +279,9 @@ export async function readWorkspaceModelEventStream(
     const { done, value } = await readChunk(reader)
     if (done) {
       parser.push(decoder.decode(), true)
+      if (!parser.finished && !parser.hasValidFinishReason) {
+        throw new Error('模型流式响应未完整结束：连接在收到 Chat Completions 完成标记前关闭')
+      }
       break
     }
     parser.push(decoder.decode(value, { stream: true }))

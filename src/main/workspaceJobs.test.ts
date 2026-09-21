@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { WorkspaceJobs, type JobResult } from './workspaceJobs.ts'
 import { runWorkspaceProcess } from './workspaceProcess.ts'
-import { prepareNativeCommand, runNativeCommand } from './workspaceNative.ts'
+import { prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
 
 function controlled(jobs: WorkspaceJobs) {
   let output!: (stream: 'stdout' | 'stderr', chunk: Buffer) => void
@@ -77,7 +77,8 @@ test('stop and disposal cancel real processes; truncated output does not kill a 
     await jobs.dispose(); assert.equal(jobs.busy, false)
   } finally { await jobs.dispose(); await rm(root, { recursive: true, force: true }) }
 })
-test('background Python retains OS sandbox and writes back only a completed successful job', async () => {
+test('background Python retains OS sandbox and writes back only a completed successful job', async (t) => {
+  if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-job-sandbox-')), jobs = new WorkspaceJobs()
   try {
     const command = await prepareNativeCommand(root, 'run_python', { code: 'import time\nprint("phase1", flush=True)\ntime.sleep(0.15)\nopen("result.txt","w").write("sandbox")\nprint("phase2", flush=True)' }, [])

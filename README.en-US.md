@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.20](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.21](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.20](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.20), released on 2026-09-08.
+Latest stable release: [V2.0.21](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.21), released on 2026-09-21.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.21 More Reliable Workspace Agent Runs
+
+- Workspace Agent now assembles streamed Chat Completions tool calls by index, waits for complete arguments before execution, and continues with the original call IDs, tool definitions, and conversation context.
+- Connection/header wait, first stream byte, stream-idle, and whole-run timeouts are distinguished. SSE heartbeats refresh transport activity without appearing as model text, so an active but quiet stream is not mistaken for a hang.
+- Local tool failures are returned to the model for recovery. Interrupted generation requests are not blindly replayed, side-effecting tools are deduplicated, and goals that do not meet delivery checks are not marked successful.
+- Windows workspace execution improves Python/AppContainer probing, helper startup, and UTF-8 error reporting. Unreadable source material is reported explicitly instead of being treated as inspected.
+- Workspace document reading now supports standard `.xlsx` spreadsheets. Scanned PDFs still require OCR, and unreadable content is reported as such.
+- Also fixes Quick Chat navigation timing and the model list's constrained layout.
 
 ## V2.0.20 Local Agents, Sandboxing, and Context Efficiency
 

@@ -5,13 +5,19 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { diagnoseWorkspaceExecution } from './workspaceDiagnostics.ts'
-test('execution checks exercise Python, shell Python, isolation and writeback without changing business files', async () => {
+import { probeNativePython } from './workspaceNative.ts'
+test('execution checks distinguish Python availability from Shell and do not change business files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gllm-doctor-test-'))
   try {
     await writeFile(join(root, 'business.txt'), 'leave untouched')
     await writeFile(join(root, '.env'), 'TOKEN=diagnostic-must-not-use-this')
     const report = await diagnoseWorkspaceExecution(root, { executionMode: 'sandbox', sandboxNetwork: false })
-    for (const id of ['folder', 'python', 'shell', 'writeback', 'isolation']) assert.equal(report.checks.find(check => check.id === id)?.status, 'passed', JSON.stringify(report))
+    const pythonAvailable = await probeNativePython({ executionMode: 'sandbox', sandboxNetwork: false })
+    assert.equal(report.checks.find(check => check.id === 'folder')?.status, 'passed', JSON.stringify(report))
+    assert.equal(report.checks.find(check => check.id === 'python')?.status, pythonAvailable ? 'passed' : 'failed', JSON.stringify(report))
+    assert.equal(report.checks.find(check => check.id === 'shell')?.status, 'passed', JSON.stringify(report))
+    assert.equal(report.checks.find(check => check.id === 'writeback')?.status, pythonAvailable ? 'passed' : 'skipped', JSON.stringify(report))
+    assert.equal(report.checks.find(check => check.id === 'isolation')?.status, pythonAvailable ? 'passed' : 'skipped', JSON.stringify(report))
     for (const id of ['dns', 'network']) assert.equal(report.checks.find(check => check.id === id)?.status, 'skipped')
     assert.deepEqual((await readdir(root)).sort(), ['.env', 'business.txt'])
     assert.equal(await readFile(join(root, 'business.txt'), 'utf8'), 'leave untouched')

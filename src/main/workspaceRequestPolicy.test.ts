@@ -12,6 +12,7 @@ import {
   getWorkspaceFileFailureMessage,
   getWorkspaceMaxTokenOption,
   isImageGenerationRequest,
+  isWorkspaceArtifactRequest,
   isReasoningOnlyLengthOutcome,
   isWorkspaceActionRequest
 } from './workspaceRequestPolicy.ts'
@@ -25,6 +26,14 @@ test('recognizes Chinese development and packaging requests as workspace actions
 test('distinguishes the reported ERP onboarding question from the actual template creation request', () => {
   assert.equal(isWorkspaceActionRequest('我想让你帮我操作ERP，我需要做一些什么'), false)
   assert.equal(isWorkspaceActionRequest('你帮我创建一个 .env，然后我会自己填写进去'), true)
+})
+
+test('recognizes an explicit application-material deliverable request without matching discussion about one', () => {
+  assert.equal(isWorkspaceArtifactRequest('本文件夹是我需要做申报的，帮我根据里面的资料形成一份申报材料'), true)
+  assert.equal(isWorkspaceArtifactRequest('请你根据现有信息起草一份项目报告'), true)
+  assert.equal(isWorkspaceArtifactRequest('请帮我写一份 README.md'), true)
+  assert.equal(isWorkspaceArtifactRequest('我想了解申报材料应该怎么起草'), false)
+  assert.equal(isWorkspaceArtifactRequest('你之前生成的报告为什么有乱码？'), false)
 })
 
 test('an incomplete file operation reports the tool error rather than blaming the model', () => {

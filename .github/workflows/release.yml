@@ -153,6 +153,12 @@ jobs:
       - name: Test approved source
         run: pnpm test
 
+      - name: Test Workspace Agent stream and continuation
+        run: pnpm test:workspace-agent-stream
+
+      - name: Test Workspace Agent completion and document-reader guardrails
+        run: pnpm test:workspace-agent-guardrails
+
       - name: Test assistant platform
         run: pnpm test:assistant-platform
 

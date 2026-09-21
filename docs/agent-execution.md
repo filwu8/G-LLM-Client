@@ -12,7 +12,7 @@
 
 未绑定工作区的普通会话不显示工作区审批和 Agent 执行设置，也不会继承其他草稿的目录授权。解绑会取消当前执行与待处理审批。目标设置在选定目录后才展示授权档位。
 
-Agent 设置在启用 Python/Shell 时自动检查当前所选执行配置，也可点击“重新检查”。检查所选目录的读写权限，并在独立临时目录实际启动 Python、从 Shell 启动 Python、写入和回写测试文件、验证沙箱外测试文件不可读写。允许联网时以 `example.com` 检查 DNS 和 TCP；禁网模式不做联网探测，主机模式不宣称隔离通过。探测不读取业务文件或密钥，不调用 ERP 或其他业务 API。目录权限检查不等于整个工作区已通过 128 MiB 快照限额，也不验证第三方 Python 包或业务身份。
+Agent 设置在启用 Python/Shell 时自动检查当前所选执行配置，也可点击“重新检查”。检查所选目录的读写权限、Python 在所选执行模式中的启动能力、Shell 本身是否可执行，并在独立临时目录检查适用的写入回写和隔离边界。Python 不可启动时，Python 相关隔离/回写检查会标为跳过，Shell 状态仍单独检查。允许联网时以 `example.com` 检查 DNS 和 TCP；禁网模式不做联网探测，主机模式不宣称隔离通过。探测不读取业务文件或密钥，不调用 ERP 或其他业务 API。目录权限检查不等于整个工作区已通过 128 MiB 快照限额，也不验证第三方 Python 包或业务身份。工作区任务会在所选模式中实测 Python 启动能力；不可用时不向模型提供 Python 工具，并要求它用 JavaScript 或专用工具继续完成同一目标，不会自动回退到主机执行。
 
 Python 工具和 Shell 的 PATH 优先使用同一套已发现的 Python 安装，避免 macOS Shell 命中 `/usr/bin/python3` 的 Xcode 启动器而直接 Python 工具使用 Homebrew 的不一致。macOS 开启联网时只额外放行 DNS 所需的目录服务查询及 `/private/var/run/mDNSResponder` 套接字，不放开任意 Unix socket；禁网配置不包含这些授权。此次故障已由本机沙箱拒绝日志和修复前后执行结果复现。相关平台参考：[Gemini CLI 的 macOS DNS 服务说明](https://github.com/google-gemini/gemini-cli/blob/main/packages/cli/src/utils/sandbox-macos-permissive-open.sb)；本实现未采用其中的宽泛网络授权。
 
@@ -40,6 +40,8 @@ Python 工具和 Shell 的 PATH 优先使用同一套已发现的 Python 安装�
 | Windows | AppContainer + Job Object | Windows 10/11；Shell 使用系统 CMD 批处理语法，受信启动器使用 Windows PowerShell/.NET Framework。受信 C# 启动器创建临时 AppContainer，检查进程 token 后才恢复执行；只对临时副本授予目录 ACL。Job 限制 64 个进程、1 GiB 总内存并在关闭时终止子进程。Python 安装须可被 AppContainer 读取，客户端不会修改其安装目录 ACL。 |
 
 缺少后端、系统策略不允许或启动失败时明确报错，**不退回宿主执行**。设置中的“后端已找到”是依赖检查，不表示通过了当前系统的执行验证。
+
+每次工作区任务会按用户选定的执行模式实际探测一次 Python 启动能力，并在当前客户端进程内缓存结果。探测失败时本轮不向模型提供 Python 工具，仍可使用 Shell、受限 JavaScript 和专用文件工具；不会自动改为本机执行。安装/修复 Python 或调整运行时可读权限后需重启客户端重新探测。用户也可以主动切换到本机执行，但该模式没有 OS 沙箱。
 
 网络是明确的二选一权限：默认关闭；开启后允许互联网及局域网访问，**不是域名白名单**。Windows 不创建回环豁免，不修改机器防火墙。无法靠这个开关限制某个 ERP 账号可修改哪些业务对象。系统自身可读取的公共运行库/Windows AppContainer 公共资源仍然可见。
 
@@ -83,4 +85,4 @@ The model declares variable names/purposes; users enter values locally and choos
 
 Validation: `pnpm test:sandbox`, `pnpm test`, `pnpm build`. macOS has been exercised locally; Linux and Windows have CI jobs and still need native execution results before being considered release-ready.
 
-Windows 的 Shell 使用 CMD（`/d` 禁用 AutoRun），多行代码在临时批处理文件中执行。旧版 Windows PowerShell 在 AppContainer 中存在磁盘驱动器发现缺陷，不能作为可靠的默认沙箱 Shell；参见 [PowerShell #27253](https://github.com/PowerShell/PowerShell/issues/27253)。这不会授予磁盘根目录访问权限或改动系统 ACL。
+Windows 的 Shell 使用 CMD（`/d` 禁用 AutoRun），多行代码在临时批处理文件中执行。受信启动器通过 UTF-8 标准流和进程级 `-ExecutionPolicy Bypass` 调用随包 helper；它不会修改用户或机器策略，组织强制策略仍可能拒绝启动。旧版 Windows PowerShell 在 AppContainer 中存在磁盘驱动器发现缺陷，不能作为可靠的默认沙箱 Shell；参见 [PowerShell #27253](https://github.com/PowerShell/PowerShell/issues/27253)。这不会授予磁盘根目录访问权限或改动系统 ACL。

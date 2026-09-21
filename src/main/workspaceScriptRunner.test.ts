@@ -43,11 +43,16 @@ test('isolated scripts keep ordinary text output available', async () => {
   }
 })
 
-test('workspace API denies credentials even through a differently named symlink', async () => {
+test('workspace API denies credentials even through a differently named symlink', async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-runner-secrets-'))
   try {
     await writeFile(resolve(root, '.env'), 'TOKEN=private-fixture-token')
-    await symlink(resolve(root, '.env'), resolve(root, 'innocent.txt'))
+    try { await symlink(resolve(root, '.env'), resolve(root, 'innocent.txt')) }
+    catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error
+      t.skip('Windows symlink creation requires Developer Mode or elevated privileges')
+      return
+    }
     for (const file of ['.env', 'innocent.txt']) {
       await writeFile(resolve(root, 'task.js'), `return await workspace.readText(${JSON.stringify(file)})`)
       const result = spawnSync(process.execPath, [runner, root, resolve(root, 'task.js')], { encoding: 'utf8' })
@@ -58,13 +63,19 @@ test('workspace API denies credentials even through a differently named symlink'
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('workspace API rejects writes and recursive mkdir through escaping symlinks', async () => {
+test('workspace API rejects writes and recursive mkdir through escaping symlinks', async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-runner-links-'))
   const outside = await mkdtemp(resolve(tmpdir(), 'gllm-runner-outside-'))
   try {
     await writeFile(resolve(outside, 'keep.txt'), 'keep')
-    await symlink(resolve(outside, 'keep.txt'), resolve(root, 'link.txt'))
-    await symlink(outside, resolve(root, 'directory'))
+    try {
+      await symlink(resolve(outside, 'keep.txt'), resolve(root, 'link.txt'))
+      await symlink(outside, resolve(root, 'directory'))
+    } catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error
+      t.skip('Windows symlink creation requires Developer Mode or elevated privileges')
+      return
+    }
     for (const code of ["await workspace.writeText('link.txt','bad')", "await workspace.mkdir('directory/new/nested')"]) {
       await writeFile(resolve(root, 'task.js'), code)
       const result = spawnSync(process.execPath, [runner, root, resolve(root, 'task.js')], { encoding: 'utf8' })

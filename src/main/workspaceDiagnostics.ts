@@ -3,7 +3,7 @@ import { access, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 
 import { constants } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { prepareNativeCommand, runNativeCommand } from './workspaceNative.ts'
+import { prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
 import type { WorkspaceDiagnosticResult, WorkspaceDiagnosticOptions } from '../shared/types.ts'
 
 /** Fixed probes only, no model code, user files, credentials or business endpoints. */
@@ -22,7 +22,16 @@ export async function diagnoseWorkspaceExecution(root: string, options: Workspac
   try {
     await mkdir(work); await writeFile(outside, 'outside-probe')
     const settings = { executionMode: mode, sandboxNetwork: network } as const
-    try {
+    const pythonAvailable = await probeNativePython(settings)
+    if (!pythonAvailable) {
+      add('python', 'failed', mode === 'sandbox'
+        ? 'Python 3 could not start in the selected OS sandbox. On Windows, its runtime directory may not be readable by AppContainer. The client does not change runtime ACLs or fall back to host execution.'
+        : 'Python 3 was not found or could not start in the selected host environment.')
+      add('writeback', 'skipped', 'Python runtime is unavailable in this execution mode')
+      add('isolation', 'skipped', 'Python runtime is unavailable in this execution mode')
+      add('dns', 'skipped', 'Python runtime is unavailable in this execution mode')
+      add('network', 'skipped', 'Python runtime is unavailable in this execution mode')
+    } else try {
       const code = `import sys,json,socket\nr={"python":sys.version.split()[0],"executable":sys.executable}\nopen("health.txt","w").write("ok")\ntry:\n open(${JSON.stringify(outside)}).read()\n r["outsideBlocked"]=False\nexcept (PermissionError, FileNotFoundError):\n r["outsideBlocked"]=True\ntry:\n open(${JSON.stringify(outside)},"w").write("unexpected-write")\n r["outsideWriteBlocked"]=False\nexcept (PermissionError, FileNotFoundError):\n r["outsideWriteBlocked"]=True\nif ${mode === 'host' || network ? 'True' : 'False'}:\n try:\n  socket.getaddrinfo("example.com",443)\n  r["dns"]=True\n except Exception as e:\n  r["dns"]=str(e)\n if r["dns"] is True:\n  try:\n   socket.create_connection(("example.com",443),timeout=5).close()\n   r["network"]=True\n  except Exception as e:\n   r["network"]=str(e)\nprint("GLLM_CHECK:"+json.dumps(r))`
       const result = await runNativeCommand(await prepareNativeCommand(work, 'run_python', { code }, [], settings), {}, undefined, { timeoutMs: 15000 })
       if (result.exitCode !== 0) throw new Error(result.output)
@@ -34,8 +43,8 @@ export async function diagnoseWorkspaceExecution(root: string, options: Workspac
       add('network', mode === 'sandbox' && !network ? 'skipped' : report.network === true ? 'passed' : 'failed', typeof report.network === 'string' ? report.network : '')
     } catch (error) { add('python', 'failed', String(error)) }
     try {
-      const result = await runNativeCommand(await prepareNativeCommand(work, 'run_shell', { code: process.platform === 'win32' ? 'python --version' : 'python3 --version' }, [], settings), {}, undefined, { timeoutMs: 15000 })
-      add('shell', result.exitCode === 0 && /Python 3\./.test(result.output) ? 'passed' : 'failed', result.output)
+      const result = await runNativeCommand(await prepareNativeCommand(work, 'run_shell', { code: process.platform === 'win32' ? 'echo GLLM_SHELL_OK' : 'printf GLLM_SHELL_OK' }, [], settings), {}, undefined, { timeoutMs: 15000 })
+      add('shell', result.exitCode === 0 && result.output.includes('GLLM_SHELL_OK') ? 'passed' : 'failed', result.output)
     } catch (error) { add('shell', 'failed', String(error)) }
   } finally { await rm(directory, { recursive: true, force: true }) }
   return { checkedAt: Date.now(), checks }

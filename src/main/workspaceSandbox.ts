@@ -33,6 +33,32 @@ export async function sandboxStatus(): Promise<SandboxStatus> {
   }
 }
 const q = (path: string) => JSON.stringify(path)
+const powershellLiteral = (value: string) => `'${value.replace(/'/g, "''")}'`
+export function windowsAppContainerPowerShellArgs(helper: string, config: string): string[] {
+  const bootstrap = [
+    '$ProgressPreference = "SilentlyContinue"',
+    '$ErrorActionPreference = "Stop"',
+    '$utf8 = [System.Text.UTF8Encoding]::new($false)',
+    '[Console]::OutputEncoding = $utf8',
+    '[Console]::InputEncoding = $utf8',
+    '$OutputEncoding = $utf8',
+    '$stdout = [System.IO.StreamWriter]::new([Console]::OpenStandardOutput(), $utf8)',
+    '$stderr = [System.IO.StreamWriter]::new([Console]::OpenStandardError(), $utf8)',
+    '$stdout.AutoFlush = $true',
+    '$stderr.AutoFlush = $true',
+    '[Console]::SetOut($stdout)',
+    '[Console]::SetError($stderr)',
+    'try {',
+    `  $code = & ${powershellLiteral(helper)} -Config ${powershellLiteral(config)}`,
+    '  if ($null -eq $code) { throw "AppContainer helper did not return an exit code" }',
+    '  exit [int]$code',
+    '} catch {',
+    '  [Console]::Error.WriteLine("AppContainer helper was blocked or failed to start: " + $_.Exception.Message)',
+    '  exit 125',
+    '}',
+  ].join('\n')
+  return ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(bootstrap, 'utf16le').toString('base64')]
+}
 export function seatbeltProfile(work: string, scratch: string, runtime: string, network: boolean) {
   // Default deny includes Mach IPC, Apple Events, launchd, keychain and Unix sockets.
   return `(version 1)
@@ -118,7 +144,18 @@ export async function runSandboxCommand(options: WorkspaceProcessOptions, root: 
       // The trusted .NET compiler must use the host temp location. Its protected
       // compilation directories must never be relabelled as AppContainer scratch.
       // The helper switches TEMP/TMP before creating the restricted child.
-      result = await runWorkspaceProcess({ ...options, timeoutMs: (options.timeoutMs ?? 120000) + 60000, executable: resolve(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', resourcePath('workspace-appcontainer.ps1'), '-Config', config], cwd, env: { ...env, TEMP: process.env.TEMP, TMP: process.env.TMP } })
+      const helper = resourcePath('workspace-appcontainer.ps1')
+      result = await runWorkspaceProcess({
+        ...options,
+        timeoutMs: (options.timeoutMs ?? 120000) + 60000,
+        executable: resolve(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        // Bypass applies only to this child process so the bundled, trusted helper
+        // can run; it does not change the user's or machine's execution policy.
+        // A UTF-8 bootstrap also keeps PowerShell's own policy errors readable.
+        args: windowsAppContainerPowerShellArgs(helper, config),
+        cwd,
+        env: { ...env, TEMP: process.env.TEMP, TMP: process.env.TMP }
+      })
     }
     options.signal?.throwIfAborted()
     if (result.exitCode === 0) await applySandboxSnapshot(snapshot)

@@ -5,13 +5,14 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { createServer } from 'node:net'
-import { prepareNativeCommand, runNativeCommand } from './workspaceNative.ts'
+import { prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
-import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile } from './workspaceSandbox.ts'
+import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
 
 const supported = ['darwin', 'linux', 'win32'].includes(process.platform)
 async function fixture() { return mkdtemp(resolve(tmpdir(), 'gllm-isolation-test-')) }
-test('native sandbox denies outside writes, private inputs and network, including a subprocess', { skip: !supported }, async () => {
+test('native sandbox denies outside writes, private inputs and network, including a subprocess', { skip: !supported }, async (t) => {
+  if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
   const root = await fixture(), outside = await fixture()
   try {
     await writeFile(resolve(root, '.env'), 'TOKEN=private-do-not-read')
@@ -46,7 +47,8 @@ print('checks complete')`
     await assert.rejects(readFile(resolve(outside, 'child.txt')), { code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }) }
 })
-test('sandbox network opt-in is enforced against an actual listening service', { skip: !supported || process.platform === 'win32' }, async () => {
+test('sandbox network opt-in is enforced against an actual listening service', { skip: !supported || process.platform === 'win32' }, async (t) => {
+  if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
   const root = await fixture(), server = createServer(socket => socket.end('hello'))
   await new Promise<void>(resolvePromise => server.listen(0, '127.0.0.1', resolvePromise))
   const port = (server.address() as { port: number }).port
@@ -74,7 +76,7 @@ test('sandbox failure discards writes; snapshot conflicts and links never overwr
       await symlink('/tmp', resolve(snapshot.work, 'link'))
       await assert.rejects(applySandboxSnapshot(snapshot), /symbolic link/)
     }
-    if (supported) {
+    if (supported && await probeNativePython({ executionMode: 'sandbox' })) {
       const result = await runNativeCommand(await prepareNativeCommand(root, 'run_python', { code: 'open("discard.txt","w").write("discard"); raise RuntimeError("intentional")' }, []), {})
       assert.notEqual(result.exitCode, 0)
       await assert.rejects(readFile(resolve(root, 'discard.txt')), { code: 'ENOENT' })
@@ -91,6 +93,20 @@ test('platform policies default to no network, include seccomp and never invoke 
   assert.ok(args.includes('--unshare-all')); assert.ok(args.includes('--seccomp')); assert.ok(!args.includes('--share-net'))
   for (const arch of ['x64','arm64']) assert.equal(linuxSeccomp(arch).length % 8, 0)
   assert.throws(() => linuxSeccomp('ia32'), /Unsupported/)
+})
+
+test('Windows AppContainer bootstrap bypasses script-file policy and pins PowerShell output to UTF-8', () => {
+  const args = windowsAppContainerPowerShellArgs("C:\\trusted\\user's helper.ps1", "C:\\temp\\user's config.json")
+  assert.ok(args.includes('-ExecutionPolicy'))
+  assert.equal(args[args.indexOf('-ExecutionPolicy') + 1], 'Bypass')
+  assert.ok(args.includes('-EncodedCommand'))
+  assert.ok(!args.includes('-File'))
+  const bootstrap = Buffer.from(args[args.indexOf('-EncodedCommand') + 1], 'base64').toString('utf16le')
+  assert.match(bootstrap, /\[Console\]::OutputEncoding = \$utf8/)
+  assert.match(bootstrap, /StreamWriter\]::new\(\[Console\]::OpenStandardError\(\), \$utf8\)/)
+  assert.ok(bootstrap.includes("'C:\\trusted\\user''s helper.ps1'"))
+  assert.ok(bootstrap.includes("'C:\\temp\\user''s config.json'"))
+  assert.match(bootstrap, /\$ProgressPreference = "SilentlyContinue"/)
 })
 
 test('seccomp blocks Unix IPC and cross-process access while preserving ordinary syscalls', () => {
@@ -125,6 +141,17 @@ test('platform shell creates a result inside the sandbox', { skip: !supported },
     assert.equal(result.exitCode, 0, result.output)
     assert.equal((await readFile(resolve(root, 'shell.txt'), 'utf8')).trimEnd(), 'sandbox-shell')
     assert.match(result.output, /shell-ok/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Windows AppContainer preserves NTSTATUS-shaped Python exit codes instead of reporting success', { skip: process.platform !== 'win32' }, async (t) => {
+  if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
+  const root = await fixture()
+  try {
+    const result = await runNativeCommand(await prepareNativeCommand(root, 'run_python', { code: 'import os\nos._exit(0xC0000022)' }, []), {})
+    assert.notEqual(result.exitCode, 0, result.output)
+    assert.match(result.output, /Exit code:\s*(?:3221225506|-1073741790)/)
+    assert.match(result.output, /Sandbox execution failed/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

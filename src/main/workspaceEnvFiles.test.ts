@@ -42,7 +42,7 @@ test('empty .env is a valid scaffold but an empty PDF is not a document', async 
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('template creation rejects values, shell expressions, traversal and symlinks', async () => {
+test('template creation rejects values, shell expressions, traversal and symlinks', async (t) => {
   for (const code of ['TOKEN=secret', 'TOKEN=$(id)', 'source other.env', 'export TOKEN=secret', 'TOKEN="not empty"']) {
     assert.throws(() => assertEmptyEnvTemplate(code), /empty variable/)
   }
@@ -50,7 +50,15 @@ test('template creation rejects values, shell expressions, traversal and symlink
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-env-template-'))
   const outside = await mkdtemp(resolve(tmpdir(), 'gllm-env-outside-'))
   try {
-    await symlink(outside, resolve(root, 'outside'))
+    try {
+      await symlink(outside, resolve(root, 'outside'))
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && ['EPERM', 'EACCES', 'ENOTSUP'].includes(String(error.code))) {
+        t.skip('symbolic links are not permitted for this Windows user')
+        return
+      }
+      throw error
+    }
     await assert.rejects(createWorkspaceEnvTemplate(root, 'outside/.env', ''), /outside/)
     await assert.rejects(createWorkspaceEnvTemplate(root, '../.env', ''), /outside/)
     await writeFile(resolve(outside, '.env'), 'preserve-fixture')

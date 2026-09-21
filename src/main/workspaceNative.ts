@@ -40,6 +40,17 @@ export async function prepareNativeCommand(root: string, tool: string, args: Rec
   return { language: tool === 'run_python' ? 'python' : 'shell', code, cwd, envNames, root: rootReal, executionMode: settings.executionMode === 'host' ? 'host' : 'sandbox', sandboxNetwork: settings.sandboxNetwork === true }
 }
 
+const pythonAvailabilityByMode = new Map<string, Promise<boolean>>()
+
+export function nativeExecutionLanguages(pythonAvailable: boolean): ('python' | 'shell')[] {
+  return pythonAvailable ? ['python', 'shell'] : ['shell']
+}
+
+function windowsShellFailureGuidance(output: string): string {
+  if (!/is not recognized as an internal or external command|不是内部或外部命令/i.test(output)) return ''
+  return '\nWindows shell note: run_shell uses CMD batch syntax. POSIX commands such as head, grep, and sed are not built in. Use read_file/search_text, CMD commands such as type/findstr, or run_javascript, then continue the requested task.'
+}
+
 async function findPython(): Promise<string> {
   const directories = [...(process.platform === 'linux' ? ['/usr/bin'] : []), '/opt/homebrew/bin', '/usr/local/bin', ...(process.env.PATH ?? '').split(delimiter), '/usr/bin']
   for (const directory of directories.filter(isAbsolute)) {
@@ -85,8 +96,37 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
   } else {
     result = command.executionMode === 'host' ? await runWorkspaceProcess(options) : await runSandboxCommand(options, command.root ?? command.cwd, command.sandboxNetwork === true)
   }
+  const rawOutput = `Exit code: ${result.exitCode}\n${result.stdout}\n${result.stderr}${windows && command.language === 'shell' && result.exitCode !== 0 ? windowsShellFailureGuidance(`${result.stdout}\n${result.stderr}`) : ''}`
   return {
     exitCode: result.exitCode,
-    output: redactWorkspaceSecrets(`Exit code: ${result.exitCode}\n${result.stdout}\n${result.stderr}`, values)
+    output: redactWorkspaceSecrets(rawOutput, values)
   }
+}
+
+/**
+ * Verify Python using the same boundary the agent will use. In particular,
+ * finding python.exe on the host PATH is not enough for Windows AppContainer:
+ * a per-user runtime may be unreadable from the restricted token.
+ */
+export function probeNativePython(settings: { executionMode?: 'sandbox' | 'host'; sandboxNetwork?: boolean } = {}): Promise<boolean> {
+  const executionMode = settings.executionMode === 'host' ? 'host' : 'sandbox'
+  const key = `${process.platform}:${executionMode}`
+  const cached = pythonAvailabilityByMode.get(key)
+  if (cached) return cached
+
+  const probe = (async () => {
+    let root: string | undefined
+    try {
+      root = await mkdtemp(resolve(tmpdir(), 'gllm-python-probe-'))
+      const command = await prepareNativeCommand(root, 'run_python', { code: 'print("__GLLM_PYTHON_PROBE_OK__")' }, [], settings)
+      const result = await runNativeCommand(command, {}, undefined, { timeoutMs: 10000, maxOutputBytes: 4096 })
+      return result.exitCode === 0 && result.output.includes('__GLLM_PYTHON_PROBE_OK__')
+    } catch {
+      return false
+    } finally {
+      if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
+    }
+  })()
+  pythonAvailabilityByMode.set(key, probe)
+  return probe
 }

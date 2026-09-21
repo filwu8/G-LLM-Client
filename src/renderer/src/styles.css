@@ -5086,10 +5086,11 @@ img.space-logo {
 }
 
 .conversation-model-list {
-  display: grid;
+  display: flex;
   min-height: 0;
   max-height: none;
-  align-content: start;
+  flex-direction: column;
+  align-items: stretch;
   overflow-y: auto;
   scrollbar-gutter: stable;
   container-type: inline-size;
@@ -5101,6 +5102,8 @@ img.space-logo {
 
 .conversation-model-option {
   display: grid;
+  width: 100%;
+  flex: 0 0 auto;
   min-height: 54px;
   cursor: pointer;
   align-content: center;

@@ -9,15 +9,25 @@ import test from 'node:test'
 import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { prepareNativeCommand, runNativeCommand } from './workspaceNative.ts'
+import { nativeExecutionLanguages, prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
 import { runWorkspaceProcess } from './workspaceProcess.ts'
+
+test('Python is offered only when the selected execution mode can actually launch it', async () => {
+  const available = await probeNativePython({ executionMode: 'sandbox' })
+  assert.deepEqual(nativeExecutionLanguages(available), available ? ['python', 'shell'] : ['shell'])
+  assert.deepEqual(nativeExecutionLanguages(false), ['shell'])
+})
 
 test('native commands reject unauthorized credentials and directories outside the workspace', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-native-test-'))
   try {
     await assert.rejects(prepareNativeCommand(root, 'run_shell', { code: 'pwd', cwd: '..' }, []), /inside/)
-    await symlink(tmpdir(), resolve(root, 'outside'))
-    await assert.rejects(prepareNativeCommand(root, 'run_shell', { code: 'pwd', cwd: 'outside' }, []), /inside/)
+    try {
+      await symlink(tmpdir(), resolve(root, 'outside'))
+      await assert.rejects(prepareNativeCommand(root, 'run_shell', { code: 'pwd', cwd: 'outside' }, []), /inside/)
+    } catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error
+    }
     await assert.rejects(prepareNativeCommand(root, 'run_python', { code: 'print(1)', envNames: ['TOKEN'] }, []), /not been enabled/)
     await assert.rejects(prepareNativeCommand(root, 'run_shell', { code: 'pwd', envNames: ['NOT VALID'] }, []), /Invalid/)
   } finally { await rm(root, { recursive: true, force: true }) }
@@ -44,7 +54,8 @@ test('host shell uses selected environment only and redacts literal secrets', { 
   }
 })
 
-test('Python executes a business CSV calculation and creates a verified output', async () => {
+test('Python executes a business CSV calculation and creates a verified output', async (t) => {
+  if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-python-test-'))
   try {
     await writeFile(resolve(root, 'sales.csv'), 'customer,amount\nA,12.50\nB,7.50\n')
@@ -60,16 +71,38 @@ test('Windows CMD preserves multiline code, Unicode and quoted paths in host and
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell space-&-'))
   try {
     for (const executionMode of ['host', 'sandbox'] as const) {
-      const command = await prepareNativeCommand(root, 'run_shell', { code: `echo 中文结果>"中文 ${executionMode}.txt"\npython --version\necho second-line` }, [], { executionMode })
+      const command = await prepareNativeCommand(root, 'run_shell', { code: `echo 中文结果>"中文 ${executionMode}.txt"\necho shell-ready\necho second-line` }, [], { executionMode })
       const result = await runNativeCommand(command, {})
       assert.equal(result.exitCode, 0, result.output)
-      assert.match(result.output, /Python 3\./); assert.match(result.output, /second-line/)
+      assert.match(result.output, /shell-ready/); assert.match(result.output, /second-line/)
       assert.ok((await readdir(root)).includes(`中文 ${executionMode}.txt`), JSON.stringify({ output: result.output, files: await readdir(root) }))
       assert.equal((await readFile(resolve(root, `中文 ${executionMode}.txt`), 'utf8')).trim(), '中文结果')
     }
     const failed = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'echo discard>discard.txt\nexit /b 7' }, []), {})
     assert.equal(failed.exitCode, 7, failed.output)
     await assert.rejects(readFile(resolve(root, 'discard.txt')), { code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Windows sandbox keeps Chinese failure output readable and preserves the process exit code', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-unicode-error-'))
+  try {
+    const result = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'echo 中文命令失败 1>&2\nexit /b 7' }, [], { executionMode: 'sandbox' }), {})
+    assert.equal(result.exitCode, 7, result.output)
+    assert.match(result.output, /中文命令失败/)
+    assert.doesNotMatch(result.output, /�|#< CLIXML/)
+    assert.match(result.output, /No host fallback was attempted/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Windows CMD gives actionable guidance for unsupported POSIX commands', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-guidance-'))
+  try {
+    const unsupported = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'head -n 1 missing.txt' }, [], { executionMode: 'sandbox' }), {})
+    assert.notEqual(unsupported.exitCode, 0)
+    assert.match(unsupported.output, /Windows shell note: run_shell uses CMD batch syntax/)
+    assert.match(unsupported.output, /run_javascript/)
+    assert.doesNotMatch(unsupported.output, /#< CLIXML/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

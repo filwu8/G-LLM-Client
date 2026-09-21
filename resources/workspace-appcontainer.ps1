@@ -1,5 +1,6 @@
 # Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1
 param([Parameter(Mandatory=$true)][string]$Config)
+$ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Stop'
 try {
   Add-Type -Path (Join-Path $PSScriptRoot 'workspace-appcontainer.cs')
@@ -7,8 +8,8 @@ try {
   $env:TEMP = [string]$launch.scratch
   $env:TMP = [string]$launch.scratch
   $code = [GllmAppContainer]::Run([string]$launch.executable, [string[]]$launch.args, [string]$launch.cwd, [string]$launch.work, [string]$launch.scratch, [bool]$launch.network, [int]$launch.timeoutMs)
-  exit $code
+  return $code
 } catch {
   [Console]::Error.WriteLine('AppContainer launch failed; no host fallback: ' + $_.Exception.Message)
-  exit 125
+  return 125
 }

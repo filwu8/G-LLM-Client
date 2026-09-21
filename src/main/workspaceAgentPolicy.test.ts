@@ -43,7 +43,7 @@ test('unknown modes and native boundaries request approval; model guidance follo
   }
 })
 
-test('project config is bounded, root-scoped and parsed without executing shell substitutions', async () => {
+test('project config is bounded, root-scoped and parsed without executing shell substitutions', async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-config-test-'))
   try {
     assert.equal(await loadWorkspaceInstructions(root), undefined)
@@ -58,7 +58,15 @@ test('project config is bounded, root-scoped and parsed without executing shell 
     await writeFile(resolve(root, 'AGENTS.md'), 'x'.repeat(32_769))
     await assert.rejects(loadWorkspaceInstructions(root), /at most/)
     await rm(resolve(root, 'AGENTS.md'))
-    await symlink(resolve(root, '.env'), resolve(root, 'AGENTS.md'))
+    try {
+      await symlink(resolve(root, '.env'), resolve(root, 'AGENTS.md'))
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && ['EPERM', 'EACCES', 'ENOTSUP'].includes(String(error.code))) {
+        t.skip('symbolic links are not permitted for this Windows user')
+        return
+      }
+      throw error
+    }
     await assert.rejects(loadWorkspaceInstructions(root), /symbolic links/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

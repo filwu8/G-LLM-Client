@@ -1179,7 +1179,7 @@ function createQuickWindow(anchorBounds?: Rectangle): BrowserWindow {
   }
 
   quickWindowReady = false
-  quickWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     ...getQuickWindowBounds(anchorBounds),
     show: false,
     frame: false,
@@ -1202,43 +1202,41 @@ function createQuickWindow(anchorBounds?: Rectangle): BrowserWindow {
       contextIsolation: true
     }
   })
+  quickWindow = window
 
-  quickWindow.setMenu(null)
-  quickWindow.setMenuBarVisibility(false)
-  quickWindow.setAlwaysOnTop(true, 'floating')
-  quickWindow.webContents.on('did-start-navigation', () => {
+  window.setMenu(null)
+  window.setMenuBarVisibility(false)
+  window.setAlwaysOnTop(true, 'floating')
+  window.webContents.on('did-start-navigation', (_event, _navigationUrl, isInPlace, isMainFrame) => {
+    if (!isMainFrame || isInPlace || quickWindow !== window || window.isDestroyed()) return
     quickWindowReady = false
-    if (quickWindow?.isVisible()) {
-      quickWindowShowPending = true
-      quickWindow.hide()
-    }
   })
-  quickWindow.webContents.on('did-finish-load', () => {
+  window.webContents.on('did-finish-load', () => {
+    if (quickWindow !== window || window.isDestroyed()) return
     quickWindowReady = true
     const target = quickComposerTarget ?? mainComposerTarget
-    if (target && quickWindow && !quickWindow.isDestroyed()) {
-      quickWindow.webContents.send('composer:open-in-quick', target)
-    }
-    if (!quickWindowShowPending || !quickWindow || quickWindow.isDestroyed()) return
+    if (target) window.webContents.send('composer:open-in-quick', target)
+    if (!quickWindowShowPending) return
     quickWindowShowPending = false
-    quickWindow.show()
-    quickWindow.focus()
+    window.show()
+    window.focus()
   })
-  quickWindow.on('close', (event) => {
+  window.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault()
       hideQuickWindow()
     }
   })
-  quickWindow.on('closed', () => {
+  window.on('closed', () => {
+    if (quickWindow !== window) return
     quickWindow = null
     quickWindowReady = false
     quickWindowShowPending = false
   })
 
-  registerExternalLinkHandler(quickWindow)
-  loadRenderer(quickWindow, `quick?theme=${encodeURIComponent(getSettings().theme)}`)
-  return quickWindow
+  registerExternalLinkHandler(window)
+  loadRenderer(window, `quick?theme=${encodeURIComponent(getSettings().theme)}`)
+  return window
 }
 
 function showQuickWindow(anchorBounds?: Rectangle): void {
@@ -2121,19 +2119,34 @@ app.whenReady().then(() => {
           runtimeEvent.type,
           runtimeEvent.status,
           runtimeEvent.details
-        )
+        ),
+        run.id
       )
       if (isCurrentActiveResponse(active.key, active.controller)) {
         broadcastChatActivity({ conversationId: request.conversationId, active: false })
       }
-      writeMainLog(
-        `Workspace request completed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, changedFiles=${result.changedFiles.length}.`
-      )
-      runLedger.record(run.id, 'run_succeeded', 'succeeded', {
-        durationMs: Date.now() - requestStartedAt,
-        changedFiles: result.changedFiles.length,
-        savedCharacters: result.contextSavings?.savedCharacters ?? 0
-      })
+      const durationMs = Date.now() - requestStartedAt
+      if (result.plan.status === 'succeeded') {
+        writeMainLog(
+          `Workspace request completed: conversation=${request.conversationId}, durationMs=${durationMs}, changedFiles=${result.changedFiles.length}.`
+        )
+        runLedger.record(run.id, 'run_succeeded', 'succeeded', {
+          durationMs,
+          changedFiles: result.changedFiles.length,
+          savedCharacters: result.contextSavings?.savedCharacters ?? 0
+        })
+      } else {
+        const reason = result.plan.verification || 'Workspace goal did not pass completion verification'
+        writeMainLog(
+          `Workspace request returned an incomplete goal: conversation=${request.conversationId}, durationMs=${durationMs}, changedFiles=${result.changedFiles.length}.`
+        )
+        runLedger.record(run.id, 'run_failed', 'failed', {
+          durationMs,
+          changedFiles: result.changedFiles.length,
+          errorCategory: 'goal_incomplete',
+          error: reason
+        })
+      }
       return result
     } catch (error) {
       if (active.controller.signal.aborted) {
