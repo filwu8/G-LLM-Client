@@ -429,6 +429,16 @@
     "analyzeAttachment": "Analyze the attachment I uploaded.",
     "settingsNotLoaded": "Settings have not loaded yet"
   },
+  "mermaid": {
+    "actions": "Mermaid diagram actions",
+    "copyCode": "Copy Mermaid code",
+    "copyPng": "Copy PNG image",
+    "copySvg": "Copy SVG image",
+    "copiedCode": "Mermaid source copied",
+    "copiedPng": "PNG image copied",
+    "copiedSvg": "SVG image copied",
+    "copyFailed": "Copy failed. Try again."
+  },
   "attachments": {
     "localExecutable": "Can be processed locally",
     "imageUnreadable": "Image is too large or could not be read",

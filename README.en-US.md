@@ -31,6 +31,8 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Local tool failures are returned to the model for recovery. Interrupted generation requests are not blindly replayed, side-effecting tools are deduplicated, and goals that do not meet delivery checks are not marked successful.
 - Windows workspace execution improves Python/AppContainer probing, helper startup, and UTF-8 error reporting. Unreadable source material is reported explicitly instead of being treated as inspected.
 - Workspace document reading now supports standard `.xlsx` spreadsheets. Scanned PDFs still require OCR, and unreadable content is reported as such.
+- Updates patched transitive XML/YAML dependencies flagged by the production security audit.
+- Mermaid previews now have a compact toolbar attached below the diagram to copy the source, PNG image, or SVG image.
 - Also fixes Quick Chat navigation timing and the model list's constrained layout.
 
 ## V2.0.20 Local Agents, Sandboxing, and Context Efficiency

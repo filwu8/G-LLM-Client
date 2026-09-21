@@ -4,9 +4,13 @@
  * Change Date: 2030-08-01
  */
 
+import { Check, Clipboard, FileCode2, ImageIcon, TriangleAlert } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { writePlainTextToClipboard } from './clipboard'
+import { normalizeMermaidSvg, svgToPngDataUrl } from './mermaidExport'
 import { stabilizeAdjacentStrongDelimiters } from './markdownStrongBoundary'
 import { stabilizeStreamingMarkdown } from './streamingMarkdown'
 
@@ -234,6 +238,7 @@ function getThemeColor(variable: string, fallback: string): string {
 }
 
 function MermaidDiagram({ diagram }: { diagram: string }) {
+  const { t } = useTranslation()
   const reactId = useId().replace(/[^A-Za-z0-9_-]/g, '')
   const [themeRevision, setThemeRevision] = useState(0)
   const renderId = useMemo(
@@ -242,6 +247,8 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
   )
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
+  const [feedback, setFeedback] = useState('')
+  const [feedbackIsError, setFeedbackIsError] = useState(false)
 
   useEffect(() => {
     const handleThemeChange = () => setThemeRevision((revision) => revision + 1)
@@ -291,6 +298,45 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
     }
   }, [diagram, renderId])
 
+  useEffect(() => {
+    if (!feedback) return undefined
+    const timer = window.setTimeout(() => setFeedback(''), 1800)
+    return () => window.clearTimeout(timer)
+  }, [feedback])
+
+  async function copyMermaidSource() {
+    try {
+      await writePlainTextToClipboard(diagram)
+      setFeedbackIsError(false)
+      setFeedback(t('mermaid.copiedCode'))
+    } catch {
+      setFeedbackIsError(true)
+      setFeedback(t('mermaid.copyFailed'))
+    }
+  }
+
+  async function copyPngImage() {
+    try {
+      await window.gllm.copyImageToClipboard(await svgToPngDataUrl(svg))
+      setFeedbackIsError(false)
+      setFeedback(t('mermaid.copiedPng'))
+    } catch {
+      setFeedbackIsError(true)
+      setFeedback(t('mermaid.copyFailed'))
+    }
+  }
+
+  async function copySvgImage() {
+    try {
+      await window.gllm.copySvgToClipboard(normalizeMermaidSvg(svg))
+      setFeedbackIsError(false)
+      setFeedback(t('mermaid.copiedSvg'))
+    } catch {
+      setFeedbackIsError(true)
+      setFeedback(t('mermaid.copyFailed'))
+    }
+  }
+
   if (error) {
     return (
       <div className="mermaid-diagram-shell failed">
@@ -307,8 +353,30 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
   }
 
   return (
-    <div className="mermaid-diagram-shell">
-      <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />
+    <div className="mermaid-diagram-card">
+      <div className="mermaid-diagram-shell">
+        <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />
+      </div>
+      <div className="mermaid-diagram-actions" role="group" aria-label={t('mermaid.actions')}>
+        <button type="button" onClick={() => void copyMermaidSource()} title={t('mermaid.copyCode')}>
+          <Clipboard aria-hidden="true" />
+          <span>{t('mermaid.copyCode')}</span>
+        </button>
+        <button type="button" onClick={() => void copyPngImage()} title={t('mermaid.copyPng')}>
+          <ImageIcon aria-hidden="true" />
+          <span>{t('mermaid.copyPng')}</span>
+        </button>
+        <button type="button" onClick={() => void copySvgImage()} title={t('mermaid.copySvg')}>
+          <FileCode2 aria-hidden="true" />
+          <span>{t('mermaid.copySvg')}</span>
+        </button>
+      </div>
+      {feedback && (
+        <div className={`mermaid-diagram-feedback${feedbackIsError ? ' failed' : ''}`} role={feedbackIsError ? 'alert' : 'status'}>
+          {feedbackIsError ? <TriangleAlert aria-hidden="true" /> : <Check aria-hidden="true" />}
+          <span>{feedback}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -318,7 +386,9 @@ function getSingleChild(children: ReactNode): ReactNode {
 }
 
 function isMermaidShell(node: ReactNode): boolean {
-  return Boolean(isValidElement<{ className?: string }>(node) && node.props.className?.split(/\s+/).includes('mermaid-diagram-shell'))
+  if (!isValidElement<{ className?: string }>(node)) return false
+  const classNames = node.props.className?.split(/\s+/) ?? []
+  return classNames.includes('mermaid-diagram-card') || classNames.includes('mermaid-diagram-shell')
 }
 
 function markdownUrlTransform(value: string, key: string): string {

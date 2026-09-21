@@ -13,9 +13,10 @@ supportedArchitectures:
     - arm64
 
 overrides:
+  '@xmldom/xmldom': 0.8.15
   dompurify: 3.4.12
   fast-uri: 3.1.6
-  js-yaml: 4.3.1
+  js-yaml: 4.3.2
   undici: 7.29.0
 
 # Slow down newly published packages long enough for common registry incidents to

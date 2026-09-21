@@ -429,6 +429,16 @@
     "analyzeAttachment": "请分析我上传的附件。",
     "settingsNotLoaded": "设置尚未加载"
   },
+  "mermaid": {
+    "actions": "Mermaid 图表操作",
+    "copyCode": "复制 Mermaid 代码",
+    "copyPng": "复制 PNG 图片",
+    "copySvg": "复制 SVG 图片",
+    "copiedCode": "Mermaid 代码已复制",
+    "copiedPng": "PNG 图片已复制",
+    "copiedSvg": "SVG 图片已复制",
+    "copyFailed": "复制失败，请重试"
+  },
   "attachments": {
     "localExecutable": "可执行本地处理",
     "imageUnreadable": "图片过大或读取失败，无法直接识别",

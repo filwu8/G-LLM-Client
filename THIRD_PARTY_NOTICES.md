@@ -74,7 +74,7 @@ This file is generated from the locked production dependency graph by
 | @types/unist@3.0.3 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist) |
 | @ungap/structured-clone@1.3.2 | ISC | [link](https://github.com/ungap/structured-clone#readme) |
 | @upsetjs/venn.js@2.0.0 | MIT | [link](https://github.com/upsetjs/venn.js) |
-| @xmldom/xmldom@0.8.13 | MIT | [link](https://github.com/xmldom/xmldom) |
+| @xmldom/xmldom@0.8.15 | MIT | [link](https://github.com/xmldom/xmldom) |
 | ajv-formats@3.0.1 | MIT | [link](https://github.com/ajv-validator/ajv-formats#readme) |
 | ajv@8.20.0 | MIT | [link](https://ajv.js.org) |
 | argparse@1.0.10 | MIT | [link](https://github.com/nodeca/argparse#readme) |
@@ -180,7 +180,7 @@ This file is generated from the locked production dependency graph by
 | is-plain-obj@4.1.0 | MIT | [link](https://github.com/sindresorhus/is-plain-obj#readme) |
 | isarray@1.0.0 | MIT | [link](https://github.com/juliangruber/isarray) |
 | js-tiktoken@1.0.21 | MIT | [link](https://github.com/dqbd/tiktoken#readme) |
-| js-yaml@4.3.1 | MIT | [link](https://github.com/nodeca/js-yaml#readme) |
+| js-yaml@4.3.2 | MIT | [link](https://github.com/nodeca/js-yaml#readme) |
 | json-schema-traverse@1.0.0 | MIT | [link](https://github.com/epoberezkin/json-schema-traverse#readme) |
 | json-schema-typed@8.0.2 | BSD-2-Clause | [link](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) |
 | jsonfile@6.2.1 | MIT | [link](https://github.com/jprichardson/node-jsonfile#readme) |
@@ -887,7 +887,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @xmldom/xmldom@0.8.13
+### @xmldom/xmldom@0.8.15
 
 ````text
 Copyright 2019 - present Christopher J. Brody and other contributors, as listed in: https://github.com/xmldom/xmldom/graphs/contributors
@@ -3090,7 +3090,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### js-yaml@4.3.1
+### js-yaml@4.3.2
 
 ````text
 (The MIT License)

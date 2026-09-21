@@ -29,6 +29,7 @@ import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
 import { getSuggestedImageSaveName } from '../shared/imageSaveName'
+import { getSvgClipboardFormat } from '../shared/svgClipboard'
 
 import type {
   ApiProvider,
@@ -1565,6 +1566,17 @@ function copyImageDataUrlToClipboard(dataUrl: string): void {
   clipboard.writeImage(image)
 }
 
+function copySvgToClipboard(svg: string): void {
+  const trimmed = typeof svg === 'string' ? svg.trim() : ''
+  if (!trimmed.startsWith('<svg') || trimmed.length > 20 * 1024 * 1024) {
+    throw new Error('Invalid SVG data')
+  }
+
+  // Use the native SVG image clipboard format so compatible apps paste a vector,
+  // rather than receiving the SVG source as plain text or an HTML fragment.
+  clipboard.writeBuffer(getSvgClipboardFormat(process.platform), Buffer.from(trimmed, 'utf8'))
+}
+
 const imageSaveExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif'])
 const imageSaveExtensionByMimeType: Record<string, string> = {
   'image/png': 'png',
@@ -2210,6 +2222,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('attachment:screenshot', (event) => captureScreenshotForWindow(BrowserWindow.fromWebContents(event.sender)))
   ipcMain.handle('clipboard:copy-image', (_, dataUrl: string) => copyImageDataUrlToClipboard(dataUrl))
+  ipcMain.handle('clipboard:copy-svg', (_, svg: string) => copySvgToClipboard(svg))
   ipcMain.handle('image:save-as', (event, request: ImageSaveRequest) =>
     saveImageAsForWindow(BrowserWindow.fromWebContents(event.sender), request))
   ipcMain.on('response:cancel', (_, conversationId: string) => cancelActiveResponse(conversationId))
