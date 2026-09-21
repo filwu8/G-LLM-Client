@@ -148,7 +148,7 @@ test('Windows AppContainer preserves NTSTATUS-shaped Python exit codes instead o
   if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
   const root = await fixture()
   try {
-    const result = await runNativeCommand(await prepareNativeCommand(root, 'run_python', { code: 'import os\nos._exit(0xC0000022)' }, []), {})
+    const result = await runNativeCommand(await prepareNativeCommand(root, 'run_python', { code: 'import os\nos._exit(-1073741790)' }, []), {})
     assert.notEqual(result.exitCode, 0, result.output)
     assert.match(result.output, /Exit code:\s*(?:3221225506|-1073741790)/)
     assert.match(result.output, /Sandbox execution failed/)
