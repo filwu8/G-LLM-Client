@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.21](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.22](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-最近稳定发布：[V2.0.21](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.21)，发布于 2026-09-21。
+最近稳定发布：[V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22)，发布于 2026-09-21。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -23,6 +23,11 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.22 Mermaid 图表预览与复制优化
+
+- Mermaid 图表预览可自适应对话区域；复制操作栏更紧凑，点击后会显示成功状态。
+- 改进 Mermaid 源码、PNG 与 SVG 复制；大型 PNG 按视口分块捕获后拼接，并校验完整尺寸，避免图表被截断或压扁。
 
 ## V2.0.21 工作区 Agent 流式续接与交付可靠性
 

@@ -1317,6 +1317,8 @@ img.space-logo {
 }
 
 .mermaid-diagram-shell {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid hsl(var(--border));
@@ -1326,57 +1328,66 @@ img.space-logo {
 }
 
 .mermaid-diagram-card {
-  display: inline-flex;
+  display: block;
+  width: 100%;
   max-width: 100%;
-  flex-direction: column;
-  vertical-align: top;
+  box-sizing: border-box;
 }
 
 .mermaid-diagram-card .mermaid-diagram-shell {
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
-  border-bottom-right-radius: 0;
-  border-bottom-left-radius: 0;
 }
 
 .mermaid-diagram-actions {
   display: flex;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-start;
+  gap: 2px;
   overflow-x: auto;
-  border: 1px solid hsl(var(--border));
-  border-top: 0;
-  border-radius: 0 0 8px 8px;
-  background: hsl(var(--secondary));
-  padding: 4px 6px;
+  margin-top: 0;
+  padding: 0 8px;
 }
 
 .mermaid-diagram-actions button {
   display: inline-flex;
   min-width: max-content;
-  height: 26px;
+  height: 30px;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--primary) / .55);
+  border-radius: 0 0 6px 6px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
   cursor: pointer;
   font: inherit;
   font-size: 12px;
   line-height: 1;
-  padding: 0 7px;
+  padding: 0 9px;
+}
+
+.mermaid-diagram-actions > button:first-child {
+  margin-left: auto;
 }
 
 .mermaid-diagram-actions button:hover,
 .mermaid-diagram-actions button:focus-visible {
-  border-color: hsl(var(--border));
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
+  border-color: hsl(var(--primary));
+  background: hsl(var(--accent));
+  color: hsl(var(--primary));
   outline: none;
+}
+
+.mermaid-diagram-actions button.copied,
+.mermaid-diagram-actions button.copied:hover,
+.mermaid-diagram-actions button.copied:focus-visible {
+  border-color: hsl(var(--success) / .65);
+  background: hsl(var(--success-background));
+  color: hsl(var(--success));
 }
 
 .mermaid-diagram-actions button svg,
@@ -1421,12 +1432,14 @@ img.space-logo {
 }
 
 .mermaid-diagram {
-  min-width: max-content;
+  width: 100%;
+  min-width: 0;
 }
 
 .mermaid-diagram svg {
   display: block;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
   height: auto;
 }
 

@@ -6,11 +6,11 @@
 
 import { Check, Clipboard, FileCode2, ImageIcon, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { writePlainTextToClipboard } from './clipboard'
-import { normalizeMermaidSvg, svgToPngDataUrl } from './mermaidExport'
+import { normalizeMermaidSvg, svgNeedsBrowserCapture, svgToPngDataUrl } from './mermaidExport'
 import { stabilizeAdjacentStrongDelimiters } from './markdownStrongBoundary'
 import { stabilizeStreamingMarkdown } from './streamingMarkdown'
 
@@ -249,6 +249,8 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
   const [feedbackIsError, setFeedbackIsError] = useState(false)
+  const [copiedAction, setCopiedAction] = useState<'code' | 'png' | 'svg' | null>(null)
+  const copyStatusTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const handleThemeChange = () => setThemeRevision((revision) => revision + 1)
@@ -304,36 +306,63 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
     return () => window.clearTimeout(timer)
   }, [feedback])
 
+  useEffect(() => () => {
+    if (copyStatusTimerRef.current !== null) window.clearTimeout(copyStatusTimerRef.current)
+  }, [])
+
+  function showCopied(action: 'code' | 'png' | 'svg') {
+    if (copyStatusTimerRef.current !== null) window.clearTimeout(copyStatusTimerRef.current)
+    setFeedback('')
+    setFeedbackIsError(false)
+    setCopiedAction(action)
+    copyStatusTimerRef.current = window.setTimeout(() => {
+      setCopiedAction(null)
+      copyStatusTimerRef.current = null
+    }, 1800)
+  }
+
+  function showCopyFailure() {
+    if (copyStatusTimerRef.current !== null) window.clearTimeout(copyStatusTimerRef.current)
+    copyStatusTimerRef.current = null
+    setCopiedAction(null)
+    setFeedbackIsError(true)
+    setFeedback(t('mermaid.copyFailed'))
+  }
+
   async function copyMermaidSource() {
     try {
       await writePlainTextToClipboard(diagram)
-      setFeedbackIsError(false)
-      setFeedback(t('mermaid.copiedCode'))
+      showCopied('code')
     } catch {
-      setFeedbackIsError(true)
-      setFeedback(t('mermaid.copyFailed'))
+      showCopyFailure()
     }
   }
 
   async function copyPngImage() {
     try {
-      await window.gllm.copyImageToClipboard(await svgToPngDataUrl(svg))
-      setFeedbackIsError(false)
-      setFeedback(t('mermaid.copiedPng'))
-    } catch {
-      setFeedbackIsError(true)
-      setFeedback(t('mermaid.copyFailed'))
+      if (svgNeedsBrowserCapture(svg)) {
+        await window.gllm.copyMermaidSvgToPng(svg)
+      } else {
+        try {
+          await window.gllm.copyImageToClipboard(await svgToPngDataUrl(svg))
+        } catch (rasterizationError) {
+          console.warn('[Mermaid] SVG rasterization failed; rendering the complete SVG through Chromium.', rasterizationError)
+          await window.gllm.copyMermaidSvgToPng(svg)
+        }
+      }
+      showCopied('png')
+    } catch (error) {
+      console.error('[Mermaid] Could not copy PNG image.', error)
+      showCopyFailure()
     }
   }
 
   async function copySvgImage() {
     try {
       await window.gllm.copySvgToClipboard(normalizeMermaidSvg(svg))
-      setFeedbackIsError(false)
-      setFeedback(t('mermaid.copiedSvg'))
+      showCopied('svg')
     } catch {
-      setFeedbackIsError(true)
-      setFeedback(t('mermaid.copyFailed'))
+      showCopyFailure()
     }
   }
 
@@ -358,17 +387,17 @@ function MermaidDiagram({ diagram }: { diagram: string }) {
         <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />
       </div>
       <div className="mermaid-diagram-actions" role="group" aria-label={t('mermaid.actions')}>
-        <button type="button" onClick={() => void copyMermaidSource()} title={t('mermaid.copyCode')}>
-          <Clipboard aria-hidden="true" />
-          <span>{t('mermaid.copyCode')}</span>
+        <button className={copiedAction === 'code' ? 'copied' : undefined} type="button" onClick={() => void copyMermaidSource()} title={t(copiedAction === 'code' ? 'mermaid.copiedToClipboard' : 'mermaid.copyCode')}>
+          {copiedAction === 'code' ? <Check aria-hidden="true" /> : <Clipboard aria-hidden="true" />}
+          <span>{t(copiedAction === 'code' ? 'mermaid.copiedToClipboard' : 'mermaid.copyCode')}</span>
         </button>
-        <button type="button" onClick={() => void copyPngImage()} title={t('mermaid.copyPng')}>
-          <ImageIcon aria-hidden="true" />
-          <span>{t('mermaid.copyPng')}</span>
+        <button className={copiedAction === 'png' ? 'copied' : undefined} type="button" onClick={() => void copyPngImage()} title={t(copiedAction === 'png' ? 'mermaid.copiedToClipboard' : 'mermaid.copyPng')}>
+          {copiedAction === 'png' ? <Check aria-hidden="true" /> : <ImageIcon aria-hidden="true" />}
+          <span>{t(copiedAction === 'png' ? 'mermaid.copiedToClipboard' : 'mermaid.copyPng')}</span>
         </button>
-        <button type="button" onClick={() => void copySvgImage()} title={t('mermaid.copySvg')}>
-          <FileCode2 aria-hidden="true" />
-          <span>{t('mermaid.copySvg')}</span>
+        <button className={copiedAction === 'svg' ? 'copied' : undefined} type="button" onClick={() => void copySvgImage()} title={t(copiedAction === 'svg' ? 'mermaid.copiedToClipboard' : 'mermaid.copySvg')}>
+          {copiedAction === 'svg' ? <Check aria-hidden="true" /> : <FileCode2 aria-hidden="true" />}
+          <span>{t(copiedAction === 'svg' ? 'mermaid.copiedToClipboard' : 'mermaid.copySvg')}</span>
         </button>
       </div>
       {feedback && (

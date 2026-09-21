@@ -159,6 +159,7 @@ const api = {
   openLocalTaskOutput: (planId: string): Promise<void> => ipcRenderer.invoke('local-task:open-output', planId),
   captureScreenshot: (): Promise<PreparedAttachment | null> => ipcRenderer.invoke('attachment:screenshot'),
   copyImageToClipboard: (dataUrl: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-image', dataUrl),
+  copyMermaidSvgToPng: (svg: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-mermaid-png', svg),
   copySvgToClipboard: (svg: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-svg', svg),
   saveImageAs: (request: ImageSaveRequest): Promise<string | null> => ipcRenderer.invoke('image:save-as', request),
   getDataLocation: (): Promise<DataLocationInfo> => ipcRenderer.invoke('storage:get-data-location'),

@@ -437,6 +437,7 @@
     "copiedCode": "Mermaid source copied",
     "copiedPng": "PNG image copied",
     "copiedSvg": "SVG image copied",
+    "copiedToClipboard": "Copied to clipboard",
     "copyFailed": "Copy failed. Try again."
   },
   "attachments": {

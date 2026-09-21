@@ -437,6 +437,7 @@
     "copiedCode": "Mermaid 代码已复制",
     "copiedPng": "PNG 图片已复制",
     "copiedSvg": "SVG 图片已复制",
+    "copiedToClipboard": "已复制到剪贴板",
     "copyFailed": "复制失败，请重试"
   },
   "attachments": {

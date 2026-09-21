@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.21](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.22](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.21](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.21), released on 2026-09-21.
+Latest stable release: [V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22), released on 2026-09-21.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
@@ -23,6 +23,11 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.22 Better Mermaid Preview and Copying
+
+- Mermaid diagrams adapt to the conversation area, with a more compact action bar and clear copy-success feedback.
+- Improves copying Mermaid source, PNG, and SVG. Large PNGs are captured in viewport-sized tiles and stitched with a full-size check to prevent clipping or distortion.
 
 ## V2.0.21 More Reliable Workspace Agent Runs
 

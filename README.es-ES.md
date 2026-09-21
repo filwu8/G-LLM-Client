@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Versión actual del código: [V2.0.21](https://github.com/filwu8/G-LLM-Client/tree/main)
+Versión actual del código: [V2.0.22](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Última versión estable: [V2.0.21](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.21), publicada el 21 de septiembre de 2026.
+Última versión estable: [V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22), publicada el 21 de septiembre de 2026.
 
 [Descargar el cliente](https://llm.gprophet.com/download) | [Historial completo](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 

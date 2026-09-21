@@ -30,6 +30,7 @@ import { pathToFileURL } from 'node:url'
 import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '../shared/assistantTemplates'
 import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
+import { copyMermaidSvgAsPng } from './mermaidPng'
 
 import type {
   ApiProvider,
@@ -2222,6 +2223,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('attachment:screenshot', (event) => captureScreenshotForWindow(BrowserWindow.fromWebContents(event.sender)))
   ipcMain.handle('clipboard:copy-image', (_, dataUrl: string) => copyImageDataUrlToClipboard(dataUrl))
+  ipcMain.handle('clipboard:copy-mermaid-png', (_, svg: unknown) => copyMermaidSvgAsPng(svg))
   ipcMain.handle('clipboard:copy-svg', (_, svg: string) => copySvgToClipboard(svg))
   ipcMain.handle('image:save-as', (event, request: ImageSaveRequest) =>
     saveImageAsForWindow(BrowserWindow.fromWebContents(event.sender), request))
