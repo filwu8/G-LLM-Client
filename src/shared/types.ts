@@ -401,6 +401,18 @@ export interface SkillConfig {
   updatedAt: number
 }
 
+export interface AssistantCapabilitiesChange {
+  projectId: string
+  assistants: Assistant[]
+  skills: SkillConfig[]
+}
+
+export interface ConversationSkillInstallationResult {
+  conversation: Conversation
+  skill: SkillConfig
+  capabilities: AssistantCapabilitiesChange
+}
+
 export interface SkillRevision {
   version: string
   description: string

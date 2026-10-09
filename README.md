@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.22](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22)，发布于 2026-09-21。
 
@@ -23,6 +23,20 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.23 通过对话安装助手技能
+
+在主窗口或快速会话中上传 Markdown 文档并发送“给当前助手安装我上传的 Skill”，也可发送“安装 Skill https://…/SKILL.md”或“绑定「已有技能名称」技能”。客户端会导入规则、启用技能并绑定到当前空间中的当前助手，之后的聊天和工作区任务都会使用这些规则。无需模型 API Key，也无需先授权文件夹。
+
+技能沿用现有的空间与助手配置结构；默认不创建新助手，文件夹也不是技能与会话的绑定条件。重复导入相同名称和规则会复用记录。技能记录、助手绑定和成功消息一次保存，安装结果会同步到主窗口与快速会话。普通的安装方式咨询不会触发安装。
+
+支持单个 `.md` / `.markdown` 文件（含 `SKILL.md`）、消息中的 Markdown 代码块、HTTPS 文档链接（含 GitHub 文件页面）与当前空间已有技能。文档上限为 1 MB，规则上限为 50,000 字符。整个技能目录、ZIP、附带脚本、依赖和资源暂不随规则安装；文档引用附带资源时会明确提示。指定其他助手时必须匹配当前空间中已有助手的名称；新助手仍通过助手中心创建。
+
+用户通过切换助手选择技能组合，已启用且绑定到所选助手的规则一起参与后续回答。通过对话安装最多启用 20 个技能，达到上限会明确提示；可在助手设置中取消不需要的绑定。
+
+可使用[会议纪要整理示例](./docs/examples/conversation-skill/SKILL.md)体验安装流程。
+
+更新 URI 和网络传递依赖的修复版本，满足发布流程的高危依赖审计要求。
 
 ## V2.0.22 Mermaid 图表预览与复制优化
 

@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.22](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22), released on 2026-09-21.
 
@@ -23,6 +23,20 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.23 Install Assistant Skills Through Conversation
+
+Upload a Markdown document in the main window or Quick Chat and send “Install the uploaded Skill for the current assistant”. You can also send “Install Skill https://…/SKILL.md” or “Bind the existing skill named …”. The client imports the rules, enables the skill, and binds it to the current assistant in the current space. Subsequent chats and workspace tasks use these rules. A model API key and a workspace folder authorization are not required.
+
+Skills retain the existing space and assistant configuration structure. Installation does not create an assistant by default, and folders are not a requirement for binding skills to conversations. Importing the same name and rules reuses the existing record. The skill, assistant binding, and successful conversation receipt are saved together. Results synchronize between the main window and Quick Chat. Questions about installation do not trigger an installation.
+
+Supported sources are a single `.md` / `.markdown` file (including `SKILL.md`), a Markdown code block in the message, an HTTPS document link (including GitHub file pages), or an existing skill in this space. Documents are limited to 1 MB and rules to 50,000 characters. Whole directories, ZIP archives, scripts, dependencies, and resources are not installed with the rules; referenced resources are called out in the receipt. An explicitly named assistant must already exist in the current space. Create new assistants through the assistant center.
+
+Users choose a skill combination by switching assistants. Enabled rules bound to the selected assistant participate together in subsequent replies. Conversation installation allows up to 20 enabled skills and reports when this limit is reached. Remove unwanted bindings in assistant settings.
+
+Use the [meeting notes example](./docs/examples/conversation-skill/SKILL.md) to try the installation flow.
+
+URI and network transitive dependencies are updated to patched versions required by the release workflow's high-severity dependency audit.
 
 ## V2.0.22 Better Mermaid Preview and Copying
 

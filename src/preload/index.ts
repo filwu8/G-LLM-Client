@@ -42,6 +42,8 @@ import type {
   Project,
   ProviderCheckResult,
   SkillConfig,
+  AssistantCapabilitiesChange,
+  ConversationSkillInstallationResult,
   ThemeEntitlementResult,
   ToolConfig,
   WorkspaceAgentProgress,
@@ -148,6 +150,13 @@ const api = {
   saveTool: (tool: ToolConfig): Promise<ToolConfig> => ipcRenderer.invoke('tool:save', tool),
   deleteTool: (id: string): Promise<void> => ipcRenderer.invoke('tool:delete', id),
   saveSkill: (skill: SkillConfig): Promise<SkillConfig> => ipcRenderer.invoke('skill:save', skill),
+  installSkillFromConversation: (conversation: Conversation): Promise<ConversationSkillInstallationResult> =>
+    ipcRenderer.invoke('skill:install-from-conversation', conversation),
+  onAssistantCapabilitiesChanged: (listener: (change: AssistantCapabilitiesChange) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, change: AssistantCapabilitiesChange) => listener(change)
+    ipcRenderer.on('assistant:capabilities-changed', handler)
+    return () => ipcRenderer.removeListener('assistant:capabilities-changed', handler)
+  },
   deleteSkill: (id: string): Promise<void> => ipcRenderer.invoke('skill:delete', id),
   pickAttachments: (kind: AttachmentKind): Promise<PreparedAttachment[]> => ipcRenderer.invoke('attachment:pick', kind),
   preparePastedAttachments: (inputs: ClipboardAttachmentInput[]): Promise<PreparedAttachment[]> =>

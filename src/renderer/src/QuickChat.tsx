@@ -79,6 +79,8 @@ import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
 import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistantCapabilities'
+import { getSkillInstallIntent } from '@shared/skillInstallation'
+import { prepareSkillInstallationConversation, saveSkillInstallationFailure } from './conversationSkillInstallation'
 import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
@@ -310,6 +312,8 @@ export default function QuickChat() {
   const [tools, setTools] = useState<ToolConfig[]>([])
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
   const [activeProjectId, setActiveProjectId] = useState('')
+  const activeProjectIdRef = useRef('')
+  const skillInstallationRef = useRef<Conversation | null>(null)
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [composerTarget, setComposerTarget] = useState<ComposerSessionTarget | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_PROVIDER.defaultModel)
@@ -437,6 +441,7 @@ export default function QuickChat() {
     setSkills(state.skills ?? [])
     setTools(state.tools ?? [])
     setActiveProjectId(state.activeProjectId)
+    activeProjectIdRef.current = state.activeProjectId
     setActiveAssistantId(quickAssistant.id)
     setComposerTarget(target)
     setConversation(selectedConversation)
@@ -487,6 +492,12 @@ export default function QuickChat() {
       setProviders(nextProviders.length > 0 ? nextProviders : [DEFAULT_PROVIDER])
     })
   }, [])
+
+  useEffect(() => window.gllm.onAssistantCapabilitiesChanged((change) => {
+    if (change.projectId !== activeProjectIdRef.current) return
+    setAssistants(change.assistants)
+    setSkills(change.skills)
+  }), [])
 
   useEffect(() => {
     return window.gllm.onDeepLinkHandoffStatus(({ status }) => {
@@ -1467,8 +1478,12 @@ export default function QuickChat() {
     })
   }
 
-  function sendMessage(content = draft) {
+  async function sendMessage(content = draft) {
     if (!settings || isStreamingRef.current) return
+    if (getSkillInstallIntent(content)) {
+      await installQuickConversationSkill(content.trim())
+      return
+    }
     if ((assistant.status ?? 'active') !== 'active') {
       setStatus(t('assistantSettings.inactiveNotice'))
       return
@@ -1536,8 +1551,56 @@ export default function QuickChat() {
     })
   }
 
+  async function installQuickConversationSkill(content: string) {
+    const base = conversation ?? createQuickConversation(assistant, content.slice(0, 28), activeProjectId || undefined)
+    const pending = prepareSkillInstallationConversation({
+      ...base, workspace: currentWorkspace,
+      title: base.messages.length ? base.title : content.slice(0, 28),
+      messages: [...base.messages, createMessage('user', content, pendingAttachments, pendingQuoteRefs)]
+    })
+    skillInstallationRef.current = pending
+    const updateConversation = (next: Conversation) => {
+      if (next.projectId !== activeProjectIdRef.current) return
+      setConversations((current) => [next, ...current.filter((item) => item.id !== next.id)])
+      if (conversationRef.current?.id === pending.id) {
+        setConversation(next)
+        conversationRef.current = next
+      }
+    }
+    setConversation(pending)
+    conversationRef.current = pending
+    setConversations((current) => [pending, ...current.filter((item) => item.id !== pending.id)])
+    setDraft('')
+    setPendingAttachments([])
+    setPendingQuoteRefs([])
+    setStatus('')
+    beginQuickResponse()
+    streamingConversationIdRef.current = pending.id
+    try {
+      const result = await window.gllm.installSkillFromConversation(pending)
+      if (result.capabilities.projectId === activeProjectIdRef.current) {
+        setAssistants(result.capabilities.assistants)
+        setSkills(result.capabilities.skills)
+      }
+      updateConversation(result.conversation)
+    } catch (error) {
+      updateConversation(await saveSkillInstallationFailure(pending, error))
+    } finally {
+      skillInstallationRef.current = null
+      if (streamingConversationIdRef.current === pending.id) {
+        streamingConversationIdRef.current = null
+        responseStartedAtRef.current = null
+        updateStreaming(false)
+      }
+    }
+  }
+
   function stopGenerating() {
     if (!isStreaming || !conversation) return
+    if (skillInstallationRef.current?.id === conversation.id) {
+      window.gllm.cancelResponse(conversation.id)
+      return
+    }
     window.gllm.cancelResponse(conversation.id)
     const stoppedWebSearchConversation = stopConversationWebSearch(conversation)
     const lastAssistantIndex = stoppedWebSearchConversation.messages.findLastIndex((message) => message.role === 'assistant')

@@ -1271,5 +1271,27 @@
     "images": "Images",
     "documentsImagesText": "Documents, images, and text files",
     "allFiles": "All Files"
+  },
+  "skillInstall": {
+    "installing": "Reading the skill and installing it for the assistant…",
+    "installed": "Installed “{{skill}}” and bound it to “{{assistant}}”. It is enabled for subsequent conversations. You can change the binding in assistant settings.",
+    "unbundledResources": "The rules document was imported. Referenced scripts, reference files, and other resources were not installed with it.",
+    "needSource": "Upload a skill .md file, provide an HTTPS link to a Markdown document, or name an existing skill in this space. For example: Install the uploaded Skill for the current assistant.",
+    "multipleSources": "Multiple skill sources were found. Specify the file name in your message or provide one skill link at a time.",
+    "markdownOnly": "Choose a .md or .markdown skill document. GitHub links must point to a specific document. Importing whole directories or archives is not supported yet.",
+    "invalidUrl": "Provide a valid HTTPS skill document link without an embedded username or password.",
+    "downloadFailed": "The skill document could not be downloaded. Check the link and network, or download the document and upload it as an attachment before requesting installation.",
+    "invalidDocument": "The document has no usable skill rules or is not UTF-8 Markdown. Check its contents and upload it again.",
+    "rulesTooLong": "Skill names must be at most 100 characters and rules at most 50,000 characters. Shorten the document and try again.",
+    "fileTooLarge": "Skill documents must be at most 1 MB. Shorten the document and upload it again.",
+    "reupload": "The attachment content is incomplete. Upload the original Markdown file again before installing.",
+    "targetMissing": "The specified available assistant was not found. Switch to the target assistant before installing. Create a new assistant in the assistant center if needed.",
+    "invalidRequest": "This skill installation request could not be confirmed. Specify the skill and its source in the conversation.",
+    "bindingLimit": "This assistant has reached its skill limit. Remove some bindings or pause unused skills in assistant settings first.",
+    "capacity": "The skill or assistant configuration limit has been reached. Remove unused configurations and try again.",
+    "workspaceConflict": "This folder is bound to another conversation. Resolve that binding or install the skill in a regular conversation without a folder binding.",
+    "cancelled": "Skill installation was cancelled. Assistant bindings were not changed.",
+    "failed": "Skill installation failed. No new skill or assistant binding was saved. Check the source and send the installation request again.",
+    "historySaveFailed": "This result could not be saved to conversation history. Check local storage."
   }
 }

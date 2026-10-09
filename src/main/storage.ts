@@ -58,6 +58,7 @@ import {
 } from '../shared/themeEntitlement'
 import { sanitizeAppLanguage } from '../shared/i18n'
 import { mainT } from './i18n'
+import { SkillInstallationError, type SkillInstallationSource } from './skillInstallation'
 
 type LegacySettings = Partial<AppSettings> & {
   apiBaseUrl?: string
@@ -1821,6 +1822,65 @@ export function saveSkill(skill: SkillConfig, projectId = getActiveProjectId()):
   const skills = getAllSkills()
   store.set('skills', [normalized, ...skills.filter((item) => item.id !== normalized.id)].slice(0, 500))
   return normalized
+}
+
+/** Persist the installed skill, assistant binding and successful chat receipt together. */
+export function commitConversationSkillInstallation(conversation: Conversation, source: SkillInstallationSource, targetAssistantId: string) {
+  const projectId = conversation.projectId ?? getActiveProjectId()
+  if (!getProjects().some((project) => project.id === projectId)) throw new SkillInstallationError('targetMissing')
+  const assistant = getAssistants(projectId).find((item) => item.id === targetAssistantId)
+  if (!assistant || (assistant.status ?? 'active') !== 'active') throw new SkillInstallationError('targetMissing')
+  const allSkills = getAllSkills()
+  const existing = allSkills.find((skill) => skill.projectId === projectId && (source.existingSkillId
+    ? skill.id === source.existingSkillId
+    : skill.name === source.name && skill.instructions === source.instructions))
+  if (source.existingSkillId && !existing) throw new SkillInstallationError('needSource')
+  if (!existing && allSkills.length >= 500) throw new SkillInstallationError('capacity')
+  if ((assistant.skillIds ?? []).filter((id) => allSkills.some((skill) => skill.id === id && skill.status === 'active')).length >= 20
+    && (!existing || !assistant.skillIds?.includes(existing.id) || existing.status !== 'active')) {
+    throw new SkillInstallationError('bindingLimit')
+  }
+  if ((assistant.skillIds?.length ?? 0) >= 100 && (!existing || !assistant.skillIds?.includes(existing.id))) {
+    throw new SkillInstallationError('bindingLimit')
+  }
+  const now = Date.now()
+  const skill = sanitizeSkill({
+    ...(existing ?? {
+      id: `skill_${randomUUID()}`, name: source.name, description: source.description,
+      instructions: source.instructions, version: '1.0.0', sourceType: 'imported',
+      sourceLocator: source.sourceLocator, toolIds: [], createdAt: now
+    }),
+    projectId, status: 'active', updatedAt: now
+  }, projectId)
+  const boundAssistant = sanitizeAssistant({
+    ...assistant, projectId, skillIds: [...new Set([...(assistant.skillIds ?? []), skill.id])], updatedAt: now
+  }, projectId)
+  const allAssistants = getAllCustomAssistants()
+  if (allAssistants.length >= 400 && !allAssistants.some((item) => item.id === boundAssistant.id && item.projectId === projectId)) {
+    throw new SkillInstallationError('capacity')
+  }
+  const language = getSettings().language
+  const content = mainT('skillInstall.installed', language, { skill: skill.name, assistant: assistant.name })
+    + (source.hasUnbundledResources ? `\n\n${mainT('skillInstall.unbundledResources', language)}` : '')
+  const messages = conversation.messages.map((message, index) => index === conversation.messages.length - 1
+    ? { ...message, content, error: undefined, tokenCount: 0, inputTokens: 0, outputTokens: 0, responseCompletedAt: now }
+    : message)
+  const savedConversation = sanitizeConversation({ ...conversation, projectId, messages, updatedAt: now }, projectId)
+  const conversations = getAllConversations()
+  const previous = conversations.find((item) => item.id === conversation.id)
+  if (previous && (previous.projectId !== projectId || previous.assistantId !== conversation.assistantId)) {
+    throw new SkillInstallationError('invalidRequest')
+  }
+  if (savedConversation.workspace && conversations.some((item) => item.id !== savedConversation.id && item.workspace
+    && normalizePathForCompare(item.workspace.rootPath) === normalizePathForCompare(savedConversation.workspace!.rootPath))) {
+    throw new SkillInstallationError('workspaceConflict')
+  }
+  store.set({
+    skills: [skill, ...allSkills.filter((item) => item.id !== skill.id)],
+    assistants: [boundAssistant, ...allAssistants.filter((item) => !(item.id === boundAssistant.id && item.projectId === projectId))],
+    conversations: [savedConversation, ...conversations.filter((item) => item.id !== conversation.id)].slice(0, 1000)
+  })
+  return { conversation: savedConversation, skill, capabilities: { projectId, assistants: getAssistants(projectId), skills: getSkills(projectId) } }
 }
 
 export function deleteSkill(id: string): void {

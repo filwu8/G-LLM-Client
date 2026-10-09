@@ -140,6 +140,8 @@ import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
 import { resolveAssistantSkills, resolveAssistantTools } from '@shared/assistantCapabilities'
 import { addSkillEvalCase, evaluateSkillRegression, evolveSkill, rollbackSkill } from '@shared/skillLifecycle'
 import { parseSkillMarkdown } from '@shared/skillMarkdown'
+import { getSkillInstallIntent } from '@shared/skillInstallation'
+import { prepareSkillInstallationConversation, saveSkillInstallationFailure } from './conversationSkillInstallation'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
 import {
   DEFAULT_PROVIDER,
@@ -788,6 +790,7 @@ function getEffectiveProvider(
 
 export default function App() {
   const { t, i18n } = useTranslation()
+  const skillInstallationRef = useRef<Conversation | null>(null)
   const isMac = window.gllm.platform === 'darwin'
   const isWindows = window.gllm.platform === 'win32'
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -1234,6 +1237,12 @@ export default function App() {
       setProviders(nextProviders.length > 0 ? nextProviders : [DEFAULT_PROVIDER])
     })
   }, [])
+
+  useEffect(() => window.gllm.onAssistantCapabilitiesChanged((change) => {
+    if (change.projectId !== activeProjectIdRef.current) return
+    setAssistants(change.assistants)
+    setSkills(change.skills)
+  }), [])
 
   useEffect(() => {
     return window.gllm.onAppUpdateStatus((status) => {
@@ -3031,6 +3040,10 @@ export default function App() {
 
   async function sendMessage(content = draft) {
     if (!settings || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
+    if (getSkillInstallIntent(content)) {
+      await installConversationSkill(content.trim())
+      return
+    }
     if ((activeAssistant.status ?? 'active') !== 'active') {
       showToolNotice(t('assistantSettings.inactiveNotice'))
       setAssistantSettingsOpen(true)
@@ -3109,8 +3122,55 @@ export default function App() {
     })
   }
 
+  async function installConversationSkill(content: string) {
+    if (skillInstallationRef.current) {
+      showToolNotice(t('skillInstall.installing'))
+      return
+    }
+    const base = activeConversation?.assistantId === activeAssistant.id
+      ? activeConversation : createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+    const pending = prepareSkillInstallationConversation({
+      ...base, workspace: currentWorkspace,
+      title: base.messages.length ? base.title : content.slice(0, 28),
+      messages: [...base.messages, createMessage('user', content, pendingAttachments, [...pendingQuoteRefs, ...pendingKnowledgeRefs])]
+    })
+    skillInstallationRef.current = pending
+    if (!activeConversation) moveComposerSessionToConversation(pending.id, true)
+    selectConversation(pending.id)
+    if (newConversationDraftRef.current?.id === pending.id) newConversationDraftRef.current = null
+    const updateConversation = (next: Conversation) => {
+      if (next.projectId !== activeProjectIdRef.current) return
+      setConversations((current) => [next, ...current.filter((item) => item.id !== next.id)])
+    }
+    updateConversation(pending)
+    setDraft('')
+    setPendingAttachments([])
+    setPendingQuoteRefs([])
+    setPendingKnowledgeRefs([])
+    beginConversationRun(pending.id)
+    let outcome: 'completed' | 'error' = 'error'
+    try {
+      const result = await window.gllm.installSkillFromConversation(pending)
+      if (result.capabilities.projectId === activeProjectIdRef.current) {
+        setAssistants(result.capabilities.assistants)
+        setSkills(result.capabilities.skills)
+      }
+      updateConversation(result.conversation)
+      outcome = 'completed'
+    } catch (error) {
+      updateConversation(await saveSkillInstallationFailure(pending, error))
+    } finally {
+      skillInstallationRef.current = null
+      completeConversationRun(pending.id, outcome)
+    }
+  }
+
   function stopGenerating() {
     if (!isStreaming || !activeConversation) return
+    if (skillInstallationRef.current?.id === activeConversation.id) {
+      window.gllm.cancelResponse(activeConversation.id)
+      return
+    }
     window.gllm.cancelResponse(activeConversation.id)
     const responseStartedAt = conversationRunStatesRef.current[activeConversation.id]?.startedAt
     const stoppedWebSearchConversation = stopConversationWebSearch(activeConversation)

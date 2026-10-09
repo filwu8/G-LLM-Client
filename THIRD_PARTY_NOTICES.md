@@ -156,7 +156,7 @@ This file is generated from the locked production dependency graph by
 | estree-util-is-identifier-name@3.0.0 | MIT | [link](https://github.com/syntax-tree/estree-util-is-identifier-name#readme) |
 | extend@3.0.2 | MIT | [link](https://github.com/justmoon/node-extend#readme) |
 | fast-deep-equal@3.1.3 | MIT | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
-| fast-uri@3.1.6 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
+| fast-uri@3.1.7 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
 | fs-extra@10.1.0 | MIT | [link](https://github.com/jprichardson/node-fs-extra) |
 | graceful-fs@4.2.11 | ISC | [link](https://github.com/isaacs/node-graceful-fs#readme) |
 | hachure-fill@0.5.2 | MIT | [link](https://github.com/pshihn/hachure-fill#readme) |
@@ -301,7 +301,7 @@ This file is generated from the locked production dependency graph by
 | uint8array-extras@1.5.0 | MIT | [link](https://github.com/sindresorhus/uint8array-extras#readme) |
 | underscore@1.13.8 | MIT | [link](https://underscorejs.org) |
 | undici-types@7.18.2 | MIT | [link](https://undici.nodejs.org) |
-| undici@7.29.0 | MIT | [link](https://undici.nodejs.org) |
+| undici@7.29.1 | MIT | [link](https://undici.nodejs.org) |
 | unified@11.0.5 | MIT | [link](https://unifiedjs.com) |
 | unist-util-is@6.0.1 | MIT | [link](https://github.com/syntax-tree/unist-util-is#readme) |
 | unist-util-position@5.0.0 | MIT | [link](https://github.com/syntax-tree/unist-util-position#readme) |
@@ -2730,7 +2730,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### fast-uri@3.1.6
+### fast-uri@3.1.7
 
 ````text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -5638,7 +5638,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### undici-types@7.18.2, undici@7.29.0
+### undici-types@7.18.2, undici@7.29.1
 
 ````text
 MIT License

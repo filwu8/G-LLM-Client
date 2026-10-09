@@ -31,6 +31,7 @@ import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '..
 import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
 import { copyMermaidSvgAsPng } from './mermaidPng'
+import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
 
 import type {
   ApiProvider,
@@ -126,6 +127,7 @@ import {
   saveProject,
   saveProvider,
   saveSkill,
+  commitConversationSkillInstallation,
   saveTool,
   setActiveProjectId,
   setSettings
@@ -2016,6 +2018,50 @@ app.whenReady().then(() => {
   ipcMain.handle('tool:save', (_, tool) => saveTool(tool))
   ipcMain.handle('tool:delete', (_, id: string) => deleteTool(id))
   ipcMain.handle('skill:save', (_, skill) => saveSkill(skill))
+  ipcMain.handle('skill:install-from-conversation', async (_, conversation: Conversation) => {
+    const language = getSettings().language
+    let handle: ReturnType<typeof activeResponses.register> | undefined
+    try {
+      if (!conversation || typeof conversation.id !== 'string' || !Array.isArray(conversation.messages)
+        || conversation.messages.length < 2 || typeof conversation.assistantId !== 'string') {
+        throw new SkillInstallationError('invalidRequest')
+      }
+      const intent = getConversationSkillInstallIntent(conversation)
+      const projectId = conversation.projectId ?? getActiveProjectId()
+      if (!getProjects().some((project) => project.id === projectId)) throw new SkillInstallationError('targetMissing')
+      const assistants = getAssistants(projectId)
+      const currentAssistant = assistants.find((item) => item.id === conversation.assistantId)
+      if (!currentAssistant) throw new SkillInstallationError('targetMissing')
+      const targets = intent.targetAssistantName
+        ? assistants.filter((item) => [intent.targetAssistantName!, `${intent.targetAssistantName}助手`, `${intent.targetAssistantName} assistant`]
+          .some((name) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
+        : [currentAssistant]
+      if (targets.length !== 1) throw new SkillInstallationError('targetMissing')
+      handle = activeResponses.register('chat', conversation.id, 'skill-install')
+      const { getSelectedAttachmentPath } = await import('./attachments')
+      const source = await resolveSkillInstallationSource(conversation, getSkills(projectId), {
+        fetcher: (url, init) => net.fetch(url, init),
+        pathForAttachment: getSelectedAttachmentPath,
+        signal: handle.controller.signal
+      })
+      if (handle.controller.signal.aborted) throw new SkillInstallationError('cancelled')
+      const result = commitConversationSkillInstallation(conversation, source, targets[0].id)
+      for (const window of BrowserWindow.getAllWindows()) {
+        try {
+          if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+            window.webContents.send('assistant:capabilities-changed', result.capabilities)
+          }
+        } catch { /* The installation remains successful if an observing window closes. */ }
+      }
+      try { broadcastConversationChange(result.conversation.id, 'metadata', result.conversation) } catch { /* Receipt is already saved. */ }
+      writeMainLog(`Skill installed and bound: skill=${result.skill.id}, assistant=${targets[0].id}, project=${projectId}.`)
+      return result
+    } catch (error) {
+      const code = error instanceof SkillInstallationError ? error.code : 'failed'
+      writeMainLog(`Conversation skill installation failed: conversation=${conversation?.id ?? 'unknown'}, reason=${code}.`, error)
+      throw new Error(mainT(`skillInstall.${code}`, language))
+    } finally { if (handle) activeResponses.release(handle) }
+  })
   ipcMain.handle('skill:delete', (_, id: string) => deleteSkill(id))
   ipcMain.handle('attachment:pick', async (event, kind) => {
     const { pickAttachments } = await import('./attachments')
