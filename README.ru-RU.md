@@ -4,7 +4,7 @@
 
 Текущая версия кода: [V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Последняя стабильная версия: [V2.0.22](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.22), выпущена 21 сентября 2026 года.
+Последняя стабильная версия: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), выпущена 9 октября 2026 года.
 
 [Скачать клиент](https://llm.gprophet.com/download) | [Полный журнал изменений](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
