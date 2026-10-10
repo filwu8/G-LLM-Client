@@ -682,8 +682,8 @@ function createWindow(): BrowserWindow {
     titleBarOverlay: process.platform === 'win32' ? getTitleBarOverlay(settings) : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 10 } : undefined,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
-      sandbox: false,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: true,
       contextIsolation: true
     }
   })
@@ -953,8 +953,8 @@ function createFloatingLogoWindow(): BrowserWindow {
     backgroundColor: '#00000000',
     icon: getAppIconPath(),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
-      sandbox: false,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: true,
       contextIsolation: true
     }
   })
@@ -1002,8 +1002,8 @@ function createFloatingMascotHintWindow(): BrowserWindow {
     title: 'G-LLM',
     backgroundColor: '#00000000',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
-      sandbox: false,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: true,
       contextIsolation: true
     }
   })
@@ -1201,8 +1201,8 @@ function createQuickWindow(anchorBounds?: Rectangle): BrowserWindow {
     icon: getAppIconPath(),
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
-      sandbox: false,
+      preload: join(__dirname, '../preload/index.cjs'),
+      sandbox: true,
       contextIsolation: true
     }
   })
