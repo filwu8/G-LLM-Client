@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { diagnoseWorkspaceExecution } from './workspaceDiagnostics.ts'
 import { probeNativePython } from './workspaceNative.ts'
-test('execution checks distinguish Python availability from Shell and do not change business files', async () => {
+import { sandboxStatus } from './workspaceSandbox.ts'
+
+const backendMissing = !process.env.CI && !(await sandboxStatus()).available
+test('execution checks distinguish Python availability from Shell and do not change business files', { skip: backendMissing && 'native sandbox backend is not installed' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'gllm-doctor-test-'))
   try {
     await writeFile(join(root, 'business.txt'), 'leave untouched')

@@ -7,9 +7,11 @@ import { resolve } from 'node:path'
 import { createServer } from 'node:net'
 import { prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
-import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
+import { bubblewrapArgs, linuxSeccomp, sandboxBackend, sandboxStatus, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
 
 const supported = ['darwin', 'linux', 'win32'].includes(process.platform)
+// CI must always exercise the backend; locally, skip instead of failing when it is not installed.
+const backendMissing = !process.env.CI && !(await sandboxStatus()).available
 async function fixture() { return mkdtemp(resolve(tmpdir(), 'gllm-isolation-test-')) }
 test('native sandbox denies outside writes, private inputs and network, including a subprocess', { skip: !supported }, async (t) => {
   if (!await probeNativePython({ executionMode: 'sandbox' })) { t.skip('Python is not runnable in the selected sandbox'); return }
@@ -133,7 +135,7 @@ test('seccomp blocks Unix IPC and cross-process access while preserving ordinary
   assert.equal(evaluate('x64', 0x40000029, 1), 0x50001)
 })
 
-test('platform shell creates a result inside the sandbox', { skip: !supported }, async () => {
+test('platform shell creates a result inside the sandbox', { skip: !supported ? true : backendMissing && 'native sandbox backend is not installed' }, async () => {
   const root = await fixture()
   try {
     const code = process.platform === 'win32' ? 'echo sandbox-shell>"shell.txt"\necho shell-ok' : 'printf sandbox-shell > shell.txt; echo shell-ok'
