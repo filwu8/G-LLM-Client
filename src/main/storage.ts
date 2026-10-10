@@ -59,6 +59,8 @@ import {
 import { sanitizeAppLanguage } from '../shared/i18n'
 import { mainT } from './i18n'
 import { SkillInstallationError, type SkillInstallationSource } from './skillInstallation'
+import { needsSealing, openProvider, sealProvider, type StoredProvider } from './providerSecrets'
+import { safeStorageCipher } from './workspaceSecrets'
 
 type LegacySettings = Partial<AppSettings> & {
   apiBaseUrl?: string
@@ -70,7 +72,7 @@ interface StoreSchema {
   settings: LegacySettings
   activeProjectId: string
   projects: Project[]
-  providers: ApiProvider[]
+  providers: StoredProvider[]
   assistants: Assistant[]
   assistantOrders: Record<string, string[]>
   deletedBuiltInAssistants: string[]
@@ -1316,9 +1318,23 @@ function getMigratedDefaultProvider(): ApiProvider {
   })
 }
 
+function getStoredProviders(): StoredProvider[] {
+  const stored = store.get('providers', [])
+  if (!stored.some((provider) => needsSealing(provider, safeStorageCipher))) return stored
+  const sealed = stored.map((provider) => sealProvider(provider, safeStorageCipher))
+  store.set('providers', sealed)
+  return sealed
+}
+
+function setStoredProviders(providers: StoredProvider[]): void {
+  const withDefault = providers.some((provider) => provider.id === DEFAULT_PROVIDER_ID)
+    ? providers
+    : [sealProvider(getMigratedDefaultProvider(), safeStorageCipher), ...providers]
+  store.set('providers', withDefault.slice(0, 40))
+}
+
 export function getProviders(): ApiProvider[] {
-  const providers = store.get('providers', [])
-  const normalized = providers.map(sanitizeProvider)
+  const normalized = getStoredProviders().map((provider) => sanitizeProvider(openProvider(provider, safeStorageCipher)))
   const hasDefaultProvider = normalized.some((provider) => provider.id === DEFAULT_PROVIDER_ID)
 
   if (normalized.length === 0) {
@@ -1330,19 +1346,15 @@ export function getProviders(): ApiProvider[] {
 
 export function saveProvider(provider: ApiProvider): ApiProvider {
   const normalized = sanitizeProvider(provider)
-  const providers = getProviders()
-  const next = [normalized, ...providers.filter((item) => item.id !== normalized.id)]
-  store.set('providers', next.slice(0, 40))
+  const others = getStoredProviders().filter((item) => item.id !== normalized.id)
+  setStoredProviders([sealProvider(normalized, safeStorageCipher), ...others])
   return normalized
 }
 
 export function deleteProvider(id: string): void {
   if (id === DEFAULT_PROVIDER_ID) return
 
-  store.set(
-    'providers',
-    getProviders().filter((provider) => provider.id !== id)
-  )
+  setStoredProviders(getStoredProviders().filter((provider) => provider.id !== id))
 
   const settings = getSettings()
   if (settings.activeProviderId === id) {
