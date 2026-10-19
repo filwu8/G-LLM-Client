@@ -358,7 +358,7 @@ app.on('open-url', (event, url) => {
   if (gotSingleInstanceLock) receiveDeepLink(url, 'macOS open-url event')
 })
 
-if (process.platform === 'win32') {
+if (process.platform === 'win32' && !process.windowsStore) {
   app.setAppUserModelId(APP_USER_MODEL_ID)
 }
 
@@ -532,6 +532,10 @@ function receiveDeepLink(url: string, origin: string): void {
 }
 
 function registerGllmDeepLinkProtocol(): void {
+  if (process.windowsStore) {
+    writeMainLog('Store package registers the G-LLM protocol through its manifest.')
+    return
+  }
   let registered = false
 
   if (process.defaultApp) {
@@ -1678,7 +1682,7 @@ process.on('unhandledRejection', (reason) => {
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return
 
-  electronApp.setAppUserModelId(APP_USER_MODEL_ID)
+  if (!process.windowsStore) electronApp.setAppUserModelId(APP_USER_MODEL_ID)
   Menu.setApplicationMenu(null)
   registerDataResourceProtocol()
   setupLinuxAppImageDeepLinkProtocol()
@@ -1721,7 +1725,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:download-update', () => autoUpdateManager?.downloadUpdate())
   ipcMain.handle('app:install-update', () => autoUpdateManager?.installUpdate() ?? false)
   ipcMain.handle('app:open-download-page', async () => {
-    await shell.openExternal(DOWNLOAD_PAGE_URL)
+    await shell.openExternal(autoUpdateManager?.getState().downloadPageUrl ?? DOWNLOAD_PAGE_URL)
   })
   ipcMain.handle('app:open-legal-document', async (_event, document: unknown) => {
     if (!isLegalDocument(document)) throw new Error('Unsupported legal document')

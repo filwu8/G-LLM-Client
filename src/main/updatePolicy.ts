@@ -11,9 +11,11 @@ const WINDOWS_AUTOMATIC_UPDATE_ENABLED = true
 const RETRYABLE_DOWNLOAD_ERROR_PATTERN =
   /ERR_CONNECTION_(?:CLOSED|RESET)|ERR_NETWORK_CHANGED|ERR_TIMED_OUT|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network error|temporarily unavailable|\b(?:408|429|500|502|503|504)\b/i
 
-export function supportsAutomaticUpdate(isPackaged: boolean, platform: NodeJS.Platform): boolean {
-  return WINDOWS_AUTOMATIC_UPDATE_ENABLED && isPackaged && platform === 'win32'
+export function supportsAutomaticUpdate(isPackaged: boolean, platform: NodeJS.Platform, windowsStore = false): boolean {
+  return WINDOWS_AUTOMATIC_UPDATE_ENABLED && isPackaged && platform === 'win32' && !windowsStore
 }
+
+export const MICROSOFT_STORE_URL = 'https://apps.microsoft.com/detail/9MVD547V4ZN9'
 
 export function normalizeReleaseNotes(value: unknown): string | undefined {
   const notes = Array.isArray(value)

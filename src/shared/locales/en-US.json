@@ -1127,6 +1127,7 @@
     "update": {
       "ready": "Windows automatic updates are enabled",
       "manualOnly": "Only manual updates are supported in this environment",
+      "storeManaged": "Updates for this edition are managed by Microsoft Store",
       "checking": "Checking GitHub Releases for updates...",
       "unavailable": "The latest version information is temporarily unavailable. Check the download page manually.",
       "available": "Version {{version}} is available and will download in the background",

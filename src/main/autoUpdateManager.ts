@@ -16,6 +16,7 @@ import {
   isRetryableUpdateDownloadError,
   normalizeActiveDownloadProgress,
   normalizeReleaseNotes,
+  MICROSOFT_STORE_URL,
   supportsAutomaticUpdate
 } from './updatePolicy'
 
@@ -44,7 +45,8 @@ function getReleaseDetails(info: UpdateInfo): Pick<AppUpdateInfo, 'latestVersion
 }
 
 export class AutoUpdateManager {
-  private readonly supported = supportsAutomaticUpdate(app.isPackaged, process.platform)
+  private readonly storeManaged = process.windowsStore === true
+  private readonly supported = supportsAutomaticUpdate(app.isPackaged, process.platform, this.storeManaged)
   private state: AppUpdateInfo
   private checkPromise: Promise<AppUpdateInfo> | null = null
   private downloadPromise: Promise<AppUpdateInfo> | null = null
@@ -58,8 +60,8 @@ export class AutoUpdateManager {
       updateAvailable: false,
       status: 'idle',
       automaticUpdateSupported: this.supported,
-      downloadPageUrl: DOWNLOAD_PAGE_URL,
-      message: mainT(this.supported ? 'main.update.ready' : 'main.update.manualOnly', options.getLanguage())
+      downloadPageUrl: this.storeManaged ? MICROSOFT_STORE_URL : DOWNLOAD_PAGE_URL,
+      message: mainT(this.storeManaged ? 'main.update.storeManaged' : this.supported ? 'main.update.ready' : 'main.update.manualOnly', options.getLanguage())
     }
 
     if (!this.supported) return
@@ -145,6 +147,11 @@ export class AutoUpdateManager {
   }
 
   async checkForUpdates(): Promise<AppUpdateInfo> {
+    if (this.storeManaged) {
+      this.publish({ ...this.state, status: 'unsupported', updateAvailable: false,
+        message: mainT('main.update.storeManaged', this.options.getLanguage()) })
+      return this.getState()
+    }
     if (!this.supported) {
       const fallback = await checkForAppUpdate(app.getVersion(), this.options.getLanguage())
       this.publish(fallback)

@@ -21,6 +21,7 @@ test('unsigned automatic installation is enabled only for packaged Windows build
   assert.equal(supportsAutomaticUpdate(true, 'linux'), false)
   assert.equal(supportsAutomaticUpdate(false, 'win32'), false)
   assert.equal(supportsAutomaticUpdate(false, 'darwin'), false)
+  assert.equal(supportsAutomaticUpdate(true, 'win32', true), false)
 })
 
 test('release notes accept updater strings and note arrays without exposing arbitrary objects', () => {

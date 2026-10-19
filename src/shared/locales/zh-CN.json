@@ -1127,6 +1127,7 @@
     "update": {
       "ready": "已启用 Windows 自动更新",
       "manualOnly": "当前环境仅支持手动更新",
+      "storeManaged": "此版本由 Microsoft Store 管理更新",
       "checking": "正在检查 GitHub Releases 中的新版本...",
       "unavailable": "暂时无法读取官网版本信息，可前往下载页手动查看。",
       "available": "发现新版本 V{{version}}，正在准备后台下载",

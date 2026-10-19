@@ -30,6 +30,7 @@
     "bundle:verify": "node scripts/verify-main-bundle.mjs",
     "preview": "electron-vite preview",
     "package:win": "pnpm build && electron-builder --win --x64 --publish never",
+    "package:msix": "pnpm build && electron-builder --win dir --x64 --publish never --config.electronDist=node_modules/electron/dist && node scripts/package-msix.mjs",
     "package:mac": "pnpm build && electron-builder --mac --arm64 --x64 --publish never",
     "package:linux": "pnpm build && electron-builder --linux --x64 --publish never",
     "test:sandbox": "node --test --experimental-strip-types src/main/workspaceNative.test.ts src/main/workspaceSandbox.test.ts src/main/workspaceVault.test.ts src/main/workspaceJobs.test.ts src/main/workspaceDiagnostics.test.ts",
