@@ -60,8 +60,8 @@ jobs:
       - name: Run goal mode tests
         run: pnpm test:goal-mode
 
-      - name: Reject high-severity production dependency advisories
-        run: pnpm audit --prod --audit-level high
+      - name: Reject dependency advisories at every severity
+        run: pnpm audit --audit-level low
 
       - name: Build application
         run: pnpm build

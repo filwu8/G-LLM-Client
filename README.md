@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.24（待发布）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -23,6 +23,15 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.24 安全修复（待发布）
+
+- 更新 Mermaid、DOMPurify、fast-uri 和 KaTeX，并替换 Mammoth 的命令行解析依赖，移除 sprintf-js 漏洞依赖链。
+- 生产、开发与打包依赖全量审计已清零；升级压缩包、CSS、构建和浏览器数据依赖，移除旧下载链中的 got 缓存与 sprintf-js。
+- 新增数学渲染安全、Word 文档转换和下载校验/缓存/篡改拒绝回归检查；CI 与发布流程拦截所有等级的依赖告警。
+- 构建工具要求 Node.js 22.12.0 或更新版本，CI 使用 Node.js 24。代理配置使用 HTTP_PROXY、HTTPS_PROXY、NO_PROXY，不再使用 GLOBAL_AGENT_*。
+- 本地修复尚未作为正式版本发布。最近稳定版仍为 2.0.23。
+
 
 ## V2.0.23 通过对话安装助手技能
 

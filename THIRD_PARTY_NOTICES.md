@@ -18,10 +18,10 @@ This file is generated from the locked production dependency graph by
 | @electron-internal/extract-zip@1.0.3 | BSD-2-Clause | [link](https://github.com/electron/extract-zip#readme) |
 | @electron-toolkit/preload@3.0.2 | MIT | [link](https://github.com/alex8088/electron-toolkit/tree/master/packages/preload#readme) |
 | @electron-toolkit/utils@4.0.0 | MIT | [link](https://github.com/alex8088/electron-toolkit/tree/master/packages/utils#readme) |
-| @electron/get@5.0.0 | MIT | [link](https://github.com/electron/get#readme) |
+| @electron/get@5.1.0 | MIT | [link](https://github.com/electron/get#readme) |
 | @iconify/types@2.0.0 | MIT | [link](https://github.com/iconify/iconify) |
 | @iconify/utils@3.1.3 | MIT | [link](https://iconify.design/docs/libraries/utils/) |
-| @mermaid-js/parser@1.2.0 | MIT | [link](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) |
+| @mermaid-js/parser@1.2.1 | MIT | [link](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) |
 | @napi-rs/canvas-darwin-arm64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
 | @napi-rs/canvas-darwin-x64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
 | @napi-rs/canvas-linux-x64-gnu@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
@@ -77,7 +77,6 @@ This file is generated from the locked production dependency graph by
 | @xmldom/xmldom@0.8.15 | MIT | [link](https://github.com/xmldom/xmldom) |
 | ajv-formats@3.0.1 | MIT | [link](https://github.com/ajv-validator/ajv-formats#readme) |
 | ajv@8.20.0 | MIT | [link](https://ajv.js.org) |
-| argparse@1.0.10 | MIT | [link](https://github.com/nodeca/argparse#readme) |
 | argparse@2.0.1 | Python-2.0 | [link](https://github.com/nodeca/argparse#readme) |
 | atomically@2.1.1 | MIT | [link](https://github.com/fabiospampinato/atomically#readme) |
 | bail@2.0.2 | MIT | [link](https://github.com/wooorm/bail#readme) |
@@ -144,7 +143,7 @@ This file is generated from the locked production dependency graph by
 | dequal@2.0.3 | MIT | [link](https://github.com/lukeed/dequal#readme) |
 | devlop@1.1.0 | MIT | [link](https://github.com/wooorm/devlop#readme) |
 | dingbat-to-unicode@1.0.1 | BSD-2-Clause | [link](https://github.com/mwilliamson/dingbat-to-unicode#readme) |
-| dompurify@3.4.12 | (MPL-2.0 OR Apache-2.0) | [link](https://github.com/cure53/DOMPurify) |
+| dompurify@3.4.16 | (MPL-2.0 OR Apache-2.0) | [link](https://github.com/cure53/DOMPurify) |
 | dot-prop@9.0.0 | MIT | [link](https://github.com/sindresorhus/dot-prop#readme) |
 | duck@0.1.12 | BSD | [link](https://github.com/mwilliamson/duck.js#readme) |
 | electron-store@10.1.0 | MIT | [link](https://github.com/sindresorhus/electron-store#readme) |
@@ -156,7 +155,8 @@ This file is generated from the locked production dependency graph by
 | estree-util-is-identifier-name@3.0.0 | MIT | [link](https://github.com/syntax-tree/estree-util-is-identifier-name#readme) |
 | extend@3.0.2 | MIT | [link](https://github.com/justmoon/node-extend#readme) |
 | fast-deep-equal@3.1.3 | MIT | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
-| fast-uri@3.1.7 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
+| fast-uri@3.1.8 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
+| fastdom@1.0.12 | MIT | [link](https://github.com/wilsonpage/fastdom) |
 | fs-extra@10.1.0 | MIT | [link](https://github.com/jprichardson/node-fs-extra) |
 | graceful-fs@4.2.11 | ISC | [link](https://github.com/isaacs/node-graceful-fs#readme) |
 | hachure-fill@0.5.2 | MIT | [link](https://github.com/pshihn/hachure-fill#readme) |
@@ -185,7 +185,7 @@ This file is generated from the locked production dependency graph by
 | json-schema-typed@8.0.2 | BSD-2-Clause | [link](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) |
 | jsonfile@6.2.1 | MIT | [link](https://github.com/jprichardson/node-jsonfile#readme) |
 | jszip@3.10.1 | (MIT OR GPL-3.0-or-later) | [link](https://github.com/Stuk/jszip#readme) |
-| katex@0.16.47 | MIT | [link](https://katex.org) |
+| katex@0.18.2 | MIT | [link](https://katex.org) |
 | khroma@2.1.0 | MIT | [link](https://github.com/fabiospampinato/khroma#readme) |
 | layout-base@1.0.2 | MIT | [link](https://github.com/iVis-at-Bilkent/layout-base#readme) |
 | layout-base@2.0.1 | MIT | [link](https://github.com/iVis-at-Bilkent/layout-base#readme) |
@@ -215,7 +215,7 @@ This file is generated from the locked production dependency graph by
 | mdast-util-to-hast@13.2.1 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-hast#readme) |
 | mdast-util-to-markdown@2.1.2 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-markdown#readme) |
 | mdast-util-to-string@4.0.0 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-string#readme) |
-| mermaid@11.16.0 | MIT | [link](https://github.com/mermaid-js/mermaid#readme) |
+| mermaid@11.17.2 | MIT | [link](https://github.com/mermaid-js/mermaid#readme) |
 | micromark-core-commonmark@2.0.3 | MIT | [link](https://github.com/micromark/micromark/tree/main#readme) |
 | micromark-extension-gfm-autolink-literal@2.1.0 | MIT | [link](https://github.com/micromark/micromark-extension-gfm-autolink-literal#readme) |
 | micromark-extension-gfm-footnote@2.1.0 | MIT | [link](https://github.com/micromark/micromark-extension-gfm-footnote#readme) |
@@ -281,7 +281,7 @@ This file is generated from the locked production dependency graph by
 | semver@7.8.5 | ISC | [link](https://github.com/npm/node-semver#readme) |
 | setimmediate@1.0.5 | MIT | [link](https://github.com/YuzuJS/setImmediate#readme) |
 | space-separated-tokens@2.0.2 | MIT | [link](https://github.com/wooorm/space-separated-tokens#readme) |
-| sprintf-js@1.0.3 | BSD-3-Clause | [link](https://github.com/alexei/sprintf.js#readme) |
+| strictdom@1.0.1 | MIT | [link](https://github.com/wilsonpage/strictdom) |
 | string_decoder@1.1.1 | MIT | [link](https://github.com/nodejs/string_decoder) |
 | stringify-entities@4.0.4 | MIT | [link](https://github.com/wooorm/stringify-entities#readme) |
 | stubborn-fs@2.0.0 | MIT | [link](https://github.com/fabiospampinato/stubborn-fs#readme) |
@@ -400,7 +400,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @chevrotain/types@11.1.2, dompurify@3.4.12, pdf-parse@2.4.5, sumchecker@3.0.1
+### @chevrotain/types@11.1.2, dompurify@3.4.16, pdf-parse@2.4.5, sumchecker@3.0.1
 
 ````text
 Apache License
@@ -632,7 +632,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @electron/get@5.0.0
+### @electron/get@5.1.0
 
 ````text
 MIT License
@@ -710,7 +710,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @mermaid-js/parser@1.2.0
+### @mermaid-js/parser@1.2.1
 
 ````text
 The MIT License (MIT)
@@ -950,32 +950,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-````
-
-### argparse@1.0.10
-
-````text
-(The MIT License)
-
-Copyright (C) 2012 by Vitaly Puzrin
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ````
 
 ### argparse@2.0.1
@@ -2193,7 +2167,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### dompurify@3.4.12
+### dompurify@3.4.16
 
 ````text
 Mozilla Public License Version 2.0
@@ -2730,7 +2704,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### fast-uri@3.1.7
+### fast-uri@3.1.8
 
 ````text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -3854,7 +3828,7 @@ copy of the Program in return for a fee.
                      END OF TERMS AND CONDITIONS
 ````
 
-### katex@0.16.47
+### katex@0.18.2
 
 ````text
 The MIT License (MIT)
@@ -4224,7 +4198,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### mermaid@11.16.0
+### mermaid@11.17.2
 
 ````text
 The MIT License (MIT)
@@ -5143,35 +5117,6 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### sprintf-js@1.0.3
-
-````text
-Copyright (c) 2007-2014, Alexandru Marasteanu <hello [at) alexei (dot] ro>
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-* Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-* Neither the name of this software nor the names of its contributors may be
-  used to endorse or promote products derived from this software without
-  specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
-ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-````
-
 ### stubborn-fs@2.0.0, when-exit@2.1.5
 
 ````text
@@ -5849,7 +5794,9 @@ ship a root-level license or notice file in the installed package:
 - @napi-rs/canvas-linux-x64-gnu@0.1.80: MIT
 - @napi-rs/canvas-win32-x64-msvc@0.1.80: MIT
 - dingbat-to-unicode@1.0.1: BSD-2-Clause
+- fastdom@1.0.12: MIT
 - html-parse-stringify@3.0.1: MIT
 - isarray@1.0.0: MIT
 - js-tiktoken@1.0.21: MIT
 - lazy-val@1.0.5: MIT
+- strictdom@1.0.1: MIT

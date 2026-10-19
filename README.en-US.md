@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.24 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.24 Security Fixes (Unreleased)
+
+- Update Mermaid, DOMPurify, fast-uri, and KaTeX, and replace Mammoth's CLI parser dependency to remove the vulnerable sprintf-js dependency chain.
+- Full production, development, and packaging dependency audit reports zero vulnerabilities. Update archive, CSS, build, and browser-data dependencies and remove the legacy got cache and sprintf-js download chains.
+- Regression checks cover math rendering security, Word conversion, and download integrity, cache reuse, and tamper rejection. CI and release workflows reject dependency advisories at every severity.
+- Build tools require Node.js 22.12.0 or newer; CI uses Node.js 24. Proxy configuration uses HTTP_PROXY, HTTPS_PROXY, and NO_PROXY instead of GLOBAL_AGENT_*.
+- These local fixes have not been published. The latest stable release remains 2.0.23.
+
 
 ## V2.0.23 Install Assistant Skills Through Conversation
 

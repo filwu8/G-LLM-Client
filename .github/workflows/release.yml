@@ -168,8 +168,8 @@ jobs:
       - name: Test goal mode
         run: pnpm test:goal-mode
 
-      - name: Reject high-severity production dependency advisories
-        run: pnpm audit --prod --audit-level high
+      - name: Reject dependency advisories at every severity
+        run: pnpm audit --audit-level low
 
       - name: Package application
         run: pnpm ${{ matrix.package_script }}
