@@ -33,6 +33,10 @@ The packager creates required logo sizes from the existing app icon and validate
 
 ## Acceptance
 
+The selected release route is a private Microsoft Store audience followed by installation acceptance of the Microsoft-signed package. Keep automatic public availability disabled. The initial tester group contains only the authorized publisher account. Complete private certification and install from that account before considering public availability; private submission itself does not prove installation acceptance.
+
+The local acceptance package could not be installed because its self-signed certificate was untrusted (0x800B0109). The generated certificate and private key were removed, and no TrustedPeople or root trust was added. Do not treat this failed attempt as a successful installation test.
+
 `--acceptance` creates a separate package identity and display name, and a separate `gllm-acceptance` protocol to avoid taking over the installed app's protocol. It is never uploaded to the Store. Signing and temporary certificate trust, if authorized, are local acceptance steps only. Remove the acceptance package and temporary trust after testing; retain user data from existing installations.
 
 Check installation, launch, data persistence across relaunch, single-instance behavior, tray and main-window activation, Store-managed update behavior, native modules, and uninstall. Test the production `gllm` protocol separately once an actual Store-signed package is available; the acceptance package intentionally does not claim it.

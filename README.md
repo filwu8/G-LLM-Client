@@ -26,7 +26,7 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 
 ## V2.0.24 安全修复（待发布）
 
-- 新增 Microsoft Store MSIX 打包入口，商店版由 Store 管理更新；安装验收及认证尚未完成。构建步骤见 [MSIX 说明](docs/msix-store.md)。
+- 新增 Microsoft Store MSIX 打包入口，商店版由 Store 管理更新；计划先经商店私有测试取得微软签名，再安装验收，验收及认证尚未完成。构建步骤见 [MSIX 说明](docs/msix-store.md)。
 
 - 更新 Mermaid、DOMPurify、fast-uri 和 KaTeX，并替换 Mammoth 的命令行解析依赖，移除 sprintf-js 漏洞依赖链。
 - 生产、开发与打包依赖全量审计已清零；升级压缩包、CSS、构建和浏览器数据依赖，移除旧下载链中的 got 缓存与 sprintf-js。

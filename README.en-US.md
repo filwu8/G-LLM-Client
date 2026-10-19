@@ -26,7 +26,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 
 ## V2.0.24 Security Fixes (Unreleased)
 
-- Add Microsoft Store MSIX packaging and Store-managed updates. Installation acceptance and certification remain pending. See [MSIX instructions](docs/msix-store.md).
+- Add Microsoft Store MSIX packaging and Store-managed updates. The selected route uses private Store testing to obtain Microsoft signing before installation acceptance; acceptance and certification remain pending. See [MSIX instructions](docs/msix-store.md).
 
 - Update Mermaid, DOMPurify, fast-uri, and KaTeX, and replace Mammoth's CLI parser dependency to remove the vulnerable sprintf-js dependency chain.
 - Full production, development, and packaging dependency audit reports zero vulnerabilities. Update archive, CSS, build, and browser-data dependencies and remove the legacy got cache and sprintf-js download chains.
