@@ -2,7 +2,7 @@
 
 ## Product identity
 
-- Account: filwu@outlook.com, company publisher GPROPHET LIMITED.
+- Company publisher: GPROPHET LIMITED.
 - Store ID: `9MVD547V4ZN9`.
 - Identity: `GPROPHETLIMITED.G-LLMClient`.
 - Publisher: `CN=47A4A51B-7614-4112-BA6F-13F6A84141F9`.
@@ -10,6 +10,8 @@
 - Application ID: `GLLMClient`.
 
 Identity values come from Partner Center and are stored in `build/msix-identity.json`. Store packages use the app version with a fourth zero component, for example `2.0.24.0`.
+
+These package identity values are public metadata, not credentials. Keep Partner Center passwords, client secrets, access/refresh tokens, signing private keys, certificate passwords, and local acceptance certificates outside the repository. Store packages are signed by Microsoft; no signing private key belongs in this project. `.gitignore` excludes common local signing files and packaged uploads, but review the staged diff before every release commit: ignore rules do not protect secrets already tracked by Git.
 
 ## Build
 

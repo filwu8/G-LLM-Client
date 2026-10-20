@@ -26,6 +26,27 @@ release/
 *.snap
 *.blockmap
 *.asar
+*.msix
+*.msixbundle
+*.msixupload
+*.appx
+*.appxbundle
+*.appxupload
+
+# Local signing and publishing credentials (never commit private key material)
+*.pfx
+*.p12
+*.pem
+*.key
+*.p8
+*.snk
+*.jks
+*.keystore
+*.cer
+*.crt
+*.publishsettings
+.secrets/
+.certificates/
 
 # Logs
 *.log
