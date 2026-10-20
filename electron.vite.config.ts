@@ -18,7 +18,13 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ['jszip'] })]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        // Sandboxed renderers can only load CommonJS preload scripts.
+        output: { format: 'cjs', entryFileNames: '[name].cjs' }
+      }
+    }
   },
   renderer: {
     root: resolve('src/renderer'),
