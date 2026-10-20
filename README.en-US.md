@@ -26,7 +26,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 
 ## V2.0.25 Application Rename (Unreleased)
 
-- Change the display name to “知言 · G-LLM Client” across app windows, About, shortcuts, and the MSIX manifest.
+- Change the display name to “知言 · G-LLM Client” across app windows, default-space branding, loading text, About, shortcuts, and the MSIX manifest. Sidebar branding wraps to fit while custom space names are preserved.
 - Preserve application and Store IDs, executable names, the gllm protocol, and storage paths for existing installations and user data.
 - Correct Store update instructions and button labels to identify Microsoft Store as the update manager.
 - Version 2.0.24 passed private Store certification and installation. Version 2.0.25 has been repackaged and still needs private certification and installation acceptance. Public release has not been approved; the latest public stable release remains 2.0.23.

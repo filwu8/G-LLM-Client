@@ -48,14 +48,14 @@
     "delete": "Delete conversation"
   },
   "app": {
-    "loading": "Loading G-LLM...",
+    "loading": "Loading 知言 · G-LLM Client...",
     "newConversation": "New conversation",
-    "defaultSpaceName": "G-LLM",
+    "defaultSpaceName": "知言 · G-LLM Client",
     "defaultSpace": "Default space",
     "defaultSpaceDescription": "The default space for general assistants, conversation history, and shared knowledge",
     "unnamedSpace": "Unnamed space",
     "independentSpace": "Independent space",
-    "spaceSubtitle": "G-LLM · {{space}}",
+    "spaceSubtitle": "知言 · {{space}}",
     "searchPlaceholder": "Search assistants or conversation history",
     "searchTitle": "Search assistants or conversation history",
     "clearSearch": "Clear search",

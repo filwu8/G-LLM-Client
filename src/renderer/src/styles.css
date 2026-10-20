@@ -412,6 +412,13 @@ img.space-logo {
   white-space: nowrap;
 }
 
+.brand-space-button > span strong.brand-product-name {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: normal;
+  text-wrap: balance;
+}
+
 .brand-space-button > span small {
   overflow: hidden;
   color: hsl(var(--muted-foreground));

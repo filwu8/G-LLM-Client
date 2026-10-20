@@ -48,14 +48,14 @@
     "delete": "删除会话"
   },
   "app": {
-    "loading": "正在加载 G-LLM...",
+    "loading": "正在加载知言 · G-LLM Client...",
     "newConversation": "新会话",
-    "defaultSpaceName": "G-LLM",
+    "defaultSpaceName": "知言 · G-LLM Client",
     "defaultSpace": "默认空间",
     "defaultSpaceDescription": "默认空间，用于保存你的通用助手、历史会话和全局资料",
     "unnamedSpace": "未命名空间",
     "independentSpace": "独立空间",
-    "spaceSubtitle": "G-LLM · {{space}}",
+    "spaceSubtitle": "知言 · {{space}}",
     "searchPlaceholder": "搜索助手或历史会话",
     "searchTitle": "搜索助手或历史会话",
     "clearSearch": "清空搜索",

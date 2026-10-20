@@ -3339,7 +3339,7 @@ export default function App() {
             <button className="brand-space-button" onClick={() => setSpaceCenterOpen(true)} title={t('app.openSpaceCenter')} type="button">
               <SpaceLogo project={activeSpace} />
               <span>
-                <strong>{activeSpaceName}</strong>
+                <strong className={!activeSpace || activeSpace.id === defaultSpaceId ? 'brand-product-name' : undefined}>{activeSpaceName}</strong>
                 <small>{activeSpaceSubtitle}</small>
               </span>
             </button>
