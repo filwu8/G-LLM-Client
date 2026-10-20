@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.25（待发布）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.26（待发布）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -24,12 +24,18 @@
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.25 应用更名（待发布）
+## V2.0.26 商店更新入口修复（待发布）
+
+- 更新按钮直接打开 Windows Microsoft Store 中的应用页面，避免私有测试版的公开网页链接显示“找不到产品”。
+- 延续“知言 · G-LLM Client”显示名称，原有身份与数据目录保持兼容。
+- 2.0.25 已完成私有认证及商店签名安装；验收发现上述链接问题。2.0.26 仍需私有认证、签名安装及剩余验收，尚未公开发布。
+
+## V2.0.25 应用更名（私有测试）
 
 - 显示名称改为“知言 · G-LLM Client”，同步应用窗口、默认空间品牌标题、加载提示、关于页面、快捷方式及 MSIX 显示名称；侧栏品牌标题支持换行，保留自定义空间名称。
 - 保留原有应用 ID、商店 ID、可执行文件名、gllm 协议和数据目录，兼容现有安装与用户数据。
 - 修正商店版更新说明和入口文字，明确由 Microsoft Store 管理更新。
-- 2.0.24 已完成商店私有认证并安装；2.0.25 已重新打包，仍需私有认证及安装验收，公开发布尚未批准。最近公开稳定版仍为 2.0.23。
+- 2.0.24 和 2.0.25 均已完成商店私有认证并安装；完整验收继续进行。最近公开稳定版仍为 2.0.23。
 
 ## V2.0.24 安全修复（私有测试）
 

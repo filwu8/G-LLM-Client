@@ -15,7 +15,7 @@ export function supportsAutomaticUpdate(isPackaged: boolean, platform: NodeJS.Pl
   return WINDOWS_AUTOMATIC_UPDATE_ENABLED && isPackaged && platform === 'win32' && !windowsStore
 }
 
-export const MICROSOFT_STORE_URL = 'https://apps.microsoft.com/detail/9MVD547V4ZN9'
+export const MICROSOFT_STORE_URL = 'ms-windows-store://pdp/?ProductId=9MVD547V4ZN9'
 
 export function normalizeReleaseNotes(value: unknown): string | undefined {
   const notes = Array.isArray(value)

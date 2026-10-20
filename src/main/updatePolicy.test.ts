@@ -8,12 +8,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  MICROSOFT_STORE_URL,
   isRetryableUpdateDownloadError,
   normalizeActiveDownloadProgress,
   normalizeDownloadProgress,
   normalizeReleaseNotes,
   supportsAutomaticUpdate
 } from './updatePolicy.ts'
+
+test('Store update links open the native product page, including private products', () => {
+  const target = new URL(MICROSOFT_STORE_URL)
+  assert.equal(target.protocol, 'ms-windows-store:')
+  assert.equal(target.hostname, 'pdp')
+  assert.equal(target.searchParams.get('ProductId'), '9MVD547V4ZN9')
+})
 
 test('unsigned automatic installation is enabled only for packaged Windows builds', () => {
   assert.equal(supportsAutomaticUpdate(true, 'win32'), true)

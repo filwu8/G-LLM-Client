@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.25 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.26 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -24,12 +24,18 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.25 Application Rename (Unreleased)
+## V2.0.26 Store Update Link Fix (Unreleased)
+
+- Open the product page directly in the native Windows Microsoft Store app. Private products otherwise show “Product not found” at the public website link.
+- Keep the “知言 · G-LLM Client” display name and existing identity and storage compatibility.
+- Version 2.0.25 passed private certification and Microsoft-signed installation; acceptance found the update-link issue above. Version 2.0.26 still needs private certification, signed installation, and remaining acceptance. It is not publicly released.
+
+## V2.0.25 Application Rename (Private Testing)
 
 - Change the display name to “知言 · G-LLM Client” across app windows, default-space branding, loading text, About, shortcuts, and the MSIX manifest. Sidebar branding wraps to fit while custom space names are preserved.
 - Preserve application and Store IDs, executable names, the gllm protocol, and storage paths for existing installations and user data.
 - Correct Store update instructions and button labels to identify Microsoft Store as the update manager.
-- Version 2.0.24 passed private Store certification and installation. Version 2.0.25 has been repackaged and still needs private certification and installation acceptance. Public release has not been approved; the latest public stable release remains 2.0.23.
+- Versions 2.0.24 and 2.0.25 passed private Store certification and installation; full acceptance is ongoing. The latest public stable release remains 2.0.23.
 
 ## V2.0.24 Security Fixes (Private Testing)
 
