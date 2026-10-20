@@ -1196,8 +1196,8 @@ export default function App() {
 
   useEffect(() => {
     if (!isWindows) return
-    document.title = `${activeSpaceName} - ${activeAssistantDisplay.name} - ${activeAssistantDisplay.title} | G-LLM`
-  }, [activeAssistantDisplay.name, activeAssistantDisplay.title, activeSpaceName, isWindows])
+    document.title = `${activeSpaceName} - ${activeAssistantDisplay.name} - ${activeAssistantDisplay.title} | ${t('about.productName')}`
+  }, [activeAssistantDisplay.name, activeAssistantDisplay.title, activeSpaceName, isWindows, t])
 
   useEffect(() => {
     void window.gllm.getState().then((state) => {
@@ -3318,7 +3318,7 @@ export default function App() {
   if (!settings) {
     return (
       <div className={`boot ${isMac ? 'mac-window' : ''}`}>
-        <img src={logo} alt="G-LLM" />
+        <img src={logo} alt="知言 · G-LLM Client" />
       </div>
     )
   }
@@ -4491,7 +4491,7 @@ function HiddenAssistantsDialog({
       <section className="hidden-assistants-modal" onClick={stopModalClick}>
         <header>
           <div>
-            <p>G-LLM</p>
+            <p>{t('about.productName')}</p>
             <h2>{t('assistantActions.hiddenTitle')}</h2>
           </div>
           <button className="icon-button compact" onClick={onClose} title={t('common.close')} type="button">
@@ -5048,7 +5048,7 @@ function UserAgreementDialog({ onAccept, onRecoverData }: { onAccept: () => void
       <section className="agreement-modal" onClick={(event) => event.stopPropagation()}>
         <header>
           <div>
-            <p>G-LLM</p>
+            <p>{t('about.productName')}</p>
             <h2>{t('agreement.title')}</h2>
           </div>
         </header>
@@ -5630,7 +5630,7 @@ function AddAssistantDialog({
       <section className="add-assistant-modal" onClick={stopModalClick}>
         <header>
           <div>
-            <p>G-LLM</p>
+            <p>{t('about.productName')}</p>
             <h2>{t('addAssistant.title')}</h2>
           </div>
           <div className="header-actions">
@@ -6278,7 +6278,7 @@ function ToolConfigDialog({
       <section className="tool-center-modal" onClick={stopModalClick}>
         <header>
           <div>
-            <p>G-LLM</p>
+            <p>{t('about.productName')}</p>
             <h2>{t('tools.title')}</h2>
           </div>
           <button className="icon-button" onClick={onClose} title={t('common.close')}>
@@ -6536,7 +6536,7 @@ function AddProviderDialog({
       <section className="provider-add-modal" onClick={stopModalClick}>
         <header>
           <div>
-            <p>G-LLM</p>
+            <p>{t('about.productName')}</p>
             <h2>{t('provider.addDialogTitle')}</h2>
           </div>
           <button className="icon-button" onClick={onClose} title={t('common.close')} type="button">
@@ -7707,7 +7707,7 @@ function SettingsPanel({
           <div className="settings-tab-panel about-settings-panel">
             <section className="about-system-section">
               <div className="about-system-card">
-                <img alt="G-LLM" src={logo} />
+                <img alt="知言 · G-LLM Client" src={logo} />
                 <div>
                   <strong>{t('about.productName')}</strong>
                   <span>{t('about.tagline')}</span>
@@ -7731,7 +7731,7 @@ function SettingsPanel({
                   </button>
                   <button className="about-release-link" onClick={() => void openDownloadPage()} type="button">
                     <ExternalLink size={15} />
-                    {t('about.downloadAndChangelog')}
+                    {t(updateInfo?.storeManaged ? 'about.openMicrosoftStore' : 'about.downloadAndChangelog')}
                   </button>
                 </div>
               </div>
@@ -7739,7 +7739,7 @@ function SettingsPanel({
                 <div className={`about-update-result ${updateInfo.status}`} role="status">
                   <strong>{updateInfo.message}</strong>
                   <small>
-                    {updateInfo.automaticUpdateSupported ? t('about.automaticUpdates') : t('about.manualUpdateOnly')}
+                    {t(updateInfo.storeManaged ? 'about.storeUpdates' : updateInfo.automaticUpdateSupported ? 'about.automaticUpdates' : 'about.manualUpdateOnly')}
                   </small>
                   {updateInfo.updatedAt && <small>{t('about.releaseDate', { date: updateInfo.updatedAt })}</small>}
                   {updateInfo.releaseNotes && <p>{updateInfo.releaseNotes}</p>}
@@ -7769,7 +7769,7 @@ function SettingsPanel({
                     updateInfo.status === 'unsupported' ||
                     updateInfo.status === 'error') && (
                     <button onClick={() => void openDownloadPage()} type="button">
-                      {t('about.openDownloadPage')}
+                      {t(updateInfo.storeManaged ? 'about.openMicrosoftStore' : 'about.openDownloadPage')}
                       <ExternalLink size={14} />
                     </button>
                   )}

@@ -62,7 +62,7 @@ async function findPython(): Promise<string> {
       } catch { /* try next installation */ }
     }
   }
-  throw new Error('Python 3 was not found. Install Python 3 and restart G-LLM Client.')
+  throw new Error('Python 3 was not found. Install Python 3 and restart 知言 · G-LLM Client.')
 }
 
 export async function runNativeCommand(command: NativeCommand, values: Record<string, string>, signal?: AbortSignal, execution: Pick<WorkspaceProcessOptions, 'onOutput' | 'timeoutMs' | 'maxOutputBytes' | 'outputOverflow'> = {}) {

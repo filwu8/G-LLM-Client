@@ -1,8 +1,8 @@
-# G-LLM Client
+# 知言 · G-LLM Client
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.24 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.25 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Latest stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -10,7 +10,7 @@ Latest stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases
 
 [Download](https://llm.gprophet.com/download) | [Full changelog](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
-G-LLM Client is a cross-platform desktop AI client built by GPROPHET LIMITED for Windows, macOS, and Linux. The product direction is assistant-first: users choose or create a role-based assistant, then use one desktop client for model configuration, knowledge references, screenshots, file understanding, and multi-turn conversations.
+知言 · G-LLM Client is a cross-platform desktop AI client built by GPROPHET LIMITED for Windows, macOS, and Linux. The product direction is assistant-first: users choose or create a role-based assistant, then use one desktop client for model configuration, knowledge references, screenshots, file understanding, and multi-turn conversations.
 
 ## Interface Preview
 
@@ -24,9 +24,16 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.24 Security Fixes (Unreleased)
+## V2.0.25 Application Rename (Unreleased)
 
-- Add Microsoft Store MSIX packaging and Store-managed updates. The selected route uses private Store testing to obtain Microsoft signing before installation acceptance; acceptance and certification remain pending. See [MSIX instructions](docs/msix-store.md).
+- Change the display name to “知言 · G-LLM Client” across app windows, About, shortcuts, and the MSIX manifest.
+- Preserve application and Store IDs, executable names, the gllm protocol, and storage paths for existing installations and user data.
+- Correct Store update instructions and button labels to identify Microsoft Store as the update manager.
+- Version 2.0.24 passed private Store certification and installation. Version 2.0.25 has been repackaged and still needs private certification and installation acceptance. Public release has not been approved; the latest public stable release remains 2.0.23.
+
+## V2.0.24 Security Fixes (Private Testing)
+
+- Add Microsoft Store MSIX packaging and Store-managed updates. Private certification and Microsoft-signed installation have passed; full acceptance is ongoing. See [MSIX instructions](docs/msix-store.md).
 
 - Update Mermaid, DOMPurify, fast-uri, and KaTeX, and replace Mammoth's CLI parser dependency to remove the vulnerable sprintf-js dependency chain.
 - Full production, development, and packaging dependency audit reports zero vulnerabilities. Update archive, CSS, build, and browser-data dependencies and remove the legacy got cache and sprintf-js download chains.
@@ -223,7 +230,7 @@ Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs dire
 
 ## V2.0.0 Independent Identity and Browser Authorization
 
-- The client, installers, application ID, default workspace, and built-in assistants now use **G-LLM Client** exclusively, with no historical product aliases.
+- That release unified the client, installers, default workspace, and built-in assistants under **G-LLM Client**. V2.0.25 changes the display name to **知言 · G-LLM Client** while preserving internal identifiers.
 - Signed-in G-LLM Web users can launch the client from Chat and configure their API key through a single-use authorization code that expires after 90 seconds.
 - Windows, macOS, and Linux support cold and running-state `gllm://` activation while preserving a single app instance and focusing the main window.
 - Fixed AI-content overflow in narrow windows and the model picker appearing behind the sidebar.

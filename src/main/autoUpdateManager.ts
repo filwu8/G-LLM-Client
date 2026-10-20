@@ -56,6 +56,7 @@ export class AutoUpdateManager {
 
   constructor(private readonly options: AutoUpdateManagerOptions) {
     this.state = {
+      storeManaged: this.storeManaged,
       currentVersion: app.getVersion(),
       updateAvailable: false,
       status: 'idle',
@@ -234,10 +235,11 @@ export class AutoUpdateManager {
 
   private baseState(): AppUpdateInfo {
     return {
+      storeManaged: this.storeManaged,
       currentVersion: app.getVersion(),
       updateAvailable: false,
       automaticUpdateSupported: this.supported,
-      downloadPageUrl: DOWNLOAD_PAGE_URL,
+      downloadPageUrl: this.storeManaged ? MICROSOFT_STORE_URL : DOWNLOAD_PAGE_URL,
       status: 'idle',
       message: ''
     }

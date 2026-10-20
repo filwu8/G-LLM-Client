@@ -568,7 +568,7 @@ function setupLinuxAppImageDeepLinkProtocol(): void {
     mkdirSync(applicationsDirectory, { recursive: true })
     writeFileSync(
       desktopFile,
-      `[Desktop Entry]\nName=G-LLM Client\nExec="${escapedAppImagePath}" %U\nTerminal=false\nType=Application\nMimeType=x-scheme-handler/${GLLM_DEEP_LINK_SCHEME};\nNoDisplay=true\n`,
+      `[Desktop Entry]\nName=知言 · G-LLM Client\nExec="${escapedAppImagePath}" %U\nTerminal=false\nType=Application\nMimeType=x-scheme-handler/${GLLM_DEEP_LINK_SCHEME};\nNoDisplay=true\n`,
       { encoding: 'utf8', mode: 0o644 }
     )
     execFile('update-desktop-database', [applicationsDirectory], (error) => {
@@ -953,7 +953,7 @@ function createFloatingLogoWindow(): BrowserWindow {
     type: process.platform === 'darwin' ? 'panel' : undefined,
     acceptFirstMouse: process.platform === 'darwin',
     hiddenInMissionControl: process.platform === 'darwin',
-    title: 'G-LLM',
+    title: mainT('about.productName', getSettings().language),
     backgroundColor: '#00000000',
     icon: getAppIconPath(),
     webPreferences: {
@@ -1003,7 +1003,7 @@ function createFloatingMascotHintWindow(): BrowserWindow {
     type: process.platform === 'darwin' ? 'panel' : undefined,
     acceptFirstMouse: process.platform === 'darwin',
     hiddenInMissionControl: process.platform === 'darwin',
-    title: 'G-LLM',
+    title: mainT('about.productName', getSettings().language),
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),

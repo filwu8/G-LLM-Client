@@ -1,8 +1,8 @@
-# G-LLM Client
+# 知言 · G-LLM Client
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.24（待发布）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.25（待发布）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 最近稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -10,7 +10,7 @@
 
 [下载客户端](https://llm.gprophet.com/download) | [完整更新日志](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
-G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持 Windows、macOS 和 Linux。当前产品方向是“助手优先”：用户先选择或创建适合场景的助手，再在同一个桌面客户端里完成模型配置、知识引用、截图提问、文件理解和多轮对话。
+知言 · G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持 Windows、macOS 和 Linux。当前产品方向是“助手优先”：用户先选择或创建适合场景的助手，再在同一个桌面客户端里完成模型配置、知识引用、截图提问、文件理解和多轮对话。
 
 ## 界面预览
 
@@ -24,9 +24,16 @@ G-LLM Client 是 GPROPHET LIMITED 自研的跨平台桌面 AI 客户端，支持
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.24 安全修复（待发布）
+## V2.0.25 应用更名（待发布）
 
-- 新增 Microsoft Store MSIX 打包入口，商店版由 Store 管理更新；计划先经商店私有测试取得微软签名，再安装验收，验收及认证尚未完成。构建步骤见 [MSIX 说明](docs/msix-store.md)。
+- 显示名称改为“知言 · G-LLM Client”，同步应用窗口、关于页面、快捷方式及 MSIX 显示名称。
+- 保留原有应用 ID、商店 ID、可执行文件名、gllm 协议和数据目录，兼容现有安装与用户数据。
+- 修正商店版更新说明和入口文字，明确由 Microsoft Store 管理更新。
+- 2.0.24 已完成商店私有认证并安装；2.0.25 已重新打包，仍需私有认证及安装验收，公开发布尚未批准。最近公开稳定版仍为 2.0.23。
+
+## V2.0.24 安全修复（私有测试）
+
+- 新增 Microsoft Store MSIX 打包入口，商店版由 Store 管理更新；已完成私有认证及微软签名安装，完整验收仍在进行。构建步骤见 [MSIX 说明](docs/msix-store.md)。
 
 - 更新 Mermaid、DOMPurify、fast-uri 和 KaTeX，并替换 Mammoth 的命令行解析依赖，移除 sprintf-js 漏洞依赖链。
 - 生产、开发与打包依赖全量审计已清零；升级压缩包、CSS、构建和浏览器数据依赖，移除旧下载链中的 got 缓存与 sprintf-js。
@@ -223,7 +230,7 @@ Windows Shell 使用系统 CMD 批处理语法，macOS/Linux 使用 sh；Python 
 
 ## V2.0.0 独立项目身份与浏览器授权
 
-- 客户端、安装包、应用 ID、默认空间和内置助手统一使用 **G-LLM Client**，不再保留历史产品别名。
+- 当时将客户端、安装包、默认空间和内置助手统一为 **G-LLM Client**；V2.0.25 起显示名称改为 **知言 · G-LLM Client**，内部标识继续保留。
 - G-LLM Web 登录用户可从“聊天”入口安全唤起客户端，并通过 90 秒有效、只能兑换一次的授权码自动配置 API Key。
 - Windows、macOS、Linux 均支持 `gllm://` 冷启动和运行中唤起；客户端保持单实例并恢复、显示、聚焦主窗口。
 - 修复窄窗口下 AI 内容溢出和模型选择弹窗被侧边栏遮挡的问题。

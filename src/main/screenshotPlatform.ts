@@ -29,5 +29,5 @@ export function getMacScreenCapturePermissionError(
     || normalizedError.includes('could not create image')
 
   if (!permissionDenied) return null
-  return 'G-LLM 没有屏幕录制权限。请前往“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”允许 G-LLM Client（开发版显示为 Electron），然后重启应用。'
+  return 'G-LLM 没有屏幕录制权限。请前往“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”允许 知言 · G-LLM Client（开发版显示为 Electron），然后重启应用。'
 }

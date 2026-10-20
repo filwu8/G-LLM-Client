@@ -700,7 +700,7 @@
     }
   },
   "quickChat": {
-    "title": "G-LLM Quick Chat",
+    "title": "知言 · G-LLM Client Quick Chat",
     "new": "New quick chat",
     "minimize": "Minimize",
     "minimizeAria": "Minimize quick chat",
@@ -938,7 +938,7 @@
     "runsUnit": "runs"
   },
   "about": {
-    "productName": "G-LLM Client",
+    "productName": "知言 · G-LLM Client",
     "tagline": "A local-first AI assistant client",
     "description": "G-LLM gives individuals and organizations multiple assistants and conversations, flexible model providers, local knowledge, and long-term memory. Data stays on your device by default, and you can change the storage folder for backup, migration, or private deployment.",
     "version": "Version",
@@ -950,6 +950,8 @@
     "openDownloadPage": "Open download page",
     "updateCheckFailed": "Could not check for updates. Try again later.",
     "automaticUpdates": "Windows downloads new versions in the background, then installs them when you restart or quit the app. The current installer is unsigned, so Windows may show a security warning.",
+    "openMicrosoftStore": "Open Microsoft Store",
+    "storeUpdates": "Microsoft Store manages updates for this version. Check and install updates from your Store library.",
     "manualUpdateOnly": "macOS, Linux, or this environment can check versions only. Download and install the update manually from the website.",
     "downloadUpdate": "Download update",
     "downloadingUpdate": "Downloading {{progress}}%",

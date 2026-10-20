@@ -27,6 +27,8 @@ The packager creates required logo sizes from the existing app icon and validate
 
 ## Store behavior
 
+Version 2.0.25 changes the display name to `知言 · G-LLM Client`. The MSIX display name is read from `build.productName` in package.json. Keep the existing identity, publisher, application ID, Store ID, executable filename, protocol and storage paths when renaming. Reserve the new product name in Partner Center and select it for every Store listing language before submitting the renamed package. A dashboard alias alone does not rename the live Store listing.
+
 - Microsoft Store editions do not check GitHub releases, download EXE updates, or execute the NSIS updater. The update action opens this product's Store page.
 - Protocol registration is declared in the package manifest instead of being written by the application.
 - Windows manages the package application identity. The NSIS app user model ID is not assigned to Store processes.

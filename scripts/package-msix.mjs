@@ -30,7 +30,7 @@ const version = `${metadata.version}.0`
 if (!/^\d+\.\d+\.\d+\.0$/.test(version)) throw new Error('Store packages require a stable three-part app version')
 const name = acceptance ? `${identity.name}.Acceptance` : identity.name
 const publisher = acceptance ? `CN=GLLM Client Acceptance${unsigned ? ', OID.2.25.311729368913984317654407730594956997722=1' : ''}` : identity.publisher
-const displayName = acceptance ? 'G-LLM Client Acceptance' : 'G-LLM Client'
+const displayName = acceptance ? `${metadata.build.productName} Acceptance` : metadata.build.productName
 const layout = join(output, `layout-${acceptance ? 'acceptance-' : ''}${Date.now()}`)
 await mkdir(join(layout, 'Assets'), { recursive: true })
 await cp(appDirectory, join(layout, 'app'), { recursive: true, errorOnExist: true })

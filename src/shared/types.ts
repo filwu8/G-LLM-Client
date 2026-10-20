@@ -850,6 +850,7 @@ export interface ConversationChangeEvent {
 }
 
 export interface AppUpdateInfo {
+  storeManaged?: boolean
   currentVersion: string
   latestVersion?: string
   updateAvailable: boolean

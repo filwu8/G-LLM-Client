@@ -1,7 +1,7 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.24",
-  "description": "G-LLM Client desktop application",
+  "version": "2.0.25",
+  "description": "知言 · G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
   "license": "BUSL-1.1",
@@ -10,7 +10,7 @@
     "type": "git",
     "url": "https://github.com/filwu8/G-LLM-Client.git"
   },
-  "desktopName": "G-LLM Client",
+  "desktopName": "知言 · G-LLM Client",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.29.1",
@@ -77,10 +77,10 @@
   },
   "build": {
     "appId": "com.gprophet.gllmclient",
-    "productName": "G-LLM Client",
+    "productName": "知言 · G-LLM Client",
     "protocols": [
       {
-        "name": "G-LLM Client",
+        "name": "知言 · G-LLM Client",
         "schemes": [
           "gllm"
         ]
@@ -184,7 +184,7 @@
       "menuCategory": "GProphet",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "G-LLM Client",
+      "shortcutName": "知言 · G-LLM Client",
       "deleteAppDataOnUninstall": false
     },
     "mac": {
