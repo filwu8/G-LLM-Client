@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.27 (preparing Store update)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.27 (submitted for Microsoft Store certification)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Current public Microsoft Store version: [V2.0.26](https://apps.microsoft.com/detail/9MVD547V4ZN9), published for free on 2026-10-21. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -24,14 +24,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.27 Projects, Files, and Authorization (Preparing Store Update)
+## V2.0.27 Projects, Files, and Authorization (Store Certification Pending)
 
 - Bind projects directly to folders; create a workspace in the data directory when no folder is selected. Drop or upload files into the workspace while retaining originals, and browse and process them in the conversation file panel.
 - Check all running tasks before migrating data, verify copied files, and update workspace, attachment, and artifact paths. Fix migration failures caused by Chromium singleton links on macOS.
 - Give the assistant the actual host OS. Computer and browser actions require separate grants and approval for every operation. Supported settings and skill changes can be previewed and approved through conversation.
 - Move extensions and skills into Settings. Fix overlapping workspace controls and missing task modules after development builds.
 - Use the application icon in the AI browser, and provide a conversation control to bring its existing window forward. Each conversation currently has one page without tabs; full MCP/plugin execution is still unavailable.
-- See [release notes and validation](docs/releases/v2.0.27.md). This update is not yet live in the Store.
+- Windows, macOS, and Linux automated checks passed. Submitted as Microsoft Store Submission 5 on 2026-10-23, with automatic free public publication after certification. See [release notes and validation](docs/releases/v2.0.27.md). This update is not yet live in the Store.
 
 ## V2.0.26 Store Update Link Fix (Public)
 
