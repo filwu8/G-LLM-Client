@@ -48,6 +48,7 @@
     "delete": "删除会话"
   },
   "app": {
+    "settings": "设置",
     "loading": "正在加载知言 · G-LLM Client...",
     "newConversation": "新会话",
     "defaultSpaceName": "知言 · G-LLM Client",
@@ -380,6 +381,7 @@
     "fileReadFailed": "无法读取 Skill 文档"
   },
   "notices": {
+    "inactiveAssistant": "当前助手已停用，请先启用或切换助手。",
     "clipboardReadFailed": "读取剪贴板文件失败",
     "quoteContent": "引用内容",
     "quoteTitle": "引用内容：{{text}}",

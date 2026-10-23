@@ -48,6 +48,7 @@
     "delete": "Delete conversation"
   },
   "app": {
+    "settings": "Settings",
     "loading": "Loading 知言 · G-LLM Client...",
     "newConversation": "New conversation",
     "defaultSpaceName": "知言 · G-LLM Client",
@@ -380,6 +381,7 @@
     "fileReadFailed": "Could not read the skill document"
   },
   "notices": {
+    "inactiveAssistant": "This assistant is disabled. Enable it or choose another assistant.",
     "clipboardReadFailed": "Could not read the clipboard file",
     "quoteContent": "Quoted content",
     "quoteTitle": "Quoted: {{text}}",

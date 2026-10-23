@@ -4,7 +4,8 @@
  * Change Date: 2030-08-01
  */
 
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
+import ts from 'typescript'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -28,6 +29,27 @@ const locales = await Promise.all(
 
 const referenceKeys = new Set(flattenKeys(locales[0].value))
 let failed = false
+
+async function checkSourceKeys(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name)
+    if (entry.isDirectory()) { await checkSourceKeys(path); continue }
+    if (!/\.(ts|tsx)$/.test(entry.name) || /\.(test|integration)\./.test(entry.name)) continue
+    const source = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.Latest, true)
+    const visit = node => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+        && ['t', 'mainT', 'storageT'].includes(node.expression.text)
+        && node.arguments[0] && ts.isStringLiteral(node.arguments[0])
+        && !referenceKeys.has(node.arguments[0].text)) {
+        failed = true
+        console.error(`${path}: missing translation ${node.arguments[0].text}`)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
+  }
+}
+await checkSourceKeys(resolve(root, 'src'))
 
 for (const locale of locales.slice(1)) {
   const keys = new Set(flattenKeys(locale.value))
