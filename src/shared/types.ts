@@ -60,6 +60,16 @@ export interface PreparedAttachment {
   text?: string
   dataUrl?: string
   localExecutable?: boolean
+  workspaceRelativePath?: string
+  workspaceRootPath?: string
+}
+
+export interface WorkspaceFileEntry {
+  name: string
+  relativePath: string
+  directory: boolean
+  size: number
+  modifiedAt: number
 }
 
 export interface ImageSaveRequest {
@@ -553,6 +563,8 @@ export interface ConversationProjectMemory {
 }
 
 export interface ConversationWorkspace {
+  projectId?: string
+  kind?: 'managed' | 'external'
   rootPath: string
   displayName: string
   permission: 'read' | 'read-write'
@@ -560,6 +572,8 @@ export interface ConversationWorkspace {
   executionMode?: 'sandbox' | 'host'
   sandboxNetwork?: boolean
   nativeExecution?: boolean
+  computerAccess?: boolean
+  browserAccess?: boolean
   loadAgentsMd?: boolean
   envNames?: string[]
   grantedAt: number
@@ -593,6 +607,8 @@ export interface AgentExecutionPlan {
 }
 
 export interface WorkspaceApprovalPrompt {
+  tool?: string
+  capability?: 'computer' | 'browser'
   preview?: string
   backgroundTimeoutMs?: number
   executionMode?: 'sandbox' | 'host'

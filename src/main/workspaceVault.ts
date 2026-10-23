@@ -1,5 +1,6 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
 import { createHash, randomUUID } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { normalizeEnvNames, selectWorkspaceEnvironment } from './workspaceAgentPolicy.ts'
@@ -21,6 +22,25 @@ export class WorkspaceVault {
   private directory: string
   private crypto: VaultCrypto
   constructor(directory: string, crypto: VaultCrypto) { this.directory = directory; this.crypto = crypto }
+  relocateBindings(roots: Array<{ previous: string; next: string }>): void {
+    const key = (root: string) => {
+      const canonical = realpathSync(root)
+      return resolve(this.directory, createHash('sha256').update(process.platform === 'win32' ? canonical.toLowerCase() : canonical).digest('hex') + '.json')
+    }
+    for (const root of roots) {
+      if (!existsSync(root.previous)) continue
+      const source = key(root.previous)
+      if (!existsSync(source)) continue
+      const target = key(root.next)
+      if (source === target) continue
+      const encrypted = readFileSync(source)
+      mkdirSync(this.directory, { recursive: true, mode: 0o700 })
+      if (existsSync(target) && !readFileSync(target).equals(encrypted)) copyFileSync(target, `${target}.backup-${randomUUID()}`)
+      // Re-key ciphertext by its new canonical root; never decrypt during migration.
+      writeFileSync(target, encrypted, { mode: 0o600 })
+      if (!readFileSync(target).equals(encrypted)) throw new Error('Workspace credentials failed migration verification')
+    }
+  }
   private async path(root: string) {
     const canonical = await realpath(root)
     return resolve(this.directory, createHash('sha256').update(process.platform === 'win32' ? canonical.toLowerCase() : canonical).digest('hex') + '.json')

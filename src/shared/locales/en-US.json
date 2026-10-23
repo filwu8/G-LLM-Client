@@ -105,7 +105,7 @@
     "revealFinder": "Show in Finder",
     "revealExplorer": "Show in File Explorer",
     "uploadAttachmentDetailed": "Upload images, PDF, Word, text, and other files",
-    "workspaceFolder": "Authorize a workspace folder",
+    "workspaceFolder": "Show workspace files",
     "knowledgeBase": "Knowledge base",
     "extensions": "Extensions center",
     "goToConversation": "Go to conversation",
@@ -186,11 +186,11 @@
     "optional": "Optional",
     "workspace": "Local workspace folder",
     "notBound": "Not linked",
-    "workspaceOptional": "Optional; you can link one later",
-    "chooseDirectory": "Choose folder",
+    "workspaceOptional": "Create a workspace folder automatically",
+    "chooseDirectory": "Bind existing folder",
     "unbind": "Unlink",
-    "workspaceDescription": "G-LLM writes to this folder only after you confirm a local task. macOS may request permission on first access.",
-    "localPathDescription": "The folder path stays on this device and is not sent to your model provider.",
+    "workspaceDescription": "A workspace binds one folder shared by its chats. A folder is created automatically if none is selected.",
+    "localPathDescription": "A workspace binds one folder shared by its chats. A folder is created automatically if none is selected.",
     "switch": "Switch",
     "rename": "Rename space",
     "creating": "Creating...",
@@ -204,7 +204,8 @@
       "create": "Could not create the space",
       "save": "Could not save the space",
       "switch": "Could not switch spaces"
-    }
+    },
+    "workspaceHint": "A workspace binds one folder shared by its chats. A folder is created automatically if none is selected."
   },
   "assistantSettings": {
     "title": "Assistant settings",
@@ -219,7 +220,11 @@
     "tone": "Response style",
     "description": "Assistant description",
     "status": "Status",
-    "statuses": { "active": "Active", "draft": "Draft", "paused": "Paused" },
+    "statuses": {
+      "active": "Active",
+      "draft": "Draft",
+      "paused": "Paused"
+    },
     "configVersion": "Configuration version",
     "configSource": "Configuration source",
     "configSourcePlaceholder": "Optional: config path, repository URL, or import source",
@@ -301,7 +306,7 @@
   "tools": {
     "title": "Extensions center",
     "workspaceTools": "Workspace tools",
-    "note": "Configure extensions that models can call: function tools, MCP services, and external plugins. Attachments, screenshots, knowledge, and web search remain available as separate composer controls.",
+    "note": "Manage skills and extensions for this workspace. Skills can be bound to assistants; HTTP function tools can run. MCP and plugin configurations do not yet have a connected runtime.",
     "name": "Tool name",
     "description": "Purpose",
     "descriptionPlaceholder": "Describe the tool for yourself and the model, for example: Look up a CRM customer by phone number.",
@@ -589,6 +594,21 @@
       "skipped": "Not checked in this mode"
     },
     "agentSettings": "Agent settings",
+    "desktopAccess": "Computer & browser",
+    "managedDirectory": "Conversation workspace",
+    "computerAccess": "Computer control",
+    "computerAccessDescription": "Allow host commands to inspect the environment, install software and automate applications. Commands can access files and networks outside the workspace. macOS may also require Automation or Accessibility permission; handle OS elevation manually.",
+    "browserAccess": "Browser control",
+    "showBrowser": "View AI browser",
+    "showBrowserDescription": "Bring this conversation's browser window to the front. One page per conversation; tabs are not supported yet.",
+    "showBrowserFailed": "Could not show the browser window. Please try again.",
+    "browserAccessDescription": "Allow opening and reading pages, clicking and filling ordinary forms in a dedicated, visible browser window. Existing browsers are not connected. Enter login details manually; popups and downloads are not yet supported.",
+    "desktopApprovalHint": "Both capabilities are off by default. Every command or browser operation requires approval, even in Full authorization mode. Uncheck to revoke access for the next request; disabling browser access also closes this conversation’s browser window.",
+    "computerApprovalTitle": "Allow this computer operation?",
+    "macAccessibilityGranted": "macOS Accessibility permission is granted. Controlling other applications may still trigger a separate Automation permission request.",
+    "macAccessibilityNeeded": "macOS Accessibility permission has not been confirmed. UI automation needs your approval in System Settings; installation and ordinary commands may not require it.",
+    "macAccessibilityOpen": "Request / recheck Accessibility permission",
+    "browserApprovalTitle": "Allow this browser operation?",
     "agentNativeBadge": "Host Agent",
     "agentLoadRules": "Load root AGENTS.md automatically",
     "agentRulesDescription": "Project rules are loaded once per run and shown in the activity log. Rules cannot expand tool permissions. Edits take effect on the next run.",
@@ -622,7 +642,7 @@
     "approvalDescription": "Applies to this conversation, starting with the next request. Approval, sandbox, networking and variable permissions are configured separately.",
     "approvalAskDescription": "Reads run directly. File writes, scripts and HTTP extension tools require approval each time.",
     "approvalAutoDescription": "Automatically approve workspace tools, restricted JavaScript and Python/Shell in the configured sandbox, including background jobs. Host execution and HTTP extensions still ask.",
-    "approvalFullDescription": "Enabled tools run without per-operation approval, including enabled host execution and HTTP extensions. Does not disable sandboxing, enable networking or tools, or expand variable permissions.",
+    "approvalFullDescription": "Enabled tools run without per-operation approval, including enabled host execution and HTTP extensions. Dedicated computer and browser tools still require approval on every call. Does not disable sandboxing, enable networking or tools, or expand variable permissions.",
     "approvalChange": "Change approval mode",
     "recommended": "Recommended",
     "operationScriptTitle": "Approve temporary script",
@@ -664,7 +684,9 @@
     "agentVariableConfigured": "Configured (blank to keep)",
     "agentRemoveVariable": "Delete variable and encrypted value",
     "agentAddVariable": "Add variable",
-    "agentBackgroundLimit": "Background job · up to {{seconds}} seconds; cancelled when this run ends"
+    "agentBackgroundLimit": "Background job · up to {{seconds}} seconds; cancelled when this run ends",
+    "configurationApprovalTitle": "Confirm application configuration change",
+    "configurationApprovalDescription": "This changes application settings or this assistant’s skills. Review the changes below. Saved changes apply to subsequent requests; the current request keeps its captured settings."
   },
   "localTask": {
     "title": "Local file task",
@@ -759,32 +781,56 @@
     "general": {
       "name": "General Assistant",
       "title": "Everyday questions, writing, and analysis",
-      "starters": ["Help me organize a work plan", "Make this text more professional", "Explain this concept in simple terms"]
+      "starters": [
+        "Help me organize a work plan",
+        "Make this text more professional",
+        "Explain this concept in simple terms"
+      ]
     },
     "document": {
       "name": "Document Assistant",
       "title": "Summarize, extract, and rewrite",
-      "starters": ["Extract the key conclusions from this document", "Create meeting notes", "Turn this into a presentation-ready brief"]
+      "starters": [
+        "Extract the key conclusions from this document",
+        "Create meeting notes",
+        "Turn this into a presentation-ready brief"
+      ]
     },
     "legal": {
       "name": "Contract Assistant",
       "title": "Clause review and risk flags",
-      "starters": ["Review this contract for risks", "What should I pay most attention to?", "Revise this clause to better protect Party A"]
+      "starters": [
+        "Review this contract for risks",
+        "What should I pay most attention to?",
+        "Revise this clause to better protect Party A"
+      ]
     },
     "code": {
       "name": "Coding Assistant",
       "title": "Build, debug, and explain code",
-      "starters": ["Help me design this API", "Explain the problem in this code", "Write a minimal runnable example"]
+      "starters": [
+        "Help me design this API",
+        "Explain the problem in this code",
+        "Write a minimal runnable example"
+      ]
     },
     "business": {
       "name": "Business Analyst",
       "title": "Data, strategy, and growth",
-      "starters": ["Analyze this business model", "Create a competitor analysis framework", "What does this data show?"]
+      "starters": [
+        "Analyze this business model",
+        "Create a competitor analysis framework",
+        "What does this data show?"
+      ]
     },
     "teacher": {
       "name": "Learning Coach",
       "title": "Explanations, exercises, and tutoring",
-      "starters": ["Help me learn this topic", "Give me five practice questions", "Explain this concept with an analogy"]
+      "starters": [
+        "Help me learn this topic",
+        "Give me five practice questions",
+        "Explain this concept with an analogy"
+      ]
     }
   },
   "modelPicker": {
@@ -830,7 +876,8 @@
       "personalization": "Personalization",
       "analytics": "Data insights",
       "storage": "Data storage",
-      "about": "About"
+      "about": "About",
+      "extensions": "Extensions & skills"
     },
     "theme": {
       "title": "Appearance",
@@ -888,10 +935,10 @@
     "archiveDescription": "Export local data to a ZIP archive or restore from one. G-LLM creates a backup before importing.",
     "export": "Export data",
     "import": "Import data",
-    "confirmChoose": "G-LLM will choose a new data folder and copy the current conversations, assistants, local knowledge, long-term memory, and provider settings into it. The change takes effect after restart, and the old folder remains as a backup. Continue?",
+    "confirmChoose": "When idle, G-LLM will copy and verify data and conversation workspaces, update file references, and activate the new folder immediately. Manually authorized external folders stay in place. Original data is retained as a backup. Continue?",
     "choosing": "Choosing a data folder...",
     "chooseCancelled": "Data folder selection cancelled",
-    "confirmReset": "G-LLM will copy the current data back to the default folder and restore the system default location. The change takes effect after restart, and the current folder will not be deleted automatically. Continue?",
+    "confirmReset": "When idle, G-LLM will copy and verify data and conversation workspaces, update file references, and activate the default folder immediately. External folders stay in place. Original data is retained as a backup. Continue?",
     "resetting": "Restoring the default data folder...",
     "exporting": "Exporting data archive...",
     "exportCancelled": "Data export cancelled",
@@ -1031,25 +1078,82 @@
       "local": "Local models"
     },
     "templates": {
-      "gllm": { "name": "G-LLM", "description": "Default G-LLM gateway" },
-      "openai-compatible": { "name": "OpenAI-compatible", "description": "Custom gateway compatible with /chat/completions" },
-      "openai": { "name": "OpenAI", "description": "Official OpenAI-compatible API" },
-      "google-gemini": { "name": "Google Gemini", "description": "Gemini OpenAI-compatible API" },
-      "deepseek": { "name": "DeepSeek", "description": "DeepSeek-compatible API template" },
-      "dashscope": { "name": "Alibaba Cloud Model Studio", "description": "Qwen DashScope compatibility mode" },
-      "moonshot": { "name": "Moonshot / Kimi", "description": "Kimi OpenAI-compatible API" },
-      "zhipu": { "name": "Zhipu GLM", "description": "Zhipu OpenAI-compatible API" },
-      "volcengine-ark": { "name": "Volcengine Ark / Doubao", "description": "Volcengine Ark OpenAI-compatible API" },
-      "siliconflow": { "name": "SiliconFlow", "description": "SiliconFlow multi-model API" },
-      "openrouter": { "name": "OpenRouter", "description": "Multi-model aggregation and routing platform" },
-      "groq": { "name": "Groq", "description": "High-speed OpenAI-compatible inference API" },
-      "mistral": { "name": "Mistral", "description": "Mistral Chat Completions API" },
-      "xai": { "name": "xAI Grok", "description": "xAI OpenAI-compatible API" },
-      "together": { "name": "Together AI", "description": "Hosted open models with a compatible API" },
-      "perplexity": { "name": "Perplexity", "description": "Sonar search-augmented models" },
-      "ollama": { "name": "Ollama", "description": "Local Ollama OpenAI-compatible API" },
-      "lm-studio": { "name": "LM Studio", "description": "Local LM Studio-compatible API" },
-      "local-compatible": { "name": "Local compatible service", "description": "Local or private-network OpenAI-compatible service" }
+      "gllm": {
+        "name": "G-LLM",
+        "description": "Default G-LLM gateway"
+      },
+      "openai-compatible": {
+        "name": "OpenAI-compatible",
+        "description": "Custom gateway compatible with /chat/completions"
+      },
+      "openai": {
+        "name": "OpenAI",
+        "description": "Official OpenAI-compatible API"
+      },
+      "google-gemini": {
+        "name": "Google Gemini",
+        "description": "Gemini OpenAI-compatible API"
+      },
+      "deepseek": {
+        "name": "DeepSeek",
+        "description": "DeepSeek-compatible API template"
+      },
+      "dashscope": {
+        "name": "Alibaba Cloud Model Studio",
+        "description": "Qwen DashScope compatibility mode"
+      },
+      "moonshot": {
+        "name": "Moonshot / Kimi",
+        "description": "Kimi OpenAI-compatible API"
+      },
+      "zhipu": {
+        "name": "Zhipu GLM",
+        "description": "Zhipu OpenAI-compatible API"
+      },
+      "volcengine-ark": {
+        "name": "Volcengine Ark / Doubao",
+        "description": "Volcengine Ark OpenAI-compatible API"
+      },
+      "siliconflow": {
+        "name": "SiliconFlow",
+        "description": "SiliconFlow multi-model API"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "description": "Multi-model aggregation and routing platform"
+      },
+      "groq": {
+        "name": "Groq",
+        "description": "High-speed OpenAI-compatible inference API"
+      },
+      "mistral": {
+        "name": "Mistral",
+        "description": "Mistral Chat Completions API"
+      },
+      "xai": {
+        "name": "xAI Grok",
+        "description": "xAI OpenAI-compatible API"
+      },
+      "together": {
+        "name": "Together AI",
+        "description": "Hosted open models with a compatible API"
+      },
+      "perplexity": {
+        "name": "Perplexity",
+        "description": "Sonar search-augmented models"
+      },
+      "ollama": {
+        "name": "Ollama",
+        "description": "Local Ollama OpenAI-compatible API"
+      },
+      "lm-studio": {
+        "name": "LM Studio",
+        "description": "Local LM Studio-compatible API"
+      },
+      "local-compatible": {
+        "name": "Local compatible service",
+        "description": "Local or private-network OpenAI-compatible service"
+      }
     }
   },
   "agreement": {
@@ -1086,11 +1190,12 @@
       "programFiles": "The data folder cannot be inside Program Files because standard users may not be able to write there.",
       "generatedImagePathInvalid": "The generated image path is invalid",
       "alreadyUsingDirectory": "G-LLM is already using this data folder.",
-      "directoryChanged": "Current data was copied to the new folder. Restart G-LLM to apply it.",
+      "directoryChanged": "Data and conversation files were verified, references updated, and the new folder activated. Original data is retained as a backup.",
+      "tasksRunning": "{{count}} task(s) are still running or cleaning up, including background work. Wait for completion or stop them before changing the data folder.",
       "noExistingData": "No G-LLM data was found in that folder. Choose a previous backup or migrated data folder.",
       "existingDirectoryAdopted": "G-LLM will use the existing data folder after restart.",
       "alreadyUsingDefault": "G-LLM is already using the default data folder.",
-      "defaultRestored": "Current data was copied back to the default folder. Restart G-LLM to apply it.",
+      "defaultRestored": "Data and conversation files were verified, references updated, and the default folder activated. Original data is retained as a backup.",
       "unsafeArchivePath": "The archive contains an unsafe path: {{path}}",
       "archivePathOutside": "The archive contains a path outside the data folder: {{path}}",
       "exported": "Exported {{count}} data file(s).",
@@ -1296,5 +1401,20 @@
     "cancelled": "Skill installation was cancelled. Assistant bindings were not changed.",
     "failed": "Skill installation failed. No new skill or assistant binding was saved. Check the source and send the installation request again.",
     "historySaveFailed": "This result could not be saved to conversation history. Check local storage."
+  },
+  "workspaceFiles": {
+    "title": "Workspace files",
+    "projectFolder": "Project folder",
+    "sessionFolder": "Chat folder",
+    "add": "Add files",
+    "refresh": "Refresh files",
+    "manage": "Manage workspace",
+    "startHint": "Drop files to begin. A chat folder is created automatically, or bind a project folder in workspace management.",
+    "parent": "Parent folder",
+    "empty": "No files here yet. Drop contracts, documents or images to begin.",
+    "truncated": "Showing the first 300 entries. Open a subfolder to view more.",
+    "dropHint": "Dropped files are copied here. Click a file to attach it for the AI to read or process.",
+    "imported": "Saved {{count}} files to this workspace",
+    "readOnly": "This folder is read-only; files cannot be imported."
   }
 }

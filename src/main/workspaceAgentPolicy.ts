@@ -81,8 +81,9 @@ export function needsWorkspaceApproval(
   isScript: boolean,
   canWrite: boolean,
   isNative = false,
-  boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean } = {}
+  boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean; desktop?: boolean } = {}
 ): boolean {
+  if (boundary.desktop === true) return true
   if (mode === 'full') return false
   // Decide by enforced execution boundaries, never by guessing what script text does.
   // Unknown native boundaries ask; the caller must explicitly supply sandbox mode.
@@ -96,7 +97,7 @@ export function workspaceApprovalInstructions(mode: string | undefined): string 
     : mode === 'auto'
       ? 'Approve for me: workspace tools, restricted JavaScript and configured sandbox Python/Shell (including background jobs) execute automatically. Host commands and HTTP extensions require approval.'
       : 'Ask for approval: file writes, scripts and HTTP extensions require per-operation approval; read-only workspace tools execute directly.'
-  return `${policy} Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode.`
+  return `${policy} Dedicated computer and browser tools always require per-call approval, including in full mode. Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode.`
 }
 
 export async function loadWorkspaceEnvExampleNames(root: string): Promise<string[]> {

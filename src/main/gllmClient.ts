@@ -30,6 +30,7 @@ import type {
 import { applyWorkspaceSearchScope, buildWorkspaceSearchQuery, getGoalSearchResultDomain, normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import type { AppLanguage } from '../shared/i18n'
 import { buildAssistantSkillContext } from '../shared/assistantCapabilities'
+import { buildHostEnvironmentContext } from './hostEnvironment'
 import {
   getExplicitResponseStyleInstruction,
   sanitizeAssistantSystemPrompt,
@@ -318,6 +319,7 @@ function buildAssistantSystemInstruction(
   const responseStyleInstruction = getExplicitResponseStyleInstruction(getLastUserQuery(messages))
   return [
     universalAssistantPolicy,
+    buildHostEnvironmentContext(),
     sanitizeAssistantSystemPrompt(basePrompt),
     '',
     getTimelineSystemContext(assistant, messages, compressedHistory),

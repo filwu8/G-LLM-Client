@@ -5,6 +5,8 @@
  */
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { setApplicationSettingsListener } from './applicationConfiguration'
+import { getAppIconPath } from './appIcon'
 import {
   app,
   BrowserWindow,
@@ -18,6 +20,7 @@ import {
   protocol,
   screen,
   shell,
+  systemPreferences,
   Tray,
   type Point,
   type Rectangle
@@ -31,6 +34,7 @@ import { createAssistantTemplateBundle, importAssistantTemplateBundle } from '..
 import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
 import { copyMermaidSvgAsPng } from './mermaidPng'
+import { closeAgentBrowser, isAgentBrowserOpen, setAgentBrowserStateListener, showAgentBrowser } from './agentBrowser'
 import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
 
 import type {
@@ -68,6 +72,7 @@ import {
 } from '../shared/providers'
 import { ActiveResponseRegistry } from './activeResponse'
 import { AgentRunLedger } from './agentRunLedger'
+import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
 import {
@@ -107,6 +112,8 @@ import {
   getDataResourceFilePathFromUrl,
   getDataResourceProtocol,
   getDataLocationInfo,
+  ensureConversationWorkspace,
+  resolveCurrentDataPath,
   getGoldThemeEntitlement,
   getMemories,
   getNotes,
@@ -139,10 +146,6 @@ import {
   trackTelemetryEvent
 } from './telemetry'
 
-function getAppIconPath(): string {
-  return is.dev ? join(process.cwd(), 'resources/app-icon.png') : join(process.resourcesPath, 'resources/app-icon.png')
-}
-
 function getTrayIconPath(useDarkBackground = false): string {
   if (process.platform === 'win32') {
     const filename = useDarkBackground ? 'tray-icon-win-dark.ico' : 'tray-icon-win-light.ico'
@@ -170,6 +173,17 @@ let mainComposerTarget: ComposerSessionTarget | null = null
 let quickComposerTarget: ComposerSessionTarget | null = null
 const conversationMemoryUpdates = new Set<string>()
 const activeResponses = new ActiveResponseRegistry()
+const storageTasks = new StorageTasks()
+
+function assertDataLocationIdle(): void {
+  const count = activeResponses.activeConversationIds.length + storageTasks.count + conversationMemoryUpdates.size
+  if (count) throw new Error(mainT('main.storage.tasksRunning', getSettings().language, { count }))
+}
+
+function publishDataLocationChange(previousRoot: string): void {
+  const state = getAppStateSnapshot()
+  for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('storage:location-changed', state, previousRoot)
+}
 let agentRunLedger: AgentRunLedger | null = null
 const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
 const providerModelCatalogRefreshes = new Map<string, Promise<ApiProvider>>()
@@ -1680,6 +1694,15 @@ process.on('unhandledRejection', (reason) => {
 })
 
 app.whenReady().then(() => {
+  setApplicationSettingsListener((saved, previous) => {
+    broadcastSettingsChange(saved)
+    broadcastFloatingMascotSkin(saved)
+    if (saved.floatingMascotVisible !== previous.floatingMascotVisible) {
+      if (saved.floatingMascotVisible) showFloatingLogoFromTray()
+      else hideFloatingLogoToTray()
+    }
+    if (saved.floatingMascotHints !== previous.floatingMascotHints) setFloatingMascotHints(saved.floatingMascotHints)
+  })
   if (!gotSingleInstanceLock) return
 
   if (!process.windowsStore) electronApp.setAppUserModelId(APP_USER_MODEL_ID)
@@ -1698,6 +1721,11 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+  setAgentBrowserStateListener((conversationId, open) => {
+    for (const window of [mainWindow, quickWindow]) {
+      if (window && !window.isDestroyed()) window.webContents.send('desktop:browser-changed', conversationId, open)
+    }
   })
 
   app.on('render-process-gone', (_, webContents, details) => {
@@ -1734,6 +1762,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('storage:get-data-location', () => getDataLocationInfo())
+  ipcMain.handle('storage:assert-idle', () => assertDataLocationIdle())
   ipcMain.handle('storage:open-data-directory', async () => {
     const result = await shell.openPath(getDataLocationInfo().activePath)
     if (result) throw new Error(result)
@@ -1761,6 +1790,7 @@ app.whenReady().then(() => {
     return result.filePath
   })
   ipcMain.handle('storage:choose-data-directory', async (event) => {
+    assertDataLocationIdle()
     const owner = BrowserWindow.fromWebContents(event.sender)
     const language = getSettings().language
     const result = owner
@@ -1776,9 +1806,14 @@ app.whenReady().then(() => {
         })
 
     if (result.canceled || !result.filePaths[0]) return null
-    return migrateDataRoot(result.filePaths[0])
+    assertDataLocationIdle()
+    const previousRoot = getDataLocationInfo().activePath
+    const changed = migrateDataRoot(result.filePaths[0])
+    if (changed.changed) publishDataLocationChange(previousRoot)
+    return changed
   })
   ipcMain.handle('storage:choose-existing-data-directory', async (event) => {
+    assertDataLocationIdle()
     const owner = BrowserWindow.fromWebContents(event.sender)
     const language = getSettings().language
     const result = owner
@@ -1794,9 +1829,16 @@ app.whenReady().then(() => {
         })
 
     if (result.canceled || !result.filePaths[0]) return null
+    assertDataLocationIdle()
     return adoptExistingDataRoot(result.filePaths[0])
   })
-  ipcMain.handle('storage:reset-data-directory', () => resetDataRoot())
+  ipcMain.handle('storage:reset-data-directory', () => {
+    assertDataLocationIdle()
+    const previousRoot = getDataLocationInfo().activePath
+    const changed = resetDataRoot()
+    if (changed.changed) publishDataLocationChange(previousRoot)
+    return changed
+  })
   ipcMain.handle('storage:export-data-archive', async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     const language = getSettings().language
@@ -1816,6 +1858,7 @@ app.whenReady().then(() => {
     return exportDataArchive(result.filePath)
   })
   ipcMain.handle('storage:import-data-archive', async (event) => {
+    assertDataLocationIdle()
     const owner = BrowserWindow.fromWebContents(event.sender)
     const language = getSettings().language
     const result = owner
@@ -1833,6 +1876,7 @@ app.whenReady().then(() => {
         })
 
     if (result.canceled || !result.filePaths[0]) return null
+    assertDataLocationIdle()
     return importDataArchive(result.filePaths[0])
   })
   ipcMain.handle('app:relaunch', () => {
@@ -1951,7 +1995,7 @@ app.whenReady().then(() => {
     const deletedConversationIds = getConversations()
       .filter((conversation) => conversation.assistantId === id)
       .map((conversation) => conversation.id)
-    for (const conversationId of deletedConversationIds) cancelActiveResponse(conversationId)
+    for (const conversationId of deletedConversationIds) { cancelActiveResponse(conversationId); closeAgentBrowser(conversationId) }
     deleteAssistant(id)
     for (const conversationId of deletedConversationIds) {
       broadcastConversationChange(conversationId, 'deleted')
@@ -1996,6 +2040,7 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('conversation:save', (_, conversation) => {
     const saved = saveConversation(conversation)
+    if (!saved.workspace?.browserAccess) closeAgentBrowser(saved.id)
     broadcastConversationChange(saved.id, 'saved', saved)
     void maybeUpdateProjectMemory(saved)
     return saved
@@ -2012,6 +2057,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('conversation:delete', (_, id: string) => {
     cancelActiveResponse(id)
+    closeAgentBrowser(id)
     deleteConversation(id)
     broadcastConversationChange(id, 'deleted')
   })
@@ -2079,14 +2125,14 @@ app.whenReady().then(() => {
     const { prepareLocalFileTask } = await import('./localFileTasks')
     return prepareLocalFileTask(request, attachmentIds, getSettings().language)
   })
-  ipcMain.handle('local-task:execute', async (event, planId: string) => {
+  ipcMain.handle('local-task:execute', (event, planId: string) => storageTasks.run(async () => {
     const { executeLocalFileTask } = await import('./localFileTasks')
     return executeLocalFileTask(
       planId,
       (progress) => event.sender.send('local-task:progress', progress),
       getSettings().language
     )
-  })
+  }))
   ipcMain.handle('local-task:cancel', async (_, planId: string) => {
     const { cancelLocalFileTask } = await import('./localFileTasks')
     return cancelLocalFileTask(planId)
@@ -2107,6 +2153,31 @@ app.whenReady().then(() => {
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null
   })
+  ipcMain.handle('desktop:create-workspace', () => {
+    const root = join(getDataLocationInfo().activePath, 'agent-workspaces', randomUUID())
+    mkdirSync(root, { recursive: true })
+    return root
+  })
+  ipcMain.handle('workspace:ensure-conversation', (_event, conversationId: string, projectId?: string) => ensureConversationWorkspace(conversationId, projectId))
+  ipcMain.handle('workspace:list-files', async (_event, root: string, path: string) => {
+    const { listWorkspaceFiles } = await import('./workspaceFiles')
+    return listWorkspaceFiles(resolveCurrentDataPath(root), path)
+  })
+  ipcMain.handle('workspace:attach-file', async (_event, root: string, path: string) => {
+    const { prepareWorkspaceFileAttachment } = await import('./attachments')
+    return prepareWorkspaceFileAttachment(resolveCurrentDataPath(root), path)
+  })
+  ipcMain.handle('workspace:import-attachments', (_event, root: string, attachments: import('../shared/types').PreparedAttachment[]) => storageTasks.run(async () => {
+    const { prepareWorkspaceAttachments } = await import('./attachments')
+    const { withWorkspaceImport } = await import('./workspaceRunLock')
+    return withWorkspaceImport(resolveCurrentDataPath(root), () => prepareWorkspaceAttachments(resolveCurrentDataPath(root), attachments))
+  }))
+  ipcMain.handle('desktop:check-accessibility', (_event, prompt: boolean) => process.platform === 'darwin' ? systemPreferences.isTrustedAccessibilityClient(prompt === true) : null)
+  ipcMain.handle('desktop:close-browser', (_event, conversationId: string) => {
+    closeAgentBrowser(conversationId)
+  })
+  ipcMain.handle('desktop:browser-status', (_event, conversationId: string) => isAgentBrowserOpen(conversationId))
+  ipcMain.handle('desktop:show-browser', (_event, conversationId: string) => showAgentBrowser(conversationId))
   ipcMain.on('workspace-agent:approval-response', (event, id: string, approved: boolean) => {
     const pending = pendingWorkspaceApprovals.get(id)
     if (!pending || pending.senderId !== event.sender.id) return
@@ -2114,6 +2185,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
     if (!request.workspace?.rootPath?.trim()) throw new Error('Authorize a workspace folder before using local Agent tools')
+    request = { ...request, workspace: { ...request.workspace, rootPath: resolveCurrentDataPath(request.workspace.rootPath) } }
     const requestStartedAt = Date.now()
     const runLedger = getAgentRunLedger()
     const run = runLedger.start({
@@ -2244,28 +2316,33 @@ app.whenReady().then(() => {
       releaseActiveResponse(active.key, active.controller)
     }
   })
-  ipcMain.handle('workspace:check-execution', async (_, rootPath: string, options: import('../shared/types').WorkspaceDiagnosticOptions) => {
+  ipcMain.handle('workspace:check-execution', (_, rootPath: string, options: import('../shared/types').WorkspaceDiagnosticOptions) => storageTasks.run(async () => {
+    rootPath = resolveCurrentDataPath(rootPath)
     if (!rootPath || !options || !['sandbox', 'host'].includes(options.executionMode) || typeof options.sandboxNetwork !== 'boolean') throw new Error('Invalid execution check settings')
     const { diagnoseWorkspaceExecution } = await import('./workspaceDiagnostics')
     return diagnoseWorkspaceExecution(rootPath, options)
-  })
+  }))
   ipcMain.handle('workspace:agent-settings-status', async (_, rootPath: string) => {
+    rootPath = resolveCurrentDataPath(rootPath)
     const { workspaceVault } = await import('./workspaceSecrets')
     const { sandboxStatus } = await import('./workspaceSandbox')
     const { loadWorkspaceEnvExampleNames } = await import('./workspaceAgentPolicy')
     const [vault, sandbox, suggestedNames] = await Promise.all([workspaceVault().status(rootPath), sandboxStatus(), loadWorkspaceEnvExampleNames(rootPath).catch(() => [])])
     return { ...vault, sandbox, suggestedNames }
   })
-  ipcMain.handle('workspace:save-variables', async (_, rootPath: string, updates: unknown) => {
+  ipcMain.handle('workspace:save-variables', (_, rootPath: string, updates: unknown) => storageTasks.run(async () => {
+    rootPath = resolveCurrentDataPath(rootPath)
     const { workspaceVault } = await import('./workspaceSecrets')
     await workspaceVault().update(rootPath, updates)
-  })
+  }))
   ipcMain.handle('workspace:reveal-file', async (_, rootPath: string, relativePath: string) => {
+    rootPath = resolveCurrentDataPath(rootPath)
     const { resolveWorkspaceItem } = await import('./workspaceAgent')
     const filePath = await resolveWorkspaceItem(rootPath, relativePath)
     shell.showItemInFolder(filePath)
   })
   ipcMain.handle('workspace:open-directory', async (_, rootPath: string) => {
+    rootPath = resolveCurrentDataPath(rootPath)
     const { resolveWorkspaceItem } = await import('./workspaceAgent')
     const directoryPath = await resolveWorkspaceItem(rootPath, '.')
     const error = await shell.openPath(directoryPath)

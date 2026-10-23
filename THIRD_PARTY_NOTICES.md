@@ -143,12 +143,12 @@ This file is generated from the locked production dependency graph by
 | dequal@2.0.3 | MIT | [link](https://github.com/lukeed/dequal#readme) |
 | devlop@1.1.0 | MIT | [link](https://github.com/wooorm/devlop#readme) |
 | dingbat-to-unicode@1.0.1 | BSD-2-Clause | [link](https://github.com/mwilliamson/dingbat-to-unicode#readme) |
-| dompurify@3.4.16 | (MPL-2.0 OR Apache-2.0) | [link](https://github.com/cure53/DOMPurify) |
+| dompurify@3.4.17 | (MPL-2.0 OR Apache-2.0) | [link](https://github.com/cure53/DOMPurify) |
 | dot-prop@9.0.0 | MIT | [link](https://github.com/sindresorhus/dot-prop#readme) |
 | duck@0.1.12 | BSD | [link](https://github.com/mwilliamson/duck.js#readme) |
 | electron-store@10.1.0 | MIT | [link](https://github.com/sindresorhus/electron-store#readme) |
 | electron-updater@6.8.9 | MIT | [link](https://github.com/electron-userland/electron-builder) |
-| electron@41.10.6 | MIT | [link](https://github.com/electron/electron#readme) |
+| electron@42.11.18 | MIT | [link](https://github.com/electron/electron#readme) |
 | env-paths@3.0.0 | MIT | [link](https://github.com/sindresorhus/env-paths#readme) |
 | es-toolkit@1.49.0 | MIT | [link](https://es-toolkit.dev) |
 | escape-string-regexp@5.0.0 | MIT | [link](https://github.com/sindresorhus/escape-string-regexp#readme) |
@@ -400,7 +400,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @chevrotain/types@11.1.2, dompurify@3.4.16, pdf-parse@2.4.5, sumchecker@3.0.1
+### @chevrotain/types@11.1.2, dompurify@3.4.17, pdf-parse@2.4.5, sumchecker@3.0.1
 
 ````text
 Apache License
@@ -2167,7 +2167,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### dompurify@3.4.16
+### dompurify@3.4.17
 
 ````text
 Mozilla Public License Version 2.0
@@ -2572,7 +2572,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### electron@41.10.6
+### electron@42.11.18
 
 ````text
 Copyright (c) Electron contributors

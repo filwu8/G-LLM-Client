@@ -37,7 +37,7 @@ Version 2.0.25 changes the display name to `知言 · G-LLM Client`. The MSIX di
 
 ## Acceptance
 
-The selected release route is a private Microsoft Store audience followed by installation acceptance of the Microsoft-signed package. Keep automatic public availability disabled. The initial tester group contains only the authorized publisher account. Complete private certification and install from that account before considering public availability; private submission itself does not prove installation acceptance.
+The initial release route used a private Microsoft Store audience followed by installation acceptance of the Microsoft-signed package. Version 2.0.26 completed this acceptance and became a free, public, discoverable release on 2026-10-21 (Submission 4). Later updates retain those live settings unless the publisher explicitly requests a change. A package build or successful upload alone does not prove certification, publication, or installation acceptance.
 
 The local acceptance package could not be installed because its self-signed certificate was untrusted (0x800B0109). The generated certificate and private key were removed, and no TrustedPeople or root trust was added. Do not treat this failed attempt as a successful installation test.
 

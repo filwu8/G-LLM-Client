@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.26 (unreleased)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.27 (preparing Store update)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Latest stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
+Current public Microsoft Store version: [V2.0.26](https://apps.microsoft.com/detail/9MVD547V4ZN9), published for free on 2026-10-21. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
@@ -24,18 +24,27 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.26 Store Update Link Fix (Unreleased)
+## V2.0.27 Projects, Files, and Authorization (Preparing Store Update)
+
+- Bind projects directly to folders; create a workspace in the data directory when no folder is selected. Drop or upload files into the workspace while retaining originals, and browse and process them in the conversation file panel.
+- Check all running tasks before migrating data, verify copied files, and update workspace, attachment, and artifact paths. Fix migration failures caused by Chromium singleton links on macOS.
+- Give the assistant the actual host OS. Computer and browser actions require separate grants and approval for every operation. Supported settings and skill changes can be previewed and approved through conversation.
+- Move extensions and skills into Settings. Fix overlapping workspace controls and missing task modules after development builds.
+- Use the application icon in the AI browser, and provide a conversation control to bring its existing window forward. Each conversation currently has one page without tabs; full MCP/plugin execution is still unavailable.
+- See [release notes and validation](docs/releases/v2.0.27.md). This update is not yet live in the Store.
+
+## V2.0.26 Store Update Link Fix (Public)
 
 - Open the product page directly in the native Windows Microsoft Store app. Private products otherwise show “Product not found” at the public website link.
 - Keep the “知言 · G-LLM Client” display name and existing identity and storage compatibility.
-- Version 2.0.25 passed private certification and Microsoft-signed installation; acceptance found the update-link issue above. Version 2.0.26 still needs private certification, signed installation, and remaining acceptance. It is not publicly released.
+- Version 2.0.26 passed Store certification and Microsoft-signed installation acceptance, and was published for free on 2026-10-21. That older package does not include the 2.0.27 improvements.
 
 ## V2.0.25 Application Rename (Private Testing)
 
 - Change the display name to “知言 · G-LLM Client” across app windows, default-space branding, loading text, About, shortcuts, and the MSIX manifest. Sidebar branding wraps to fit while custom space names are preserved.
 - Preserve application and Store IDs, executable names, the gllm protocol, and storage paths for existing installations and user data.
 - Correct Store update instructions and button labels to identify Microsoft Store as the update manager.
-- Versions 2.0.24 and 2.0.25 passed private Store certification and installation; full acceptance is ongoing. The latest public stable release remains 2.0.23.
+- Versions 2.0.24 and 2.0.25 passed private Store certification and installation; their subsequent fixes were publicly released in 2.0.26.
 
 ## V2.0.24 Security Fixes (Private Testing)
 
@@ -45,7 +54,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Full production, development, and packaging dependency audit reports zero vulnerabilities. Update archive, CSS, build, and browser-data dependencies and remove the legacy got cache and sprintf-js download chains.
 - Regression checks cover math rendering security, Word conversion, and download integrity, cache reuse, and tamper rejection. CI and release workflows reject dependency advisories at every severity.
 - Build tools require Node.js 22.12.0 or newer; CI uses Node.js 24. Proxy configuration uses HTTP_PROXY, HTTPS_PROXY, and NO_PROXY instead of GLOBAL_AGENT_*.
-- These local fixes have not been published. The latest stable release remains 2.0.23.
+- These fixes were publicly released in Microsoft Store 2.0.26; the latest GitHub stable release remains 2.0.23.
 
 
 ## V2.0.23 Install Assistant Skills Through Conversation
@@ -261,6 +270,11 @@ Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs dire
 - Attachments and visual inputs including files, images, pasted clipboard content, system screenshots, and image copy to the system clipboard.
 - Local file tasks that compress images or PDFs to a requested byte limit with approval, PDF rasterization warnings, non-destructive output, and per-file verification.
 - Conversation workspaces that grant a single conversation controlled access to inspect, search, create, and modify files. Large text is read in ranges, while completed older tool payloads become verifiable summaries and the newest read result remains verbatim.
+- Project file workspaces: bind an existing folder when creating a workspace, using its folder name by default, or automatically create a folder named for the workspace. New chats share its files; older chats retain their existing folders. Running file tasks check folder ownership to prevent concurrent writes. The main file panel supports dropping or adding files, browsing folders and referencing originals. External files are copied into `incoming/` without overwriting same-name files; files already inside the workspace are referenced directly. Supported documents can be read from the full originals and processed into deliverables without copying their text manually; scanned documents still require OCR.
+- Manage extensions and skills under Settings → Extensions & skills. Chat can change common app settings and create, update and bind instruction skills. Every change requires an explicit approval preview, updates the UI after saving and retains skill revisions for rollback. These tools cannot change credentials or execution permissions. HTTP function tools can run; complete MCP and plugin installation runtimes are not connected yet.
+- Automatic chat workspaces: regular chat does not require selecting a project folder; files persist per chat under `agent-workspaces/`. Data-folder changes check running and cleaning-up tasks, copy and verify files, update conversation/attachment/artifact/project/Skill/file-link references and encrypted variable bindings, and switch immediately. External project folders stay in place; original data is retained as a backup.
+- Computer & browser: a dedicated button beside the message input works without selecting a project folder first. The assistant receives the actual OS version and architecture. Enable host commands and browser interaction separately in Agent settings; every operation shows its details and requires approval, even in Full authorization mode. Supports environment checks, software installation commands, scripted application automation, and page reading, clicking and ordinary form filling in a dedicated visible browser using the application icon. Each conversation has one page; navigation replaces it and multiple tabs are not supported yet. Enter passwords and handle OS elevation manually; existing browser takeover, cross-frame UI, popups and downloads are not supported yet. macOS also requires OS Automation/Accessibility authorization; settings include an Accessibility permission check.
+- Data migration and archives exclude Chromium runtime locks such as `SingletonCookie`, `SingletonLock` and `SingletonSocket`, along with symbolic links, preventing dangling links from breaking macOS migration.
 - Agent runtime persistence for both regular chat and workspace tasks, recording model requests, retries, tools, approvals, artifact verification, and terminal states locally. An app restart marks unfinished runs as interrupted instead of leaving a false running state.
 - Progressive multi-engine retrieval through Google, Bing, DuckDuckGo, and Google News, with query planning, source deduplication, evidence evaluation, and auditing before highly relevant material is organized into the conversation context.
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
@@ -291,6 +305,8 @@ The client includes the following resident desktop behavior:
 pnpm install
 pnpm dev
 ```
+
+Development uses `.electron-vite/` and production builds use `out/`, so building does not remove modules used by a running development instance. Start development with `pnpm dev`; restart it after changing main-process code.
 
 For browser or G-LLM Web integration, follow the [G-LLM custom URL protocol contract](./docs/browser-deep-link.md). Automatic API-key setup puts only a single-use, 90-second handoff code in the URL—never the plaintext credential.
 

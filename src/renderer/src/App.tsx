@@ -126,6 +126,10 @@ import {
   searchLocalizedAssistantPresets
 } from './localizedContent'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
+import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
+import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
@@ -272,7 +276,7 @@ interface ConversationContextMenu {
   conversationId: string
 }
 
-type SettingsTab = 'providers' | 'personalization' | 'analytics' | 'storage' | 'about'
+type SettingsTab = 'providers' | 'extensions' | 'personalization' | 'analytics' | 'storage' | 'about'
 
 interface SpaceFormPayload {
   name: string
@@ -288,7 +292,7 @@ interface WorkspaceArtifactContextMenu {
   relativePath: string
 }
 
-const settingsTabs: SettingsTab[] = ['providers', 'personalization', 'analytics', 'storage', 'about']
+const settingsTabs: SettingsTab[] = ['providers', 'extensions', 'personalization', 'analytics', 'storage', 'about']
 
 function ModalBackdrop({
   className = 'assistant-modal-backdrop',
@@ -821,7 +825,9 @@ export default function App() {
   const [localTaskResult, setLocalTaskResult] = useState<LocalTaskResult | null>(null)
   const [localTaskRunning, setLocalTaskRunning] = useState(false)
   const [draftWorkspace, setDraftWorkspace] = useState<ConversationWorkspace | undefined>()
+  const preparingWorkspaceRef = useRef(false)
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
+  const [desktopSetupOpen, setDesktopSetupOpen] = useState(false)
   const [workspaceApprovalPrompts, setWorkspaceApprovalPrompts] = useState<WorkspaceApprovalPrompt[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
   const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
@@ -831,7 +837,7 @@ export default function App() {
   const [assistantSettingsOpen, setAssistantSettingsOpen] = useState(false)
   const [conversationModelOpen, setConversationModelOpen] = useState(false)
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
-  const [toolCenterOpen, setToolCenterOpen] = useState(false)
+  const [filesOpen, setFilesOpen] = useState(true)
   const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [spaceCenterOpen, setSpaceCenterOpen] = useState(false)
   const [agreementOpen, setAgreementOpen] = useState(false)
@@ -878,11 +884,13 @@ export default function App() {
   const conversationSearchRequestRef = useRef(0)
   const pendingChatChunksRef = useRef<ChatChunk[]>([])
   const chatChunkFlushTimerRef = useRef<number | null>(null)
-  const newConversationDraftRef = useRef<{ id: string; assistantId: string; projectId?: string } | null>(null)
+  const newConversationDraftRef = useRef<Conversation | null>(null)
   const appStateLoadedRef = useRef(false)
   const pendingMainConversationOpenRequestRef = useRef<MainConversationOpenRequest | null>(null)
 
   const composerSessionKey = getComposerSessionKey(activeConversationId, activeProjectId, activeAssistantId)
+  const composerSessionKeyRef = useRef(composerSessionKey)
+  composerSessionKeyRef.current = composerSessionKey
   const draft = composerDrafts[composerSessionKey] ?? readComposerDraft(getComposerDraftStorageKey(composerSessionKey))
   const pendingAttachments = composerAttachments[composerSessionKey] ?? []
   const pendingQuoteRefs = composerQuoteRefs[composerSessionKey] ?? []
@@ -1032,7 +1040,7 @@ export default function App() {
     streamingConversationDraftsRef.current
   )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
-  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace)
+  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace)
   const workspaceApprovalPrompt = currentWorkspace ? workspaceApprovalPrompts.find(prompt => prompt.conversationId === activeConversation?.id) ?? null : null
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
@@ -1112,6 +1120,12 @@ export default function App() {
       return searchable.includes(keyword)
     })
   }, [assistantSearchQuery, visibleAssistants, i18n.resolvedLanguage])
+
+  useEffect(() => window.gllm.onStorageLocationChanged?.((state, previousRoot) => {
+    applyAppState(state)
+    setDraftWorkspace(current => current ? { ...current, rootPath: relocateWorkspaceLocation(current.rootPath, previousRoot, state.dataLocation.activePath, window.gllm.platform === 'win32') } : undefined)
+    setWorkspaceArtifactMenu(null)
+  }), [])
 
   function applyAppState(state: AppStateSnapshot, options: { selectFirstConversation?: boolean } = {}) {
     const nextProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
@@ -1735,12 +1749,57 @@ export default function App() {
     }
   }
 
+  async function stageComposerAttachments(attachments: PreparedAttachment[]) {
+    if (!attachments.length) return []
+    const session = composerSessionKey
+    const pending = newConversationDraftRef.current
+    const base = activeConversation ?? (pending?.assistantId === activeAssistant.id && pending.projectId === activeProjectId ? pending : createConversation(activeAssistant, assistantDefaultProvider, activeProjectId))
+    if (!activeConversation) newConversationDraftRef.current = base
+    const workspace = currentWorkspace ?? await window.gllm.ensureConversationWorkspace(base.id, base.projectId)
+    if (workspace.permission !== 'read-write') throw new Error(t('workspaceFiles.readOnly'))
+    const imported = await window.gllm.importWorkspaceAttachments(workspace.rootPath, attachments)
+    if (activeConversation && !activeConversation.workspace) {
+      const saved = await window.gllm.saveConversation({ ...activeConversation, workspace })
+      if (composerSessionKeyRef.current !== session) return []
+      setConversations(current => [saved, ...current.filter(item => item.id !== saved.id)])
+    }
+    if (composerSessionKeyRef.current !== session) return []
+    if (!activeConversation) setDraftWorkspace(workspace)
+    setFilesOpen(true)
+    return imported
+  }
+
+  async function dropComposerFiles(files: File[]) {
+    if (!files.length || isPickingAttachment || isStreaming) return
+    setIsPickingAttachment(true)
+    try {
+      const prepared = await window.gllm.preparePastedAttachments(await droppedFileInputs(files))
+      const imported = await stageComposerAttachments(prepared)
+      setPendingAttachments(current => [...current, ...imported].slice(0, 8))
+      showToolNotice(t('workspaceFiles.imported', { count: imported.length }))
+    } catch (error) { showToolNotice(error instanceof Error ? error.message : String(error)) }
+    finally { setIsPickingAttachment(false) }
+  }
+
+  async function referenceWorkspaceFile(path: string) {
+    if (!currentWorkspace || isPickingAttachment || isStreaming) return
+    setIsPickingAttachment(true)
+    const session = composerSessionKey
+    try {
+      const attachment = await window.gllm.attachWorkspaceFile(currentWorkspace.rootPath, path)
+      if (composerSessionKeyRef.current !== session) return
+      setPendingAttachments(current => [...current.filter(item => item.workspaceRelativePath !== path || item.workspaceRootPath !== currentWorkspace.rootPath), attachment].slice(0, 8))
+    } catch (error) { showToolNotice(error instanceof Error ? error.message : String(error)) }
+    finally { setIsPickingAttachment(false) }
+  }
+
   async function pickComposerAttachments(kind: AttachmentKind) {
-    if (isPickingAttachment) return
+    if (isPickingAttachment || isStreaming) return
 
     setIsPickingAttachment(true)
     try {
-      const picked = await window.gllm.pickAttachments(kind)
+      const selected = await window.gllm.pickAttachments(kind)
+      const picked = selected.length ? await stageComposerAttachments(selected) : []
       if (picked.length === 0) return
 
       setPendingAttachments((current) => [...current, ...picked].slice(0, 8))
@@ -1862,7 +1921,7 @@ export default function App() {
           }
         })
       )
-      const pasted = await window.gllm.preparePastedAttachments(inputs)
+      const pasted = await stageComposerAttachments(await window.gllm.preparePastedAttachments(inputs))
       if (pasted.length === 0) return
 
       setPendingAttachments((current) => [...current, ...pasted].slice(0, 8))
@@ -2072,11 +2131,7 @@ export default function App() {
       )
     )[0]
     if (reusableDraft) {
-      newConversationDraftRef.current = {
-        id: reusableDraft.id,
-        assistantId: reusableDraft.assistantId,
-        projectId: reusableDraft.projectId
-      }
+      newConversationDraftRef.current = reusableDraft
       setDraftWorkspace(undefined)
       selectConversation(reusableDraft.id)
       showToolNotice(t('notices.blankConversationReady'))
@@ -2085,11 +2140,7 @@ export default function App() {
     }
 
     const conversation = createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
-    newConversationDraftRef.current = {
-      id: conversation.id,
-      assistantId: conversation.assistantId,
-      projectId: conversation.projectId
-    }
+    newConversationDraftRef.current = conversation
     setDraftWorkspace(undefined)
     setConversations((current) => [conversation, ...current])
     selectConversation(conversation.id)
@@ -2481,7 +2532,7 @@ export default function App() {
     beginConversationRun(nextConversation.id)
     setMessageAutoFollow(true)
     saveConversationUpdate(nextConversation)
-    if (nextConversation.workspace) {
+    if (usesWorkspaceAgent(nextConversation)) {
       void executeWorkspaceConversation(nextConversation, nextConversation.workspace, conversationProvider)
       return
     }
@@ -2774,33 +2825,6 @@ export default function App() {
     setLocalTaskResult(null)
   }
 
-  async function bindConversationWorkspace() {
-    try {
-      const rootPath = await window.gllm.chooseWorkspaceDirectory()
-      if (!rootPath) return
-      const normalizeWorkspacePath = (path: string) => {
-        const normalized = path.replace(/[\\/]+$/, '').replace(/\\/g, '/')
-        return window.gllm.platform === 'linux' ? normalized : normalized.toLocaleLowerCase()
-      }
-      const conflictingConversation = conversations.find((conversation) =>
-        conversation.id !== activeConversation?.id &&
-        conversation.workspace?.permission === 'read-write' &&
-        normalizeWorkspacePath(conversation.workspace.rootPath) === normalizeWorkspacePath(rootPath)
-      )
-      if (conflictingConversation) {
-        showToolNotice(
-          t('workspace.folderConflict', { conversation: conflictingConversation.title }),
-          0,
-          { emphasis: true, requiresConfirmation: true, conversationId: conflictingConversation.id }
-        )
-        return
-      }
-      setPendingWorkspaceRoot(rootPath)
-    } catch (error) {
-      showToolNotice(error instanceof Error ? error.message : t('workspace.bindFailed'))
-    }
-  }
-
   async function confirmConversationWorkspace(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>) {
     const rootPath = pendingWorkspaceRoot
     if (!rootPath) return
@@ -2828,16 +2852,21 @@ export default function App() {
     }
   }
 
-  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork'>) {
+  async function saveDesktopWorkspace(workspace: ConversationWorkspace) {
+    if (!activeConversation) { setDraftWorkspace(workspace); return }
+    const saved = await window.gllm.saveConversation({ ...activeConversation, workspace, updatedAt: Date.now() })
+    setConversations(current => [saved, ...current.filter(item => item.id !== saved.id)])
+    if (!workspace.browserAccess) await window.gllm.closeAgentBrowser(activeConversation.id)
+  }
+
+  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings) {
     if (!currentWorkspace) return
     const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
     if (!activeConversation) {
       setDraftWorkspace(workspace)
       return
     }
-    const nextConversation = { ...activeConversation, workspace, updatedAt: Date.now() }
-    const saved = await window.gllm.saveConversation(nextConversation)
-    setConversations((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
+    await saveDesktopWorkspace(workspace)
   }
 
   async function unbindConversationWorkspace() {
@@ -2847,6 +2876,7 @@ export default function App() {
       return
     }
     window.gllm.cancelResponse(activeConversation.id)
+    void window.gllm.closeAgentBrowser(activeConversation.id)
     for (const prompt of workspaceApprovalPrompts.filter(item => item.conversationId === activeConversation.id)) window.gllm.respondWorkspaceApproval(prompt.id, false)
     setWorkspaceApprovalPrompts(current => current.filter(item => item.conversationId !== activeConversation.id))
     setDraftWorkspace(undefined)
@@ -3039,7 +3069,7 @@ export default function App() {
   }
 
   async function sendMessage(content = draft) {
-    if (!settings || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
+    if (!settings || isPickingAttachment || preparingWorkspaceRef.current || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
     if (getSkillInstallIntent(content)) {
       await installConversationSkill(content.trim())
       return
@@ -3075,13 +3105,25 @@ export default function App() {
     const baseConversation =
       activeConversation?.assistantId === activeAssistant.id
         ? activeConversation
-        : createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
-    const attachments = pendingAttachments
+        : newConversationDraftRef.current?.assistantId === activeAssistant.id && newConversationDraftRef.current.projectId === activeProjectId
+          ? newConversationDraftRef.current : createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
+    let requestWorkspace = currentWorkspace
+    if (!requestWorkspace) {
+      preparingWorkspaceRef.current = true
+      try { requestWorkspace = await window.gllm.ensureConversationWorkspace(baseConversation.id, baseConversation.projectId) }
+      catch (error) { showToolNotice(error instanceof Error ? error.message : String(error)); return }
+      finally { preparingWorkspaceRef.current = false }
+    }
+    let attachments = pendingAttachments
+    preparingWorkspaceRef.current = true
+    try { if (attachments.length) attachments = await window.gllm.importWorkspaceAttachments(requestWorkspace.rootPath, attachments) }
+    catch (error) { showToolNotice(error instanceof Error ? error.message : String(error)); return }
+    finally { preparingWorkspaceRef.current = false }
     const knowledgeRefs = contextRefs
     const userMessage = createMessage('user', messageText, attachments, knowledgeRefs)
     const nextConversation: Conversation = withConversationTokens({
       ...baseConversation,
-      workspace: currentWorkspace,
+      workspace: requestWorkspace,
       assistantId: activeAssistant.id,
       title: baseConversation.messages.length === 0 ? messageText.slice(0, 28) : baseConversation.title,
       messages: [...baseConversation.messages, userMessage],
@@ -3098,11 +3140,11 @@ export default function App() {
     selectConversation(nextConversation.id)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     void window.gllm.saveConversation(nextConversation)
-    if (currentWorkspace) {
+    if (usesWorkspaceAgent(nextConversation)) {
       if (!activeConversation) setDraftWorkspace(undefined)
       await executeWorkspaceConversation(
         nextConversation,
-        currentWorkspace,
+        nextConversation.workspace,
         activeConversation?.assistantId === activeAssistant.id ? conversationProvider : assistantDefaultProvider
       )
       return
@@ -3450,7 +3492,7 @@ export default function App() {
                 <span>{hiddenAssistants.length}</span>
               </button>
             )}
-            <button className="icon-button" onClick={() => setSettingsOpen(true)} title={t('app.providerSettings')}>
+            <button className="icon-button" onClick={() => setSettingsOpen(true)} title={t('app.settings')}>
               <Settings size={18} />
             </button>
           </div>
@@ -3558,7 +3600,15 @@ export default function App() {
           </div>
         </header>
 
-        <section className="chat-panel">
+        <section className={`chat-panel${filesOpen ? ' has-workspace-files' : ''}`} onDragOver={event => {
+          if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = isStreaming ? 'none' : 'copy' }
+        }} onDrop={event => {
+          if (!event.dataTransfer.files.length) return
+          event.preventDefault(); event.stopPropagation(); void dropComposerFiles(Array.from(event.dataTransfer.files))
+        }}>
+          {filesOpen && <WorkspaceFilesPanel workspace={currentWorkspace} busy={isPickingAttachment || isStreaming}
+            refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
+            onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
             {needsApiKey && (
               <div className="setup-banner">
@@ -3980,6 +4030,7 @@ export default function App() {
             {currentWorkspace && (
               <WorkspaceBar
                 workspace={currentWorkspace}
+                conversationId={activeConversationId}
                 onOpen={() => void openWorkspaceDirectory(currentWorkspace.rootPath)}
                 onApprovalModeChange={(mode) => void changeConversationWorkspaceApproval(mode)}
                 onAgentSettingsChange={(settings) => changeConversationWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings)}
@@ -4108,7 +4159,7 @@ export default function App() {
               <div className="composer-tools">
                 <button
                   className={pendingAttachments.some((attachment) => attachment.kind === 'file') ? 'active' : ''}
-                  disabled={isPickingAttachment}
+                  disabled={isPickingAttachment || isStreaming}
                   title={t('app.uploadAttachmentDetailed')}
                   type="button"
                   onClick={() => void pickComposerAttachments('file')}
@@ -4128,10 +4179,11 @@ export default function App() {
                   className={currentWorkspace ? 'active' : ''}
                   title={t('app.workspaceFolder')}
                   type="button"
-                  onClick={() => void bindConversationWorkspace()}
+                  onClick={() => setFilesOpen(value => !value)}
                 >
                   <FolderOpen size={16} />
                 </button>
+                <button aria-label={t('workspace.desktopAccess')} title={t('workspace.desktopAccess')} disabled={isStreaming} className={currentWorkspace?.computerAccess || currentWorkspace?.browserAccess ? 'active' : ''} type="button" onClick={() => setDesktopSetupOpen(true)}><MonitorCog size={16} /></button>
                 <button
                   className={goalSetupOpen || Boolean(activeConversation?.goalTask) ? 'active' : ''}
                   disabled={isStreaming}
@@ -4154,14 +4206,6 @@ export default function App() {
                   mode={webSearchMode}
                   onChange={changeActiveConversationWebSearchMode}
                 />
-                <button
-                  className={toolCenterOpen || tools.some((tool) => tool.enabled) ? 'active' : ''}
-                  title={t('app.extensions')}
-                  type="button"
-                  onClick={() => setToolCenterOpen(true)}
-                >
-                  <Wrench size={16} />
-                </button>
               </div>
               <div className="composer-input-actions">
                 <ModelPickerMenu
@@ -4182,11 +4226,11 @@ export default function App() {
                 <button
                   className={`send-button${isStreaming ? ' stop' : ''}`}
                   disabled={
-                    !isStreaming &&
+                    !isStreaming && (isPickingAttachment ||
                     !draft.trim() &&
                     pendingAttachments.length === 0 &&
                     pendingQuoteRefs.length === 0 &&
-                    pendingKnowledgeRefs.length === 0
+                    pendingKnowledgeRefs.length === 0)
                   }
                   onClick={isStreaming ? stopGenerating : undefined}
                   title={isStreaming ? t('app.stopGenerating') : t('app.send', { shortcut: messageSendShortcutLabel })}
@@ -4315,6 +4359,7 @@ export default function App() {
           onImport={importAssistantTemplate}
         />
       )}
+      {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog
           rootPath={pendingWorkspaceRoot}
@@ -4352,7 +4397,8 @@ export default function App() {
           onExport={exportAssistantTemplate}
           onOpenExtensions={() => {
             setAssistantSettingsOpen(false)
-            setToolCenterOpen(true)
+            setSettingsInitialTab('extensions')
+            setSettingsOpen(true)
           }}
         />
       )}
@@ -4378,17 +4424,6 @@ export default function App() {
           onDeleteMemory={deleteAssistantMemory}
           onReference={referenceKnowledgeNote}
           onSaveMemory={saveAssistantMemory}
-        />
-      )}
-      {toolCenterOpen && (
-        <ToolConfigDialog
-          skills={skills}
-          tools={tools}
-          onClose={() => setToolCenterOpen(false)}
-          onDelete={deleteToolConfig}
-          onSave={saveToolConfig}
-          onDeleteSkill={deleteSkillConfig}
-          onSaveSkill={saveSkillConfig}
         />
       )}
       {spaceCenterOpen && (
@@ -4444,6 +4479,10 @@ export default function App() {
           onRefreshProviderModels={refreshProviderModels}
           onDeleteProvider={deleteProvider}
           onDataLocationChange={setDataLocation}
+          onSaveTool={saveToolConfig}
+          onDeleteTool={deleteToolConfig}
+          onSaveSkill={saveSkillConfig}
+          onDeleteSkill={deleteSkillConfig}
         />
       )}
       {localTaskPlan && (
@@ -4690,7 +4729,10 @@ function SpaceCenterDialog({
     try {
       const path = await window.gllm.chooseWorkspaceDirectory()
       if (!path) return
-      if (target === 'create') setNewWorkspacePath(path)
+      if (target === 'create') {
+        setNewWorkspacePath(path)
+        setNewName(path.split(/[\\/]/).filter(Boolean).at(-1) || t('spaces.newSpace'))
+      }
       else setEditWorkspacePath(path)
       setError('')
     } catch (err) {
@@ -6078,6 +6120,7 @@ function KnowledgeBaseDialog({
 }
 
 function ToolConfigDialog({
+  embedded = false,
   skills,
   tools,
   onClose,
@@ -6086,6 +6129,7 @@ function ToolConfigDialog({
   onDeleteSkill,
   onSaveSkill
 }: {
+  embedded?: boolean
   skills: SkillConfig[]
   tools: ToolConfig[]
   onClose: () => void
@@ -6273,9 +6317,8 @@ function ToolConfigDialog({
     }
   }
 
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <section className="tool-center-modal" onClick={stopModalClick}>
+  const content = (
+      <section className={`tool-center-modal${embedded ? ' tool-center-embedded' : ''}`} onClick={stopModalClick}>
         <header>
           <div>
             <p>{t('about.productName')}</p>
@@ -6434,8 +6477,8 @@ function ToolConfigDialog({
         {status && <div className="assistant-status">{status}</div>}
         </div>
       </section>
-    </ModalBackdrop>
   )
+  return embedded ? content : <ModalBackdrop onClose={onClose}>{content}</ModalBackdrop>
 }
 
 function ParameterToggle({
@@ -6693,7 +6736,11 @@ function SettingsPanel({
   onCheckThemeEntitlement,
   onRefreshProviderModels,
   onDeleteProvider,
-  onDataLocationChange
+  onDataLocationChange,
+  onSaveTool,
+  onDeleteTool,
+  onSaveSkill,
+  onDeleteSkill
 }: {
   appVersion: string
   appBuildCode: string
@@ -6715,6 +6762,10 @@ function SettingsPanel({
   onRefreshProviderModels: (provider: ApiProvider) => Promise<ApiProvider>
   onDeleteProvider: (id: string) => Promise<void>
   onDataLocationChange: (info: DataLocationInfo) => void
+  onSaveTool: (tool: ToolConfig) => Promise<ToolConfig>
+  onDeleteTool: (id: string) => Promise<void>
+  onSaveSkill: (skill: SkillConfig) => Promise<SkillConfig>
+  onDeleteSkill: (id: string) => Promise<void>
 }) {
   const { t, i18n } = useTranslation()
   const [settingsDraft, setSettingsDraft] = useState(settings)
@@ -6960,6 +7011,8 @@ function SettingsPanel({
   }
 
   async function chooseDataDirectory() {
+    try { await window.gllm.assertDataDirectoryIdle() }
+    catch (error) { setDataLocationStatus(error instanceof Error ? error.message : String(error)); return }
     const confirmed = window.confirm(t('storage.confirmChoose'))
     if (!confirmed) return
 
@@ -6983,6 +7036,8 @@ function SettingsPanel({
   }
 
   async function resetDataDirectory() {
+    try { await window.gllm.assertDataDirectoryIdle() }
+    catch (error) { setDataLocationStatus(error instanceof Error ? error.message : String(error)); return }
     const confirmed = window.confirm(t('storage.confirmReset'))
     if (!confirmed) return
 
@@ -7132,6 +7187,8 @@ function SettingsPanel({
             <span>{t('provider.apiKeyIntro')}</span>
           </div>
         )}
+        {activeSettingsTab === 'extensions' && <ToolConfigDialog embedded skills={skills} tools={tools} onClose={onClose}
+          onSave={onSaveTool} onDelete={onDeleteTool} onSaveSkill={onSaveSkill} onDeleteSkill={onDeleteSkill} />}
 
         {activeSettingsTab === 'providers' && (
           <div className="provider-manager">

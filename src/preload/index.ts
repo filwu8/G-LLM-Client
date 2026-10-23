@@ -22,6 +22,7 @@ import type {
   ClipboardAttachmentInput,
   ComposerSessionTarget,
   Conversation,
+  ConversationWorkspace,
   ConversationChangeEvent,
   ConversationSearchRequest,
   ConversationSearchResponse,
@@ -116,6 +117,25 @@ const api = {
   saveProject: (project: Project): Promise<{ saved: Project; state: AppStateSnapshot }> =>
     ipcRenderer.invoke('project:save', project),
   chooseWorkspaceDirectory: (): Promise<string | null> => ipcRenderer.invoke('project:choose-workspace'),
+  createAgentWorkspace: (): Promise<string> => ipcRenderer.invoke('desktop:create-workspace'),
+  ensureConversationWorkspace: (conversationId: string, projectId?: string): Promise<ConversationWorkspace> => ipcRenderer.invoke('workspace:ensure-conversation', conversationId, projectId),
+  listWorkspaceFiles: (root: string, path = '.'): Promise<{ entries: import('../shared/types').WorkspaceFileEntry[]; truncated: boolean }> => ipcRenderer.invoke('workspace:list-files', root, path),
+  attachWorkspaceFile: (root: string, path: string): Promise<PreparedAttachment> => ipcRenderer.invoke('workspace:attach-file', root, path),
+  importWorkspaceAttachments: (root: string, attachments: PreparedAttachment[]): Promise<PreparedAttachment[]> => ipcRenderer.invoke('workspace:import-attachments', root, attachments),
+  onStorageLocationChanged: (listener: (state: AppStateSnapshot, previousRoot: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: AppStateSnapshot, previousRoot: string) => listener(state, previousRoot)
+    ipcRenderer.on('storage:location-changed', handler)
+    return () => ipcRenderer.removeListener('storage:location-changed', handler)
+  },
+  checkComputerAccessibility: (prompt = false): Promise<boolean | null> => ipcRenderer.invoke('desktop:check-accessibility', prompt),
+  closeAgentBrowser: (conversationId: string): Promise<void> => ipcRenderer.invoke('desktop:close-browser', conversationId),
+  isAgentBrowserOpen: (conversationId: string): Promise<boolean> => ipcRenderer.invoke('desktop:browser-status', conversationId),
+  showAgentBrowser: (conversationId: string): Promise<boolean> => ipcRenderer.invoke('desktop:show-browser', conversationId),
+  onAgentBrowserChanged: (listener: (conversationId: string, open: boolean) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, conversationId: string, open: boolean) => listener(conversationId, open)
+    ipcRenderer.on('desktop:browser-changed', handler)
+    return () => ipcRenderer.removeListener('desktop:browser-changed', handler)
+  },
   runWorkspaceAgent: (request: WorkspaceAgentRequest): Promise<WorkspaceAgentResult> =>
     ipcRenderer.invoke('workspace-agent:run', request),
   revealWorkspaceFile: (rootPath: string, relativePath: string): Promise<void> =>
@@ -172,6 +192,7 @@ const api = {
   copySvgToClipboard: (svg: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-svg', svg),
   saveImageAs: (request: ImageSaveRequest): Promise<string | null> => ipcRenderer.invoke('image:save-as', request),
   getDataLocation: (): Promise<DataLocationInfo> => ipcRenderer.invoke('storage:get-data-location'),
+  assertDataDirectoryIdle: (): Promise<void> => ipcRenderer.invoke('storage:assert-idle'),
   openDataDirectory: (): Promise<void> => ipcRenderer.invoke('storage:open-data-directory'),
   openLogDirectory: (): Promise<void> => ipcRenderer.invoke('app:open-log-directory'),
   exportDiagnostics: (): Promise<string | null> => ipcRenderer.invoke('app:export-diagnostics'),

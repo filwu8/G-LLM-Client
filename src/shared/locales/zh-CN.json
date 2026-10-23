@@ -105,7 +105,7 @@
     "revealFinder": "在 Finder 中显示",
     "revealExplorer": "在文件资源管理器中显示",
     "uploadAttachmentDetailed": "上传附件，支持图片、PDF、Word、文本等",
-    "workspaceFolder": "会话授权工作文件夹",
+    "workspaceFolder": "查看工作空间文件",
     "knowledgeBase": "知识库",
     "extensions": "扩展工具中心",
     "goToConversation": "前往会话",
@@ -186,11 +186,11 @@
     "optional": "可选",
     "workspace": "本地工作目录",
     "notBound": "未绑定",
-    "workspaceOptional": "可选，创建后也可绑定",
-    "chooseDirectory": "选择目录",
+    "workspaceOptional": "自动创建空间文件夹",
+    "chooseDirectory": "绑定已有文件夹",
     "unbind": "解除绑定",
-    "workspaceDescription": "G-LLM 仅在你确认本地任务后写入该目录；macOS 首次访问时可能显示系统权限提示。",
-    "localPathDescription": "目录路径只保存在本机，不会发送给模型供应商。",
+    "workspaceDescription": "空间绑定一个文件夹，多场对话共享文件。不选择时自动创建。",
+    "localPathDescription": "空间绑定一个文件夹，多场对话共享文件。不选择时自动创建。",
     "switch": "切换",
     "rename": "重命名空间",
     "creating": "创建中...",
@@ -204,7 +204,8 @@
       "create": "空间创建失败",
       "save": "空间保存失败",
       "switch": "空间切换失败"
-    }
+    },
+    "workspaceHint": "空间绑定一个文件夹，多场对话共享文件。不选择时自动创建。"
   },
   "assistantSettings": {
     "title": "助手设置",
@@ -219,7 +220,11 @@
     "tone": "回答风格",
     "description": "助手说明",
     "status": "运行状态",
-    "statuses": { "active": "已启用", "draft": "草稿", "paused": "已暂停" },
+    "statuses": {
+      "active": "已启用",
+      "draft": "草稿",
+      "paused": "已暂停"
+    },
     "configVersion": "配置版本",
     "configSource": "配置来源",
     "configSourcePlaceholder": "可选：配置文件路径、仓库地址或导入来源",
@@ -301,7 +306,7 @@
   "tools": {
     "title": "扩展工具中心",
     "workspaceTools": "工作区工具",
-    "note": "这里仅配置模型可调用的扩展工具：函数工具、MCP 服务和外部插件。附件、截图、知识库、联网搜索继续使用输入框上的独立按钮。",
+    "note": "在这里管理当前空间的技能与扩展。技能可绑定给助手使用；HTTP 函数工具可以执行。MCP 与插件配置暂未接通运行，请勿将添加配置视为安装成功。",
     "name": "工具名称",
     "description": "用途说明",
     "descriptionPlaceholder": "写给自己和后续模型调用系统看的说明，例如：根据客户手机号查询 CRM 客户档案。",
@@ -589,6 +594,21 @@
       "skipped": "当前模式不检测"
     },
     "agentSettings": "Agent 设置",
+    "desktopAccess": "电脑与浏览器",
+    "managedDirectory": "会话工作空间",
+    "computerAccess": "操作电脑",
+    "computerAccessDescription": "允许通过本机命令检查环境、安装软件和自动化应用。命令可访问工作区以外的文件和网络；macOS 可能另行请求自动化或辅助功能权限，系统提权由你手动完成。",
+    "browserAccess": "操作浏览器",
+    "showBrowser": "查看 AI 浏览器",
+    "showBrowserDescription": "唤起当前会话的浏览器窗口；每个会话一个页面，暂不支持多标签页。",
+    "showBrowserFailed": "无法显示浏览器窗口，请重试。",
+    "browserAccessDescription": "允许在独立、可见的浏览器窗口中打开和读取网页、点击及填写普通表单。不会连接现有浏览器；登录信息由你手动填写，弹窗和下载暂不支持。",
+    "desktopApprovalHint": "这两项默认关闭。启用后每次调用都需要确认具体命令或网页操作，“完全授权”也不会跳过。取消勾选可撤销下一次请求的权限；关闭浏览器权限还会关闭该会话的浏览器窗口。",
+    "computerApprovalTitle": "允许这次电脑操作？",
+    "macAccessibilityGranted": "已获得 macOS 辅助功能权限。控制其他应用时，系统仍可能单独请求“自动化”授权。",
+    "macAccessibilityNeeded": "尚未确认 macOS 辅助功能权限。应用界面自动化需要你在系统设置中授权；安装及普通命令不一定需要此权限。",
+    "macAccessibilityOpen": "请求／重新检查辅助功能权限",
+    "browserApprovalTitle": "允许这次浏览器操作？",
     "agentNativeBadge": "本机 Agent",
     "agentLoadRules": "自动加载根目录 AGENTS.md",
     "agentRulesDescription": "每轮开始加载一次项目规则，记录在活动日志中。规则不能扩大工具权限；本轮修改的规则从下一轮生效。",
@@ -622,7 +642,7 @@
     "approvalDescription": "仅对当前会话生效，切换后从下一次请求开始使用。授权方式与沙箱、联网及变量权限分别设置。",
     "approvalAskDescription": "读取直接执行；写入文件、运行脚本或调用扩展 HTTP 工具前逐次请求批准。",
     "approvalAutoDescription": "自动批准工作区工具、受限 JavaScript 和已配置沙箱内的 Python/Shell（含后台任务）；主机执行及扩展 HTTP 工具仍请求批准。",
-    "approvalFullDescription": "已启用工具无需逐次批准，包括已启用的主机执行与扩展 HTTP 工具。不会自动关闭沙箱、开启联网、启用工具或扩大变量权限。",
+    "approvalFullDescription": "已启用工具无需逐次批准，包括已启用的主机执行与扩展 HTTP 工具。电脑与浏览器专用工具仍逐次确认。不会自动关闭沙箱、开启联网、启用工具或扩大变量权限。",
     "approvalChange": "切换审批方式",
     "recommended": "推荐",
     "operationScriptTitle": "确认运行临时脚本",
@@ -664,7 +684,9 @@
     "agentVariableConfigured": "已配置（留空保留）",
     "agentRemoveVariable": "删除变量及加密值",
     "agentAddVariable": "添加变量",
-    "agentBackgroundLimit": "后台任务 · 最多 {{seconds}} 秒；本轮结束时取消"
+    "agentBackgroundLimit": "后台任务 · 最多 {{seconds}} 秒；本轮结束时取消",
+    "configurationApprovalTitle": "确认软件配置变更",
+    "configurationApprovalDescription": "这将修改软件设置或当前助手的技能。请核对下方变更；保存后用于后续任务，不会修改本轮已使用的设置。"
   },
   "localTask": {
     "title": "本地文件任务",
@@ -759,32 +781,56 @@
     "general": {
       "name": "通用助手",
       "title": "日常问答、写作、分析",
-      "starters": ["帮我整理一份工作计划", "把这段文字改得更专业", "用简单语言解释这个概念"]
+      "starters": [
+        "帮我整理一份工作计划",
+        "把这段文字改得更专业",
+        "用简单语言解释这个概念"
+      ]
     },
     "document": {
       "name": "文档助手",
       "title": "总结、提炼、改写材料",
-      "starters": ["提炼这份文档的核心结论", "帮我生成会议纪要", "把下面内容整理成汇报稿"]
+      "starters": [
+        "提炼这份文档的核心结论",
+        "帮我生成会议纪要",
+        "把下面内容整理成汇报稿"
+      ]
     },
     "legal": {
       "name": "合同助手",
       "title": "条款检查、风险提示",
-      "starters": ["帮我检查这段合同风险", "这份协议里我最需要注意什么", "把条款改得更保护甲方"]
+      "starters": [
+        "帮我检查这段合同风险",
+        "这份协议里我最需要注意什么",
+        "把条款改得更保护甲方"
+      ]
     },
     "code": {
       "name": "代码助手",
       "title": "开发、调试、解释代码",
-      "starters": ["帮我设计这个接口", "解释这段代码的问题", "给我写一个最小可运行示例"]
+      "starters": [
+        "帮我设计这个接口",
+        "解释这段代码的问题",
+        "给我写一个最小可运行示例"
+      ]
     },
     "business": {
       "name": "经营分析",
       "title": "数据、策略、增长",
-      "starters": ["帮我分析这个商业模式", "生成一份竞品分析框架", "这组数据说明了什么"]
+      "starters": [
+        "帮我分析这个商业模式",
+        "生成一份竞品分析框架",
+        "这组数据说明了什么"
+      ]
     },
     "teacher": {
       "name": "学习导师",
       "title": "讲解、出题、辅导",
-      "starters": ["帮我学会这个知识点", "给我出 5 道练习题", "用类比解释这个概念"]
+      "starters": [
+        "帮我学会这个知识点",
+        "给我出 5 道练习题",
+        "用类比解释这个概念"
+      ]
     }
   },
   "modelPicker": {
@@ -830,7 +876,8 @@
       "personalization": "个性设置",
       "analytics": "数据统计",
       "storage": "数据存储设置",
-      "about": "关于本系统"
+      "about": "关于本系统",
+      "extensions": "扩展与技能"
     },
     "theme": {
       "title": "界面主题",
@@ -888,10 +935,10 @@
     "archiveDescription": "将当前本地数据导出为 ZIP 压缩包，或从 ZIP 压缩包恢复数据。导入前会自动备份当前数据。",
     "export": "导出数据",
     "import": "导入数据",
-    "confirmChoose": "将选择新的数据目录，并把当前聊天记录、助手、本地知识库、长期记忆和供应商配置复制过去。重启软件后生效，旧目录会保留为备份。是否继续？",
+    "confirmChoose": "空闲时将复制并校验当前数据和会话工作空间，更新相关文件引用后立即切换到新目录。用户手动授权的外部文件夹保持原位置，原数据保留备份。是否继续？",
     "choosing": "正在选择数据目录...",
     "chooseCancelled": "已取消选择数据目录",
-    "confirmReset": "将把当前数据复制回默认目录，并恢复使用系统默认数据位置。重启软件后生效，当前目录不会自动删除。是否继续？",
+    "confirmReset": "空闲时将复制并校验当前数据和会话工作空间，更新相关文件引用后立即切换回默认目录。外部文件夹保持原位置，原数据保留备份。是否继续？",
     "resetting": "正在恢复默认数据目录...",
     "exporting": "正在导出数据压缩包...",
     "exportCancelled": "已取消导出数据",
@@ -1031,25 +1078,82 @@
       "local": "本地模型"
     },
     "templates": {
-      "gllm": { "name": "G-LLM", "description": "G-LLM 默认网关" },
-      "openai-compatible": { "name": "OpenAI 兼容", "description": "兼容 /chat/completions 的自定义网关" },
-      "openai": { "name": "OpenAI", "description": "OpenAI 官方兼容接口" },
-      "google-gemini": { "name": "Google Gemini", "description": "Gemini OpenAI 兼容接口" },
-      "deepseek": { "name": "DeepSeek", "description": "DeepSeek 兼容接口模板" },
-      "dashscope": { "name": "阿里云百炼", "description": "通义千问 DashScope 兼容模式" },
-      "moonshot": { "name": "Moonshot / Kimi", "description": "Kimi OpenAI 兼容接口" },
-      "zhipu": { "name": "智谱 GLM", "description": "智谱 OpenAI 兼容接口" },
-      "volcengine-ark": { "name": "火山方舟 / 豆包", "description": "火山方舟 OpenAI 兼容接口" },
-      "siliconflow": { "name": "SiliconFlow", "description": "硅基流动聚合模型接口" },
-      "openrouter": { "name": "OpenRouter", "description": "多模型聚合与路由平台" },
-      "groq": { "name": "Groq", "description": "高速推理 OpenAI 兼容接口" },
-      "mistral": { "name": "Mistral", "description": "Mistral Chat Completions 接口" },
-      "xai": { "name": "xAI Grok", "description": "xAI OpenAI 兼容接口" },
-      "together": { "name": "Together AI", "description": "开源模型托管与兼容接口" },
-      "perplexity": { "name": "Perplexity", "description": "Sonar 搜索增强模型" },
-      "ollama": { "name": "Ollama", "description": "本地 Ollama OpenAI 兼容接口" },
-      "lm-studio": { "name": "LM Studio", "description": "本地 LM Studio 兼容接口" },
-      "local-compatible": { "name": "本地兼容服务", "description": "本地或内网 OpenAI-compatible 服务" }
+      "gllm": {
+        "name": "G-LLM",
+        "description": "G-LLM 默认网关"
+      },
+      "openai-compatible": {
+        "name": "OpenAI 兼容",
+        "description": "兼容 /chat/completions 的自定义网关"
+      },
+      "openai": {
+        "name": "OpenAI",
+        "description": "OpenAI 官方兼容接口"
+      },
+      "google-gemini": {
+        "name": "Google Gemini",
+        "description": "Gemini OpenAI 兼容接口"
+      },
+      "deepseek": {
+        "name": "DeepSeek",
+        "description": "DeepSeek 兼容接口模板"
+      },
+      "dashscope": {
+        "name": "阿里云百炼",
+        "description": "通义千问 DashScope 兼容模式"
+      },
+      "moonshot": {
+        "name": "Moonshot / Kimi",
+        "description": "Kimi OpenAI 兼容接口"
+      },
+      "zhipu": {
+        "name": "智谱 GLM",
+        "description": "智谱 OpenAI 兼容接口"
+      },
+      "volcengine-ark": {
+        "name": "火山方舟 / 豆包",
+        "description": "火山方舟 OpenAI 兼容接口"
+      },
+      "siliconflow": {
+        "name": "SiliconFlow",
+        "description": "硅基流动聚合模型接口"
+      },
+      "openrouter": {
+        "name": "OpenRouter",
+        "description": "多模型聚合与路由平台"
+      },
+      "groq": {
+        "name": "Groq",
+        "description": "高速推理 OpenAI 兼容接口"
+      },
+      "mistral": {
+        "name": "Mistral",
+        "description": "Mistral Chat Completions 接口"
+      },
+      "xai": {
+        "name": "xAI Grok",
+        "description": "xAI OpenAI 兼容接口"
+      },
+      "together": {
+        "name": "Together AI",
+        "description": "开源模型托管与兼容接口"
+      },
+      "perplexity": {
+        "name": "Perplexity",
+        "description": "Sonar 搜索增强模型"
+      },
+      "ollama": {
+        "name": "Ollama",
+        "description": "本地 Ollama OpenAI 兼容接口"
+      },
+      "lm-studio": {
+        "name": "LM Studio",
+        "description": "本地 LM Studio 兼容接口"
+      },
+      "local-compatible": {
+        "name": "本地兼容服务",
+        "description": "本地或内网 OpenAI-compatible 服务"
+      }
     }
   },
   "agreement": {
@@ -1086,11 +1190,12 @@
       "programFiles": "数据目录不能放在 Program Files 内，否则普通用户运行时可能无法写入。",
       "generatedImagePathInvalid": "生成图片保存路径无效",
       "alreadyUsingDirectory": "当前已经在使用这个数据目录。",
-      "directoryChanged": "已复制当前数据并设置新的数据目录，重启软件后生效。",
+      "directoryChanged": "已校验数据和会话文件、更新相关引用，并切换到新数据目录。原数据保留备份。",
+      "tasksRunning": "仍有 {{count}} 个任务正在运行或清理（包含后台任务）。请等待完成或停止后，再更改数据目录。",
       "noExistingData": "未在该目录中发现 G-LLM 数据文件，请确认选择的是以前备份或迁移的数据目录。",
       "existingDirectoryAdopted": "已设置为使用已有数据目录，重启软件后生效。",
       "alreadyUsingDefault": "当前已经在使用默认数据目录。",
-      "defaultRestored": "已复制当前数据并恢复默认目录，重启软件后生效。",
+      "defaultRestored": "已校验数据和会话文件、更新相关引用，并恢复默认数据目录。原数据保留备份。",
       "unsafeArchivePath": "压缩包中包含不安全路径：{{path}}",
       "archivePathOutside": "压缩包中包含越界路径：{{path}}",
       "exported": "已导出 {{count}} 个数据文件。",
@@ -1296,5 +1401,20 @@
     "cancelled": "已取消技能安装，助手绑定未更改。",
     "failed": "技能安装失败，未保存新的技能或助手绑定。请检查来源后重新发送安装请求。",
     "historySaveFailed": "这次安装结果未能保存到对话历史，请检查本地存储状态。"
+  },
+  "workspaceFiles": {
+    "title": "工作空间文件",
+    "projectFolder": "项目文件夹",
+    "sessionFolder": "会话文件夹",
+    "add": "添加文件",
+    "refresh": "刷新文件",
+    "manage": "管理工作空间",
+    "startHint": "拖入文件即可开始。软件会自动创建会话文件夹，也可以在空间管理中绑定项目文件夹。",
+    "parent": "返回上级",
+    "empty": "这里还没有文件，可以拖入合同、文档或图片。",
+    "truncated": "仅显示前 300 项，请进入子文件夹查看。",
+    "dropHint": "拖入文件会保留原件副本。点击文件可加入对话，让 AI 读取或处理。",
+    "imported": "已将 {{count}} 个文件保存到当前工作空间",
+    "readOnly": "当前文件夹为只读，无法导入文件。"
   }
 }

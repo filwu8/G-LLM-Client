@@ -10,7 +10,11 @@ import Store from 'electron-store'
 import type { TOptions } from 'i18next'
 import type JSZip from 'jszip'
 import { randomUUID } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyPersistentData, isTransientDataEntry } from './dataDirectoryCopy'
+import { relocateConversation, relocateDataPath, relocateMarkdownLinks, relocateStoredData } from './dataRelocation'
+import { createManagedWorkspace, createProjectWorkspace } from './managedWorkspace'
+import { workspaceVault } from './workspaceSecrets'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import { DEFAULT_ASSISTANTS } from '../shared/assistants'
@@ -81,6 +85,7 @@ interface StoreSchema {
   skills: SkillConfig[]
   installationId: string
   themeRequestUsage: ThemeRequestUsage
+  dataRootAliases: string[]
 }
 
 interface DataLocationConfig {
@@ -138,7 +143,7 @@ function getInstallerDataLocationConfigPath(defaultRoot = getDefaultDataRoot()):
 }
 
 function normalizePathForCompare(path: string): string {
-  const normalized = resolve(path).replace(/[\\/]+$/, '')
+  const normalized = (existsSync(path) ? realpathSync(path) : resolve(path)).replace(/[\\/]+$/, '')
   return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized
 }
 
@@ -255,14 +260,18 @@ function copyDataDirectory(sourceRoot: string, targetRoot: string): void {
 
   mkdirSync(targetRoot, { recursive: true })
   const entries = existsSync(sourceRoot) ? readdirSync(sourceRoot) : []
-  const backupRoot = join(targetRoot, `backup-before-gllm-migration-${Date.now()}`)
+  const backupRoot = join(targetRoot, `backup-before-gllm-migration-${Date.now()}-${randomUUID()}`)
   let backupCreated = false
 
   for (const entry of entries) {
-    if (entry === dataLocationFileName || entry === installerDataLocationFileName) continue
+    // The OS credential vault and Chromium profile stay at Electron's profile
+    // location. Copying them back later could overwrite live logins/credentials.
+    if (entry === 'agent-credentials' || /^(?:Cache|Code Cache|GPUCache|DawnGraphiteCache|DawnWebGPUCache|blob_storage|Local Storage|Session Storage|Network|Preferences|Secure Preferences|Local State|SharedStorage)$/i.test(entry)) continue
+    if (shouldSkipArchiveEntry(entry) || lstatSync(join(sourceRoot, entry)).isSymbolicLink()) continue
 
     const sourcePath = join(sourceRoot, entry)
     const targetPath = join(targetRoot, entry)
+    if (lstatSync(targetPath, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`Data destination is a symbolic link: ${targetPath}`)
     if (isSamePath(sourcePath, targetPath)) continue
 
     if (existsSync(targetPath)) {
@@ -270,10 +279,14 @@ function copyDataDirectory(sourceRoot: string, targetRoot: string): void {
         mkdirSync(backupRoot, { recursive: true })
         backupCreated = true
       }
-      cpSync(targetPath, join(backupRoot, entry), { recursive: true, force: true })
+      copyPersistentData(targetPath, join(backupRoot, entry), true)
+      if (!isPathInside(targetPath, targetRoot)) throw new Error('Data destination is outside the selected directory')
+      // The verified backup preserves the previous destination. Replace each
+      // entry so switching back cannot resurrect files deleted in the new root.
+      rmSync(targetPath, { recursive: true, force: true })
     }
 
-    cpSync(sourcePath, targetPath, { recursive: true, force: true })
+    copyPersistentData(sourcePath, targetPath, true)
   }
 }
 
@@ -283,21 +296,61 @@ function writeDataLocationConfig(customDataRoot?: string): void {
   const configPath = getDataLocationConfigPath(defaultRoot)
   const installerConfigPath = getInstallerDataLocationConfigPath(defaultRoot)
 
-  if (!customDataRoot) {
-    rmSync(configPath, { force: true })
-    rmSync(installerConfigPath, { force: true })
-    return
-  }
-
   const config: DataLocationConfig = {
-    customDataRoot: resolve(customDataRoot),
+    customDataRoot: customDataRoot ? resolve(customDataRoot) : undefined,
     updatedAt: Date.now()
   }
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
-  rmSync(installerConfigPath, { force: true })
+  const temporary = `${configPath}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    renameSync(temporary, configPath)
+  } finally { rmSync(temporary, { force: true }) }
+  // The JSON locator is authoritative; a legacy installer marker cannot undo it.
+  try { rmSync(installerConfigPath, { force: true }) } catch { /* Retain harmless legacy marker if it is locked. */ }
 }
 
-const activeDataRoot = resolveDataRoot()
+let activeDataRoot = resolveDataRoot()
+
+export function resolveCurrentDataPath(path: string): string {
+  return store.get('dataRootAliases', []).reduce((current, root) => relocateDataPath(current, root, activeDataRoot), path)
+}
+
+function resolveCurrentConversation(conversation: Conversation): Conversation {
+  return store.get('dataRootAliases', []).reduce((current, root) => relocateConversation(current, root, activeDataRoot), conversation)
+}
+
+export function ensureConversationWorkspace(conversationId: string, projectId = getActiveProjectId()) {
+  const conversation = getAllConversations().find(item => item.id === conversationId)
+  if (conversation?.workspace) return conversation.workspace
+  return createDefaultConversationWorkspace(conversationId, conversation?.projectId ?? projectId)
+}
+
+function createDefaultConversationWorkspace(conversationId: string, projectId = getActiveProjectId()) {
+  const project = getProjects().find(item => item.id === projectId)
+  if (project?.workspacePath) {
+    return { rootPath: project.workspacePath, displayName: project.name, projectId: project.id,
+      kind: isPathInside(project.workspacePath, join(activeDataRoot, 'agent-workspaces')) ? 'managed' as const : 'external' as const,
+      permission: 'read-write' as const, approvalMode: 'ask' as const, nativeExecution: false, computerAccess: false, browserAccess: false,
+      grantedAt: Date.now(), lastVerifiedAt: Date.now() }
+  }
+  return createManagedWorkspace(activeDataRoot, conversationId, storageT('workspace.managedDirectory'))
+}
+
+function switchDataRoot(targetPath: string, customRoot?: string): void {
+  const previousRoot = activeDataRoot
+  const snapshot = store.store
+  copyDataDirectory(previousRoot, targetPath)
+  const relocated = relocateStoredData(snapshot, previousRoot, targetPath)
+  const roots = [...new Set(snapshot.conversations.flatMap(conversation => conversation.workspace ? [conversation.workspace.rootPath] : []))]
+    .map(previous => ({ previous, next: relocateDataPath(previous, previousRoot, targetPath) }))
+    .filter(root => root.previous !== root.next)
+  workspaceVault().relocateBindings(roots)
+  const nextStore = createDataStore(targetPath)
+  nextStore.store = relocated
+  writeDataLocationConfig(customRoot)
+  activeDataRoot = targetPath
+  store = nextStore
+}
 
 export function getDataLocationInfo(): DataLocationInfo {
   return createDataLocationInfo(activeDataRoot)
@@ -394,13 +447,12 @@ export function migrateDataRoot(targetRoot: string): DataLocationChangeResult {
     }
   }
 
-  copyDataDirectory(activeDataRoot, targetPath)
-  writeDataLocationConfig(targetPath)
+  switchDataRoot(targetPath, targetPath)
 
   return {
     info: getDataLocationInfo(),
     changed: true,
-    restartRequired: true,
+    restartRequired: false,
     message: storageT('main.storage.directoryChanged')
   }
 }
@@ -441,18 +493,17 @@ export function adoptExistingDataRoot(targetRoot: string): DataLocationChangeRes
 
 export function resetDataRoot(): DataLocationChangeResult {
   const defaultRoot = getDefaultDataRoot()
+  const changed = !isSamePath(activeDataRoot, defaultRoot)
 
   assertWritableDirectory(defaultRoot)
-  if (!isSamePath(activeDataRoot, defaultRoot)) {
-    copyDataDirectory(activeDataRoot, defaultRoot)
-  }
-  writeDataLocationConfig(undefined)
+  if (changed) switchDataRoot(defaultRoot)
+  else writeDataLocationConfig(undefined)
 
   return {
     info: getDataLocationInfo(),
-    changed: !isSamePath(activeDataRoot, defaultRoot),
-    restartRequired: !isSamePath(activeDataRoot, defaultRoot),
-    message: isSamePath(activeDataRoot, defaultRoot)
+    changed,
+    restartRequired: false,
+    message: !changed
       ? storageT('main.storage.alreadyUsingDefault')
       : storageT('main.storage.defaultRestored')
   }
@@ -468,6 +519,7 @@ function shouldSkipArchiveEntry(relativePath: string): boolean {
 
   return (
     !normalized ||
+    normalized.split('/').some(isTransientDataEntry) ||
     normalized === archiveManifestFileName ||
     topLevel === dataLocationFileName ||
     topLevel === installerDataLocationFileName ||
@@ -502,7 +554,8 @@ function addDirectoryToZip(zip: JSZip, rootPath: string, currentPath = rootPath)
     const relativePath = normalizeArchivePath(relative(rootPath, sourcePath))
     if (shouldSkipArchiveEntry(relativePath)) continue
 
-    const stat = statSync(sourcePath)
+    const stat = lstatSync(sourcePath)
+    if (stat.isSymbolicLink()) continue
     if (stat.isDirectory()) {
       fileCount += addDirectoryToZip(zip, rootPath, sourcePath)
       continue
@@ -525,12 +578,13 @@ function backupAndClearActiveDataRoot(): string | undefined {
     if (shouldSkipArchiveEntry(entry)) continue
 
     const sourcePath = join(activeDataRoot, entry)
+    if (lstatSync(sourcePath).isSymbolicLink()) continue
     if (!hasBackup) {
       mkdirSync(backupRoot, { recursive: true })
       hasBackup = true
     }
 
-    cpSync(sourcePath, join(backupRoot, entry), { recursive: true, force: true })
+    copyPersistentData(sourcePath, join(backupRoot, entry))
     rmSync(sourcePath, { recursive: true, force: true })
   }
 
@@ -622,9 +676,9 @@ export const defaultSettings: AppSettings = {
   setupCompleted: false
 }
 
-const store = new Store<StoreSchema>({
+function createDataStore(root: string) { return new Store<StoreSchema>({
   name: 'g-llm-client',
-  cwd: activeDataRoot,
+  cwd: root,
   defaults: {
     settings: defaultSettings,
     activeProjectId: defaultProjectId,
@@ -639,12 +693,14 @@ const store = new Store<StoreSchema>({
     tools: [],
     skills: [],
     installationId: '',
+    dataRootAliases: [],
     themeRequestUsage: {
       totalRequests: 0,
       officialRequests: 0
     }
   }
-})
+}) }
+let store = createDataStore(activeDataRoot)
 
 function storageT(key: string, options?: TOptions): string {
   const settings = store.get('settings', defaultSettings)
@@ -682,7 +738,7 @@ function sanitizeProject(project: Project): Project {
     logoDataUrl: isDefaultProject ? undefined : sanitizeProjectLogo(project.logoDataUrl),
     modelProviderId: project.modelProviderId?.trim() || undefined,
     modelId: project.modelId?.trim() || undefined,
-    workspacePath: project.workspacePath?.trim() || undefined,
+    workspacePath: project.workspacePath?.trim() ? resolveCurrentDataPath(project.workspacePath.trim()) : undefined,
     workspacePermission: project.workspacePath ? 'read-write' : undefined,
     createdAt: Number.isFinite(project.createdAt) ? Number(project.createdAt) : now,
     updatedAt: now
@@ -724,6 +780,11 @@ export function setActiveProjectId(projectId: string): string {
 export function saveProject(project: Project): Project {
   const normalized = sanitizeProject(project)
   const projects = getProjects()
+  if (!normalized.workspacePath && normalized.id !== defaultProjectId) {
+    normalized.workspacePath = createProjectWorkspace(activeDataRoot, normalized.id, normalized.name).rootPath
+    normalized.workspacePermission = 'read-write'
+  }
+  if (normalized.workspacePath && !statSync(normalized.workspacePath).isDirectory()) throw new Error('Workspace folder is unavailable')
   const next = [normalized, ...projects.filter((item) => item.id !== normalized.id)]
   store.set('projects', next.slice(0, 50))
   return normalized
@@ -849,7 +910,10 @@ function sanitizeAttachment(attachment: PreparedAttachment): PreparedAttachment 
     size: Number.isFinite(attachment.size) ? Math.max(0, Number(attachment.size)) : 0,
     kind,
     text,
-    dataUrl
+    dataUrl,
+    localExecutable: attachment.localExecutable === true,
+    workspaceRelativePath: attachment.workspaceRelativePath?.trim(),
+    workspaceRootPath: attachment.workspaceRootPath ? resolveCurrentDataPath(attachment.workspaceRootPath) : undefined
   }
 }
 
@@ -1117,11 +1181,14 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
 }
 
 function sanitizeConversation(conversation: Conversation, fallbackProjectId = getActiveProjectId()): Conversation {
+  conversation = resolveCurrentConversation(conversation)
   const now = Date.now()
   const workspace =
     conversation.workspace?.rootPath?.trim()
       ? {
           rootPath: conversation.workspace.rootPath.trim(),
+          projectId: conversation.workspace.projectId === conversation.projectId ? conversation.workspace.projectId : undefined,
+          kind: isPathInside(conversation.workspace.rootPath, join(activeDataRoot, 'agent-workspaces')) ? 'managed' as const : 'external' as const,
           displayName: conversation.workspace.displayName?.trim() || basename(conversation.workspace.rootPath),
           permission: conversation.workspace.permission === 'read' ? 'read' as const : 'read-write' as const,
           approvalMode: ['ask', 'auto', 'full'].includes(conversation.workspace.approvalMode ?? '')
@@ -1130,6 +1197,8 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
           executionMode: conversation.workspace.executionMode === 'host' ? 'host' as const : 'sandbox' as const,
           sandboxNetwork: conversation.workspace.sandboxNetwork === true,
           nativeExecution: conversation.workspace.nativeExecution === true,
+          computerAccess: conversation.workspace.computerAccess === true,
+          browserAccess: conversation.workspace.browserAccess === true,
           loadAgentsMd: conversation.workspace.loadAgentsMd !== false,
           envNames: normalizeEnvNames(conversation.workspace.envNames),
           grantedAt: Number.isFinite(conversation.workspace.grantedAt) ? conversation.workspace.grantedAt : now,
@@ -1206,7 +1275,7 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
 
 function sanitizeNote(note: KnowledgeNote, fallbackProjectId = getActiveProjectId()): KnowledgeNote {
   const now = Date.now()
-  const content = String(note.content ?? '').trim()
+  const content = store.get('dataRootAliases', []).reduce((current, root) => relocateMarkdownLinks(current, root, activeDataRoot), String(note.content ?? '').trim())
 
   return {
     id: note.id?.trim() || `note_${now}_${Math.random().toString(16).slice(2)}`,
@@ -1271,7 +1340,7 @@ function sanitizeSkill(skill: SkillConfig, fallbackProjectId = getActiveProjectI
     version: String(skill.version ?? '1.0.0').trim().slice(0, 40) || '1.0.0',
     status: statusOptions.includes(skill.status) ? skill.status : 'draft',
     sourceType: sourceOptions.includes(skill.sourceType) ? skill.sourceType : 'local',
-    sourceLocator: String(skill.sourceLocator ?? '').trim().slice(0, 1000) || undefined,
+    sourceLocator: skill.sourceLocator?.trim() ? resolveCurrentDataPath(skill.sourceLocator.trim()).slice(0, 1000) : undefined,
     toolIds: Array.from(new Set((skill.toolIds ?? []).map(String).map((id) => id.trim()).filter(Boolean))).slice(0, 100),
     revisions: (skill.revisions ?? []).slice(-50).map((revision) => ({
       version: String(revision.version ?? '').trim().slice(0, 40) || '1.0.0',
@@ -1700,14 +1769,8 @@ export function getConversations(projectId = getActiveProjectId()): Conversation
 
 export function saveConversation(conversation: Conversation, projectId = getActiveProjectId()): Conversation {
   const normalized = sanitizeConversation(conversation, projectId)
+  if (!normalized.workspace && normalized.messages.length) normalized.workspace = createDefaultConversationWorkspace(normalized.id, normalized.projectId)
   const conversations = getAllConversations()
-  if (normalized.workspace) {
-    const workspaceKey = normalizePathForCompare(normalized.workspace.rootPath)
-    const conflict = conversations.find(
-      (item) => item.id !== normalized.id && item.workspace && normalizePathForCompare(item.workspace.rootPath) === workspaceKey
-    )
-    if (conflict) throw new Error(`该工作目录已授权给会话「${conflict.title}」，请先解除原会话授权`)
-  }
   const next = [normalized, ...conversations.filter((item) => item.id !== normalized.id)]
   store.set('conversations', next.slice(0, 1000))
   return normalized

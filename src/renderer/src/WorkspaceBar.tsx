@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
+import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, Globe, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -106,12 +106,13 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   onRespond: (approved: boolean) => void
 }) {
   const { t } = useTranslation()
+  const configuration = prompt.tool === 'update_application_settings' || prompt.tool === 'configure_assistant_skill'
   return (
     <div className="assistant-modal-backdrop workspace-approval-backdrop">
       <section aria-modal="true" className="workspace-approval-dialog workspace-operation-approval" role="alertdialog">
         <header>
           <div>
-            <span><ShieldCheck size={17} />{prompt.isScript ? t('workspace.operationScriptTitle') : t('workspace.operationFileTitle')}</span>
+            <span><ShieldCheck size={17} />{configuration ? t('workspace.configurationApprovalTitle') : prompt.capability ? t(prompt.capability === 'computer' ? 'workspace.computerApprovalTitle' : 'workspace.browserApprovalTitle') : prompt.isScript ? t('workspace.operationScriptTitle') : t('workspace.operationFileTitle')}</span>
             <small>{prompt.workspaceName}</small>
           </div>
         </header>
@@ -119,11 +120,11 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
           <small>{t('workspace.operationPurpose')}</small>
           <strong>{prompt.purpose}</strong>
         </div>
-        <p>{prompt.canWrite ? t('workspace.operationWriteAccess') : t('workspace.operationReadAccess')}</p>
-        <p className={prompt.nativeExecution ? 'workspace-native-warning' : ''}>{t(prompt.nativeExecution ? (prompt.executionMode === 'host' ? 'workspace.agentNativeBoundary' : 'workspace.agentSandboxBoundary') : 'workspace.operationBoundary')}</p>
+        {!prompt.capability && !configuration && <p>{prompt.canWrite ? t('workspace.operationWriteAccess') : t('workspace.operationReadAccess')}</p>}
+        <p className={prompt.nativeExecution || prompt.capability ? 'workspace-native-warning' : ''}>{t(configuration ? 'workspace.configurationApprovalDescription' : prompt.capability ? (prompt.capability === 'computer' ? 'workspace.computerAccessDescription' : 'workspace.browserAccessDescription') : prompt.nativeExecution ? (prompt.executionMode === 'host' ? 'workspace.agentNativeBoundary' : 'workspace.agentSandboxBoundary') : 'workspace.operationBoundary')}</p>
         {prompt.nativeExecution && prompt.executionMode !== 'host' && <p>{t(prompt.sandboxNetwork ? 'workspace.agentNetworkOn' : 'workspace.agentNetworkOff')}</p>}
         {prompt.cwd && <p><strong>{t('workspace.agentWorkingDirectory')}</strong> {prompt.cwd}</p>}
-        {prompt.nativeExecution && <p>{t('workspace.agentInjectedNames')}: {prompt.envNames?.join(', ') || t('workspace.agentNoEnv')}</p>}
+        {(prompt.nativeExecution || prompt.capability === 'computer') && <p>{t('workspace.agentInjectedNames')}: {prompt.envNames?.join(', ') || t('workspace.agentNoEnv')}</p>}
         {prompt.backgroundTimeoutMs && <p>{t('workspace.agentBackgroundLimit', { seconds: prompt.backgroundTimeoutMs / 1000 })}</p>}
         {prompt.preview && <pre className="workspace-code-preview"><code>{prompt.preview}</code></pre>}
         {prompt.code && <pre className="workspace-code-preview"><code>{prompt.code}</code></pre>}
@@ -136,8 +137,9 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   )
 }
 
-export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange, onAgentSettingsChange, running = false }: {
+export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onApprovalModeChange, onAgentSettingsChange, running = false }: {
   workspace: ConversationWorkspace
+  conversationId?: string | null
   running?: boolean
   onAgentSettingsChange?: (settings: WorkspaceAgentSettings) => Promise<void>
   onOpen?: () => void
@@ -147,6 +149,24 @@ export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange
   const { t } = useTranslation()
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
   const [approvalPickerOpen, setApprovalPickerOpen] = useState(false)
+  const [browserConversationId, setBrowserConversationId] = useState<string | null>(null)
+  const [browserError, setBrowserError] = useState(false)
+  useEffect(() => {
+    let active = true
+    let receivedChange = false
+    setBrowserConversationId(null)
+    setBrowserError(false)
+    if (!conversationId || !workspace.browserAccess) return
+    const unsubscribe = window.gllm.onAgentBrowserChanged((id, open) => {
+      if (id !== conversationId) return
+      receivedChange = true
+      setBrowserConversationId(open ? id : null)
+    })
+    void window.gllm.isAgentBrowserOpen(conversationId).then(open => {
+      if (active && !receivedChange) setBrowserConversationId(open ? conversationId : null)
+    }).catch(() => { /* The browser control is optional until a window is available. */ })
+    return () => { active = false; unsubscribe() }
+  }, [conversationId, workspace.browserAccess])
   const approvalLabel = workspace.approvalMode === 'full'
     ? t('workspace.approvalFull')
     : workspace.approvalMode === 'auto'
@@ -156,24 +176,39 @@ export function WorkspaceBar({ workspace, onOpen, onUnbind, onApprovalModeChange
     <>
       <section className="workspace-bar">
         <div className="workspace-bar-head">
-          <FolderOpen size={14} />
-          <button className="workspace-path-button" onClick={onOpen} title={t('workspace.openDirectory')} type="button">
-            <small>{workspace.rootPath}</small>
-          </button>
-          <button
-            aria-haspopup="dialog"
-            className={`workspace-approval-trigger mode-${workspace.approvalMode ?? 'ask'}`}
-            title={t('workspace.approvalChange')}
-            type="button"
-            onClick={() => setApprovalPickerOpen(true)}
-          >
-            <ShieldCheck size={13} />
-            <span>{approvalLabel}</span>
-            <ChevronDown size={12} />
-          </button>
-          {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
-          <button title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>
+          <div className="workspace-bar-location">
+            <FolderOpen size={14} />
+            <button className="workspace-path-button" onClick={onOpen} title={`${t('workspace.openDirectory')}\n${workspace.rootPath}`} type="button">
+              <small>{workspace.projectId ? workspace.displayName : workspace.kind === 'managed' ? t('workspace.managedDirectory') : workspace.displayName}</small>
+            </button>
+            {!workspace.projectId && <button className="workspace-unbind-button" aria-label={t('workspace.unbind')} title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>}
+          </div>
+          <div className="workspace-bar-controls">
+            {workspace.browserAccess && browserConversationId === conversationId && conversationId && <button className="workspace-approval-trigger" title={t('workspace.showBrowserDescription')} type="button" onClick={() => {
+              setBrowserError(false)
+              void window.gllm.showAgentBrowser(conversationId).then(open => {
+                if (!open) setBrowserConversationId(null)
+              }).catch(() => setBrowserError(true))
+            }}><Globe size={13} />{t('workspace.showBrowser')}</button>}
+            <button
+              aria-haspopup="dialog"
+              className={`workspace-approval-trigger mode-${workspace.approvalMode ?? 'ask'}`}
+              title={t('workspace.approvalChange')}
+              type="button"
+              onClick={() => setApprovalPickerOpen(true)}
+            >
+              <ShieldCheck size={13} />
+              <span>{approvalLabel}</span>
+              <ChevronDown size={12} />
+            </button>
+            {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
+            {(workspace.computerAccess || workspace.browserAccess) && <div className="workspace-capabilities">
+              {workspace.computerAccess && <small>{t('workspace.computerAccess')}</small>}
+              {workspace.browserAccess && <small>{t('workspace.browserAccess')}</small>}
+            </div>}
+          </div>
         </div>
+        {browserError && <small role="alert">{t('workspace.showBrowserFailed')}</small>}
       </section>
       {agentSettingsOpen && onAgentSettingsChange && <WorkspaceAgentSettingsDialog workspace={workspace} onSave={onAgentSettingsChange} onClose={() => setAgentSettingsOpen(false)} />}
       {approvalPickerOpen && (

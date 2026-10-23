@@ -14,7 +14,7 @@ supportedArchitectures:
 
 overrides:
   '@xmldom/xmldom': 0.8.15
-  dompurify: 3.4.16
+  dompurify: 3.4.17
   fast-uri: 3.1.8
   js-yaml: 4.3.2
   # KaTeX 0.18.2 fixes inherited trust options; regression coverage lives in dependencySecurity.test.ts.

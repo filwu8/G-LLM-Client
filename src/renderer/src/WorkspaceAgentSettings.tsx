@@ -3,13 +3,38 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Plus, Trash2 } from 'lucide-react'
 import type { ConversationWorkspace } from '@shared/types'
-export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork'>
+export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess'>
 interface VariableRow { name: string; description: string; configured: boolean; value: string; enabled: boolean }
+export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { workspace?: ConversationWorkspace; onSave: (workspace: ConversationWorkspace) => Promise<void>; onClose: () => void }) {
+  const { t } = useTranslation()
+  const [candidate, setCandidate] = useState(workspace)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (workspace) return
+    let active = true
+    window.gllm.createAgentWorkspace().then(rootPath => {
+      if (active) setCandidate({ rootPath, kind: 'managed', displayName: t('workspace.desktopAccess'), permission: 'read-write', approvalMode: 'ask', grantedAt: Date.now(), lastVerifiedAt: Date.now() })
+    }).catch(reason => { if (active) setError(String(reason)) })
+    return () => { active = false }
+  }, [workspace])
+  if (!candidate) return <div className="assistant-modal-backdrop workspace-approval-backdrop"><section className="workspace-approval-dialog" role="dialog" aria-modal="true"><p role="status">{error || t('workspace.agentLoading')}</p><button type="button" onClick={onClose}>{t('common.close')}</button></section></div>
+  return <WorkspaceAgentSettingsDialog workspace={candidate} onClose={onClose} onSave={settings => onSave({ ...candidate, ...settings, lastVerifiedAt: Date.now() })} />
+}
+
 export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   workspace: ConversationWorkspace; onSave: (settings: WorkspaceAgentSettings) => Promise<void>; onClose: () => void
 }) {
   const { t } = useTranslation()
   const [nativeExecution, setNativeExecution] = useState(workspace.nativeExecution === true)
+  const [computerAccess, setComputerAccess] = useState(workspace.computerAccess === true)
+  const [browserAccess, setBrowserAccess] = useState(workspace.browserAccess === true)
+  const [accessibilityGranted, setAccessibilityGranted] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (window.gllm.platform !== 'darwin') return
+    let active = true
+    window.gllm.checkComputerAccessibility().then(value => { if (active) setAccessibilityGranted(value) }).catch(() => {})
+    return () => { active = false }
+  }, [])
   const [executionMode, setExecutionMode] = useState<'sandbox' | 'host'>(workspace.executionMode === 'host' ? 'host' : 'sandbox')
   const [sandboxNetwork, setSandboxNetwork] = useState(workspace.sandboxNetwork === true)
   const [loadAgentsMd, setLoadAgentsMd] = useState(workspace.loadAgentsMd !== false)
@@ -52,7 +77,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       const updates = rows.filter(row => row.value !== '').map(row => ({ name: row.name, description: row.description, value: row.value }))
       if (updates.length || removed.length) await window.gllm.saveWorkspaceVariables(workspace.rootPath, [...updates, ...[...new Set(removed)].filter(name => /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && !rows.some(row => row.name === name)).map(name => ({ name, description: '', remove: true }))])
       setRows(current => current.map(row => ({ ...row, value: '' })))
-      await onSave({ nativeExecution, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork })
+      await onSave({ nativeExecution, computerAccess, browserAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork })
       onClose()
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setSaving(false) }
@@ -60,6 +85,16 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   return <div className="assistant-modal-backdrop workspace-approval-backdrop">
     <section className="workspace-approval-dialog workspace-agent-settings" role="dialog" aria-modal="true" aria-labelledby="workspace-agent-settings-title">
       <header><div><strong id="workspace-agent-settings-title">{t('workspace.agentSettings')}</strong><small>{workspace.rootPath}</small></div><button className="icon-button" aria-label={t('common.close')} onClick={onClose} disabled={saving}><X size={18} /></button></header>
+      <p><strong>{t('workspace.desktopAccess')}</strong> · {window.gllm.platform === 'darwin' ? 'macOS' : window.gllm.platform === 'win32' ? 'Windows' : 'Linux'}</p>
+      <label><input type="checkbox" checked={computerAccess} onChange={event => setComputerAccess(event.target.checked)} />{t('workspace.computerAccess')}</label>
+      <p>{t('workspace.computerAccessDescription')}</p>
+      {computerAccess && window.gllm.platform === 'darwin' && <div>
+        <p>{t(accessibilityGranted ? 'workspace.macAccessibilityGranted' : 'workspace.macAccessibilityNeeded')}</p>
+        <button className="secondary-action" type="button" onClick={() => void window.gllm.checkComputerAccessibility(true).then(setAccessibilityGranted).catch(reason => setError(String(reason)))}>{t('workspace.macAccessibilityOpen')}</button>
+      </div>}
+      <label><input type="checkbox" checked={browserAccess} onChange={event => setBrowserAccess(event.target.checked)} />{t('workspace.browserAccess')}</label>
+      <p>{t('workspace.browserAccessDescription')}</p>
+      <p>{t('workspace.desktopApprovalHint')}</p>
       <label><input type="checkbox" checked={loadAgentsMd} onChange={event => setLoadAgentsMd(event.target.checked)} />{t('workspace.agentLoadRules')}</label>
       <p>{t('workspace.agentRulesDescription')}</p>
       <label><input type="checkbox" checked={nativeExecution} onChange={event => setNativeExecution(event.target.checked)} />{t('workspace.agentNative')}</label>

@@ -8,8 +8,10 @@ import type { BrowserWindow } from 'electron'
 import { dialog } from 'electron'
 import { createCanvas, DOMMatrix, ImageData, loadImage, Path2D } from '@napi-rs/canvas'
 import mammoth from 'mammoth'
-import { readFile, stat } from 'node:fs/promises'
-import { basename, extname } from 'node:path'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
+import { getDataLocationInfo } from './storage'
+import { importWorkspaceFile, workspaceFilePath } from './workspaceFiles'
 
 import type { AppLanguage } from '../shared/i18n'
 import type { AttachmentKind, ClipboardAttachmentInput, PreparedAttachment } from '../shared/types'
@@ -324,6 +326,14 @@ async function prepareClipboardAttachment(input: ClipboardAttachmentInput, index
     size,
     kind: actualKind
   }
+  if (buffer && buffer.length <= maxDocumentBytes) {
+    const directory = join(getDataLocationInfo().activePath, 'attachments', base.id)
+    await mkdir(directory, { recursive: true })
+    const path = join(directory, basename(name).replace(/[<>:"|?*\\/]/g, '_') || 'attachment')
+    await writeFile(path, buffer, { flag: 'wx' })
+    selectedAttachmentPaths.set(base.id, path)
+    base.localExecutable = true
+  }
 
   if (actualKind === 'image') {
     if (!buffer) return base
@@ -403,4 +413,28 @@ export async function pickAttachments(
 
 export async function preparePastedAttachments(inputs: ClipboardAttachmentInput[]): Promise<PreparedAttachment[]> {
   return Promise.all(inputs.slice(0, 8).map((input, index) => prepareClipboardAttachment(input, index)))
+}
+
+export async function prepareWorkspaceAttachments(root: string, attachments: PreparedAttachment[]): Promise<PreparedAttachment[]> {
+  const result: PreparedAttachment[] = []
+  for (const attachment of attachments.slice(0, 8)) {
+    let source = attachment.workspaceRootPath === root && attachment.workspaceRelativePath
+      ? await workspaceFilePath(root, attachment.workspaceRelativePath)
+      : getSelectedAttachmentPath(attachment.id)
+    if (!source && attachment.dataUrl) {
+      const staged = await prepareClipboardAttachment({ ...attachment, dataUrl: attachment.dataUrl }, 0)
+      source = getSelectedAttachmentPath(staged.id)
+    }
+    if (!source) throw new Error(`无法保存文件「${attachment.name}」，请重新添加原文件 / Please attach the original file again`)
+    const relativePath = await importWorkspaceFile(root, source)
+    const file = await readAttachment(await workspaceFilePath(root, relativePath), attachment.kind)
+    selectedAttachmentPaths.set(attachment.id, await workspaceFilePath(root, relativePath))
+    result.push({ ...file, id: attachment.id, workspaceRootPath: root, workspaceRelativePath: relativePath })
+  }
+  return result
+}
+
+export async function prepareWorkspaceFileAttachment(root: string, path: string): Promise<PreparedAttachment> {
+  const attachment = await readAttachment(await workspaceFilePath(root, path), 'file')
+  return { ...attachment, workspaceRootPath: root, workspaceRelativePath: path }
 }

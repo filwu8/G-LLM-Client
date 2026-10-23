@@ -101,3 +101,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unable to grant CI Python runtime access' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:sandbox
+      - name: Test host context, data migration and desktop authorization
+        run: node --test --experimental-strip-types src/main/hostEnvironment.test.ts src/main/dataDirectoryCopy.test.ts src/main/desktopToolPolicy.test.ts src/main/computerCommand.test.ts
+      - name: Test browser interaction in Electron
+        if: runner.os != 'Linux'
+        run: node scripts/test-agent-browser.mjs
+      - name: Test automatic workspaces and verified data migration
+        if: runner.os != 'Linux'
+        run: pnpm test:storage
+      - name: Test project files and assistant configuration
+        if: runner.os != 'Linux'
+        run: pnpm test:workspace-experience
+      - name: Test browser interaction in Electron (Linux display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/test-agent-browser.mjs
+      - name: Test automatic workspaces and verified data migration (Linux display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:storage
+      - name: Test project files and assistant configuration (Linux display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:workspace-experience

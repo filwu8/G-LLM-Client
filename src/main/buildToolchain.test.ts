@@ -11,11 +11,42 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { parseArgs } from 'node:util'
+import { resolveConfig as resolveElectronConfig } from 'electron-vite'
+import { resolveConfig as resolveViteConfig } from 'vite'
 
 const require = createRequire(import.meta.url)
 const builderRequire = createRequire(require.resolve('electron-builder'))
 const appBuilderRequire = createRequire(builderRequire.resolve('app-builder-lib'))
 const downloader = appBuilderRequire('@electron/get')
+
+test('development output is isolated from production builds and uses its own entry', async () => {
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'))
+  const [executable, command, ...args] = pkg.scripts.dev.split(/\s+/)
+  assert.equal(executable, 'electron-vite')
+  assert.equal(command, 'dev')
+  const { values } = parseArgs({ args, options: { entry: { type: 'string' } } })
+  assert.ok(values.entry)
+  const previousNodeEnv = process.env.NODE_ENV
+  try {
+    const development = await resolveElectronConfig({}, 'serve')
+    const production = await resolveElectronConfig({}, 'build', 'production')
+    for (const scope of ['main', 'preload', 'renderer'] as const) {
+      const dev = await resolveViteConfig(development.config![scope]!, 'build', 'development')
+      const prod = await resolveViteConfig(production.config![scope]!, 'build', 'production')
+      assert.equal(resolve(dev.build.outDir), resolve('.electron-vite', scope))
+      assert.equal(resolve(prod.build.outDir), resolve('out', scope))
+    }
+    const bootstrap = await readFile(values.entry, 'utf8')
+    const modulePath = bootstrap.match(/await import\('([^']+)'\)/)?.[1]
+    assert.ok(modulePath)
+    assert.equal(resolve(dirname(values.entry), modulePath), resolve('.electron-vite/main/index.js'))
+    assert.equal(resolve(pkg.main), resolve('out/main/index.js'))
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+  }
+})
 
 test('builder downloader validates artifacts, reuses cache and rejects tampering', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'gllm-download-test-'))

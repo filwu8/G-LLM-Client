@@ -6,7 +6,7 @@ settings:
 
 overrides:
   '@xmldom/xmldom': 0.8.15
-  dompurify: 3.4.16
+  dompurify: 3.4.17
   fast-uri: 3.1.8
   js-yaml: 4.3.2
   katex: 0.18.2
@@ -30,10 +30,10 @@ importers:
     dependencies:
       '@electron-toolkit/preload':
         specifier: ^3.0.2
-        version: 3.0.2(electron@41.10.6)
+        version: 3.0.2(electron@42.11.18)
       '@electron-toolkit/utils':
         specifier: ^4.0.0
-        version: 4.0.0(electron@41.10.6)
+        version: 4.0.0(electron@42.11.18)
       '@napi-rs/canvas':
         specifier: 0.1.80
         version: 0.1.80
@@ -100,22 +100,22 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^5.0.0
-        version: 5.2.0(vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0))
+        version: 5.2.0(vite@7.3.7(@types/node@24.13.2)(jiti@2.7.0))
       electron:
-        specifier: ^41.10.3
-        version: 41.10.6
+        specifier: ^42.11.9
+        version: 42.11.18
       electron-builder:
         specifier: ^26.0.0
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       electron-vite:
         specifier: ^5.0.0
-        version: 5.0.0(vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0))
+        version: 5.0.0(vite@7.3.7(@types/node@24.13.2)(jiti@2.7.0))
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
       vite:
-        specifier: ^7.0.0
-        version: 7.3.5(@types/node@24.13.2)(jiti@2.7.0)
+        specifier: ^7.3.7
+        version: 7.3.7(@types/node@24.13.2)(jiti@2.7.0)
     optionalDependencies:
       '@napi-rs/canvas-darwin-arm64':
         specifier: 0.1.80
@@ -1310,8 +1310,8 @@ packages:
   dmg-builder@26.15.3:
     resolution: {integrity: sha512-O3zJUFUYHJKgzPqioHxfxzBzlSC1eXCSr79gMSBKBP5AgjjpmrydMsMLotEg9fAJF36vdUncb+4ndRNxoPdlSQ==}
 
-  dompurify@3.4.16:
-    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
+  dompurify@3.4.17:
+    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   dot-prop@9.0.0:
     resolution: {integrity: sha512-1gxPBJpI/pcjQhKgIU91II6Wkay+dLcN3M6rf2uwP8hRur3HtQXjVrdAK3sjC0piaEuxzMwjXChcETiJl47lAQ==}
@@ -1376,8 +1376,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@41.10.6:
-    resolution: {integrity: sha512-NEB7QnVpT2p8S9U5jOCPAtCyhl1WjRT/ODvJP6ec1/dZRUmf/EjYVOBb/dthCmJh4bISqpAroGJ/xRRxX7VwJw==}
+  electron@42.11.18:
+    resolution: {integrity: sha512-hbzodG06x/l7uq+oeyob5ugv6qZBmJRWC7Uto5QEE99xSHUARz6d+++Rz+79T/ssTYTQkONW4ciTTcJuAbXKIQ==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -2401,8 +2401,8 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
-  vite@7.3.5:
-    resolution: {integrity: sha512-KuOaNhcnGFN2zIPGA7wRmzF+lJA1sea7rHq17aiJ++9lzY1WWG6Jpwqwe1KNbRVPIqHmr8GLYx7jbrQcN/7/ww==}
+  vite@7.3.7:
+    resolution: {integrity: sha512-AHEzTORMbi7/7aXp7w7KZ5+DCUdSeLsJz0grY8xHpc9DHdYb0vQu6DqJfm2tOw3gDExNgPgnJTXxM6syYFHaCA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -2642,17 +2642,17 @@ snapshots:
 
   '@electron-internal/extract-zip@1.0.3': {}
 
-  '@electron-toolkit/preload@3.0.2(electron@41.10.6)':
+  '@electron-toolkit/preload@3.0.2(electron@42.11.18)':
     dependencies:
-      electron: 41.10.6
+      electron: 42.11.18
 
   '@electron-toolkit/tsconfig@1.0.1(@types/node@24.13.2)':
     dependencies:
       '@types/node': 24.13.2
 
-  '@electron-toolkit/utils@4.0.0(electron@41.10.6)':
+  '@electron-toolkit/utils@4.0.0(electron@42.11.18)':
     dependencies:
-      electron: 41.10.6
+      electron: 42.11.18
 
   '@electron/asar@3.4.1':
     dependencies:
@@ -3202,7 +3202,7 @@ snapshots:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  '@vitejs/plugin-react@5.2.0(vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0))':
+  '@vitejs/plugin-react@5.2.0(vite@7.3.7(@types/node@24.13.2)(jiti@2.7.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
@@ -3210,7 +3210,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.5(@types/node@24.13.2)(jiti@2.7.0)
+      vite: 7.3.7(@types/node@24.13.2)(jiti@2.7.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3698,7 +3698,7 @@ snapshots:
       - electron-builder-squirrel-windows
       - supports-color
 
-  dompurify@3.4.16:
+  dompurify@3.4.17:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -3789,7 +3789,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-vite@5.0.0(vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0)):
+  electron-vite@5.0.0(vite@7.3.7(@types/node@24.13.2)(jiti@2.7.0)):
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-arrow-functions': 7.29.7(@babel/core@7.29.7)
@@ -3797,7 +3797,7 @@ snapshots:
       esbuild: 0.28.2
       magic-string: 0.30.21
       picocolors: 1.1.1
-      vite: 7.3.5(@types/node@24.13.2)(jiti@2.7.0)
+      vite: 7.3.7(@types/node@24.13.2)(jiti@2.7.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3813,7 +3813,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@41.10.6:
+  electron@42.11.18:
     dependencies:
       '@electron-internal/extract-zip': 1.0.3
       '@electron/get': 5.1.0
@@ -4375,7 +4375,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.21
-      dompurify: 3.4.16
+      dompurify: 3.4.17
       es-toolkit: 1.49.0
       fastdom: 1.0.12
       katex: 0.18.2
@@ -5130,7 +5130,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@7.3.5(@types/node@24.13.2)(jiti@2.7.0):
+  vite@7.3.7(@types/node@24.13.2)(jiti@2.7.0):
     dependencies:
       esbuild: 0.28.2
       fdir: 6.5.0(picomatch@4.0.4)

@@ -16,6 +16,7 @@ import {
   ImagePlus,
   MessageSquarePlus,
   Minus,
+  MonitorCog,
   NotebookPen,
   Paperclip,
   Pencil,
@@ -75,6 +76,9 @@ import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
+import { droppedFileInputs } from './droppedFiles'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { DEFAULT_ASSISTANTS, getAssistantById } from '@shared/assistants'
@@ -100,6 +104,7 @@ import type {
   KnowledgeReference,
   MessageRetryAttempt,
   PreparedAttachment,
+  Project,
   ReasoningEffort,
   SkillConfig,
   ToolConfig,
@@ -312,6 +317,7 @@ export default function QuickChat() {
   const [tools, setTools] = useState<ToolConfig[]>([])
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
   const [activeProjectId, setActiveProjectId] = useState('')
+  const [projects, setProjects] = useState<Project[]>([])
   const activeProjectIdRef = useRef('')
   const skillInstallationRef = useRef<Conversation | null>(null)
   const [conversation, setConversation] = useState<Conversation | null>(null)
@@ -330,7 +336,9 @@ export default function QuickChat() {
   const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([])
   const [isPickingAttachment, setIsPickingAttachment] = useState(false)
   const [draftWorkspace, setDraftWorkspace] = useState<ConversationWorkspace | undefined>()
+  const preparingWorkspaceRef = useRef(false)
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
+  const [desktopSetupOpen, setDesktopSetupOpen] = useState(false)
   const [workspaceApprovalPrompt, setWorkspaceApprovalPrompt] = useState<WorkspaceApprovalPrompt | null>(null)
   const [workspaceActivities, setWorkspaceActivities] = useState<WorkspaceToolActivity[]>([])
   const [workspaceChangedFiles, setWorkspaceChangedFiles] = useState<string[]>([])
@@ -396,7 +404,7 @@ export default function QuickChat() {
   const messageSendShortcut = settings?.messageSendShortcut ?? 'enter'
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
   const messages = conversation?.messages ?? []
-  const currentWorkspace = conversationWorkspace(conversation, draftWorkspace)
+  const currentWorkspace = conversationWorkspace(conversation, draftWorkspace) ?? projectWorkspace(projects.find(project => project.id === activeProjectId))
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
   const quickDraftStorageKey = composerTarget
     ? getComposerDraftStorageKey(getComposerSessionKey(
@@ -440,6 +448,7 @@ export default function QuickChat() {
     setMemories(state.memories ?? [])
     setSkills(state.skills ?? [])
     setTools(state.tools ?? [])
+    setProjects(state.projects)
     setActiveProjectId(state.activeProjectId)
     activeProjectIdRef.current = state.activeProjectId
     setActiveAssistantId(quickAssistant.id)
@@ -454,6 +463,18 @@ export default function QuickChat() {
     setSelectedModelId(getQuickModelId(selectedConversation, quickAssistant, initialProvider))
     setSelectedReasoningEffort(selectedConversation?.reasoningEffort ?? 'default')
   }
+
+  useEffect(() => window.gllm.onStorageLocationChanged?.((state, previousRoot) => {
+    setProjects(state.projects)
+    setConversations(state.conversations)
+    setSkills(state.skills)
+    const current = conversationRef.current
+    if (current) {
+      const updated = state.conversations.find(item => item.id === current.id)
+      if (updated) { setConversation(updated); conversationRef.current = updated }
+    }
+    setDraftWorkspace(current => current ? { ...current, rootPath: relocateWorkspaceLocation(current.rootPath, previousRoot, state.dataLocation.activePath, window.gllm.platform === 'win32') } : undefined)
+  }), [])
 
   useEffect(() => {
     void Promise.all([
@@ -816,29 +837,6 @@ export default function QuickChat() {
     setStatus('')
   }
 
-  async function bindQuickWorkspace() {
-    try {
-      const rootPath = await window.gllm.chooseWorkspaceDirectory()
-      if (!rootPath) return
-      const normalizePath = (path: string) => {
-        const normalized = path.replace(/[\\/]+$/, '').replace(/\\/g, '/')
-        return window.gllm.platform === 'linux' ? normalized : normalized.toLocaleLowerCase()
-      }
-      const conflict = conversations.find((item) =>
-        item.id !== conversation?.id &&
-        item.workspace?.permission === 'read-write' &&
-        normalizePath(item.workspace.rootPath) === normalizePath(rootPath)
-      )
-      if (conflict) {
-        setStatus(t('workspace.folderConflict', { conversation: conflict.title }))
-        return
-      }
-      setPendingWorkspaceRoot(rootPath)
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : t('workspace.bindFailed'))
-    }
-  }
-
   async function confirmQuickWorkspace(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>) {
     const rootPath = pendingWorkspaceRoot
     if (!rootPath) return
@@ -870,18 +868,23 @@ export default function QuickChat() {
     }
   }
 
-  async function changeQuickWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork'>) {
+  async function saveDesktopWorkspace(workspace: ConversationWorkspace) {
+    if (!conversation) { setDraftWorkspace(workspace); return }
+    const saved = await window.gllm.saveConversation({ ...conversation, workspace, updatedAt: Date.now() })
+    setConversation(saved)
+    setConversations(current => [saved, ...current.filter(item => item.id !== saved.id)])
+    conversationRef.current = saved
+    if (!workspace.browserAccess) await window.gllm.closeAgentBrowser(saved.id)
+  }
+
+  async function changeQuickWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings) {
     if (!currentWorkspace) return
     const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
     if (!conversation) {
       setDraftWorkspace(workspace)
       return
     }
-    const nextConversation = { ...conversation, workspace, updatedAt: Date.now() }
-    setConversation(nextConversation)
-    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
-    conversationRef.current = nextConversation
-    await window.gllm.saveConversation(nextConversation)
+    await saveDesktopWorkspace(workspace)
   }
 
   async function unbindQuickWorkspace() {
@@ -894,6 +897,7 @@ export default function QuickChat() {
       return
     }
     window.gllm.cancelResponse(conversation.id)
+    void window.gllm.closeAgentBrowser(conversation.id)
     if (workspaceApprovalPrompt?.conversationId === conversation.id) window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, false)
     setWorkspaceApprovalPrompt(null)
     setDraftWorkspace(undefined)
@@ -1380,7 +1384,7 @@ export default function QuickChat() {
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
     void window.gllm.saveConversation(nextConversation)
-    if (nextConversation.workspace) {
+    if (usesWorkspaceAgent(nextConversation)) {
       const retryAttempts = message.error
         ? message.retryAttempts?.length
           ? message.retryAttempts
@@ -1461,7 +1465,7 @@ export default function QuickChat() {
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
     void window.gllm.saveConversation(nextConversation)
-    if (nextConversation.workspace) {
+    if (usesWorkspaceAgent(nextConversation)) {
       void executeQuickWorkspaceConversation(nextConversation, nextConversation.workspace)
       return
     }
@@ -1479,7 +1483,7 @@ export default function QuickChat() {
   }
 
   async function sendMessage(content = draft) {
-    if (!settings || isStreamingRef.current) return
+    if (!settings || isPickingAttachment || preparingWorkspaceRef.current || isStreamingRef.current) return
     if (getSkillInstallIntent(content)) {
       await installQuickConversationSkill(content.trim())
       return
@@ -1508,10 +1512,22 @@ export default function QuickChat() {
       t('quickChat.conversationTitle', { text: messageText.slice(0, 18) }),
       activeProjectId || undefined
     )
-    const userMessage = createMessage('user', messageText, pendingAttachments, pendingQuoteRefs)
+    let requestWorkspace = currentWorkspace
+    if (!requestWorkspace) {
+      preparingWorkspaceRef.current = true
+      try { requestWorkspace = await window.gllm.ensureConversationWorkspace(baseConversation.id, baseConversation.projectId) }
+      catch (error) { setStatus(error instanceof Error ? error.message : String(error)); return }
+      finally { preparingWorkspaceRef.current = false }
+    }
+    let imported = pendingAttachments
+    preparingWorkspaceRef.current = true
+    try { if (imported.length) imported = await window.gllm.importWorkspaceAttachments(requestWorkspace.rootPath, imported) }
+    catch (error) { setStatus(error instanceof Error ? error.message : String(error)); return }
+    finally { preparingWorkspaceRef.current = false }
+    const userMessage = createMessage('user', messageText, imported, pendingQuoteRefs)
     const nextConversation: Conversation = {
       ...baseConversation,
-      workspace: currentWorkspace,
+      workspace: requestWorkspace,
       title: baseConversation.messages.length === 0
         ? t('quickChat.conversationTitle', { text: messageText.slice(0, 18) })
         : baseConversation.title,
@@ -1533,9 +1549,9 @@ export default function QuickChat() {
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     conversationRef.current = nextConversation
     void window.gllm.saveConversation(nextConversation)
-    if (currentWorkspace) {
+    if (usesWorkspaceAgent(nextConversation)) {
       if (!conversation) setDraftWorkspace(undefined)
-      void executeQuickWorkspaceConversation(nextConversation, currentWorkspace)
+      void executeQuickWorkspaceConversation(nextConversation, nextConversation.workspace)
       return
     }
     window.gllm.streamChat({
@@ -2110,6 +2126,7 @@ export default function QuickChat() {
         </div>
       )}
 
+      {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog
           rootPath={pendingWorkspaceRoot}
@@ -2139,6 +2156,18 @@ export default function QuickChat() {
 
       <form
         className="quick-composer"
+        onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' } }}
+        onDrop={event => {
+          const files = Array.from(event.dataTransfer.files)
+          if (!files.length) return
+          event.preventDefault(); event.stopPropagation()
+          if (isPickingAttachment || isStreaming) return
+          setIsPickingAttachment(true)
+          void droppedFileInputs(files).then(inputs => window.gllm.preparePastedAttachments(inputs))
+            .then(attachments => setPendingAttachments(current => [...current, ...attachments].slice(0, 8)))
+            .catch(error => setStatus(String(error.message ?? error)))
+            .finally(() => setIsPickingAttachment(false))
+        }}
         onSubmit={(event) => {
           event.preventDefault()
           sendMessage()
@@ -2157,6 +2186,7 @@ export default function QuickChat() {
         {currentWorkspace && (
           <WorkspaceBar
             workspace={currentWorkspace}
+            conversationId={conversation?.id}
             onOpen={() => void window.gllm.openWorkspaceDirectory(currentWorkspace.rootPath).catch((error) => {
               setStatus(error instanceof Error ? error.message : t('workspace.openDirectoryFailed'))
             })}
@@ -2247,10 +2277,11 @@ export default function QuickChat() {
               className={currentWorkspace ? 'active' : ''}
               title={t('quickChat.workspace')}
               type="button"
-              onClick={() => void bindQuickWorkspace()}
+              onClick={() => void openMainWindow()}
             >
               <FolderOpen size={16} />
             </button>
+            <button aria-label={t('workspace.desktopAccess')} title={t('workspace.desktopAccess')} disabled={isStreaming} className={currentWorkspace?.computerAccess || currentWorkspace?.browserAccess ? 'active' : ''} type="button" onClick={() => setDesktopSetupOpen(true)}><MonitorCog size={16} /></button>
             <button
               className={goalSetupOpen || Boolean(conversation?.goalTask) ? 'active' : ''}
               disabled={isStreaming}
@@ -2290,7 +2321,7 @@ export default function QuickChat() {
           />
           <button
             className={`quick-send-button send-button${isStreaming ? ' stop' : ''}`}
-            disabled={!settings || (!isStreaming && !draft.trim() && pendingQuoteRefs.length === 0 && pendingAttachments.length === 0)}
+            disabled={!settings || (!isStreaming && (isPickingAttachment || (!draft.trim() && pendingQuoteRefs.length === 0 && pendingAttachments.length === 0)))}
             onClick={isStreaming ? stopGenerating : undefined}
             title={isStreaming ? t('app.stopGenerating') : t('app.send', { shortcut: messageSendShortcutLabel })}
             type={isStreaming ? 'button' : 'submit'}

@@ -12,12 +12,18 @@ export interface ActiveResponseHandle {
 
 export class ActiveResponseRegistry {
   private readonly responses = new Map<string, ActiveResponseHandle>()
+  private readonly pending = new Set<ActiveResponseHandle>()
+
+  get activeConversationIds(): string[] {
+    return [...new Set([...this.pending].map(handle => handle.conversationId))]
+  }
 
   register(kind: 'chat' | 'workspace', conversationId: string, requestKey = 'main'): ActiveResponseHandle {
     const key = `${kind}:${conversationId}:${requestKey}`
     this.responses.get(key)?.controller.abort()
     const handle = { key, conversationId, controller: new AbortController() }
     this.responses.set(key, handle)
+    this.pending.add(handle)
     return handle
   }
 
@@ -27,10 +33,11 @@ export class ActiveResponseRegistry {
 
   release(handle: Pick<ActiveResponseHandle, 'key' | 'controller'>): void {
     if (this.isCurrent(handle)) this.responses.delete(handle.key)
+    for (const pending of this.pending) if (pending.controller === handle.controller) this.pending.delete(pending)
   }
 
   cancelConversation(conversationId: string): void {
-    for (const active of this.responses.values()) {
+    for (const active of this.pending) {
       if (active.conversationId === conversationId) active.controller.abort()
     }
   }
