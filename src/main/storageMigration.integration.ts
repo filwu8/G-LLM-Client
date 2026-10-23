@@ -59,6 +59,8 @@ async function main() {
   const generated = storage.saveGeneratedImageResource(Buffer.from('fixture-image'))
   assert.ok(generated.absolutePath.startsWith(target))
   assert.equal(storage.getDataResourceFilePathFromUrl(generated.url), generated.absolutePath)
+  symlinkSync(external, join(target, 'linked-resources'), process.platform === 'win32' ? 'junction' : 'dir')
+  assert.equal(storage.getDataResourceFilePathFromUrl('gllm-data://linked-resources/new-image.png'), null, 'A prospective file below an outside directory link must be rejected')
   rmSync(join(moved.workspace!.rootPath, 'file-0.bin'))
   const restored = storage.resetDataRoot()
   assert.equal(restored.info.activePath, original)

@@ -143,7 +143,18 @@ function getInstallerDataLocationConfigPath(defaultRoot = getDefaultDataRoot()):
 }
 
 function normalizePathForCompare(path: string): string {
-  const normalized = (existsSync(path) ? realpathSync(path) : resolve(path)).replace(/[\\/]+$/, '')
+  // Resolve the nearest existing parent as well as existing files. On macOS,
+  // /var aliases /private/var; a new output must compare in the same namespace.
+  // This also prevents a missing file below a directory link escaping the root.
+  let parent = resolve(path)
+  const pending: string[] = []
+  while (!existsSync(parent)) {
+    const next = dirname(parent)
+    if (next === parent) break
+    pending.unshift(basename(parent))
+    parent = next
+  }
+  const normalized = resolve(realpathSync(parent), ...pending).replace(/[\\/]+$/, '')
   return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized
 }
 
