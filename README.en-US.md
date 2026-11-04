@@ -31,7 +31,7 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 - Give the assistant the actual host OS. Computer and browser actions require separate grants and approval for every operation. Supported settings and skill changes can be previewed and approved through conversation.
 - Move extensions and skills into Settings. Fix overlapping workspace controls and missing task modules after development builds.
 - Use the application icon in the AI browser, and provide a conversation control to bring its existing window forward. Each conversation currently has one page without tabs; full MCP/plugin execution is still unavailable.
-- Windows, macOS, and Linux automated checks passed. Submitted as Microsoft Store Submission 5 on 2026-10-23, with automatic free public publication after certification. See [release notes and validation](docs/releases/v2.0.27.md). This update is not yet live in the Store.
+- Windows, macOS, and Linux automated checks passed. Submitted for Microsoft Store certification on 2026-10-23, with automatic free public publication after certification. See [release notes and validation](docs/releases/v2.0.27.md). This update is not yet live in the Store.
 
 ## V2.0.26 Store Update Link Fix (Public)
 

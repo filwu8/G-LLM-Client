@@ -13,6 +13,8 @@ Identity values come from Partner Center and are stored in `build/msix-identity.
 
 These package identity values are public metadata, not credentials. Keep Partner Center passwords, client secrets, access/refresh tokens, signing private keys, certificate passwords, and local acceptance certificates outside the repository. Store packages are signed by Microsoft; no signing private key belongs in this project. `.gitignore` excludes common local signing files and packaged uploads, but review the staged diff before every release commit: ignore rules do not protect secrets already tracked by Git.
 
+Keep account-specific publishing records, internal submission IDs, portal screenshots and logs, tax/billing/bank documents, and authentication exports in ignored local directories (`.publishing/`, `.partner-center/`, `.secrets/`, `.cache/` or `release/`) or outside this repository. Public release notes should contain only the minimal publication status and non-sensitive build verification metadata. Check staged content and outgoing commits before syncing to GitHub, and never include credential values in audit output. See `AGENTS.md` for the publishing confidentiality rule.
+
 ## Build
 
 On Windows, install locked dependencies and set `MSIX_SDK_BIN` to the x64 binary directory of the official Windows SDK (containing `makeappx.exe`). Then run `pnpm package:msix`.

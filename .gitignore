@@ -45,8 +45,13 @@ release/
 *.cer
 *.crt
 *.publishsettings
+*.pvk
 .secrets/
 .certificates/
+.publishing/
+.partner-center/
+partner-center.local.json
+store-publishing.local.json
 
 # Logs
 *.log
