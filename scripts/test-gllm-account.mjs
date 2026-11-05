@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: BUSL-1.1
  * Change Date: 2030-08-01
  */
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve, join, dirname, basename } from 'node:path'
 import { createRequire } from 'node:module'
@@ -16,14 +16,18 @@ const asarIndex = process.argv.indexOf('--app-asar')
 const appRoot = asarIndex < 0 ? root : resolve(process.argv[asarIndex + 1])
 const mainEntry = join(appRoot, 'out/main/index.js')
 const fixture = await mkdtemp(join(tmpdir(), 'gllm-account-acceptance-'))
+const profile = join(fixture, 'profile')
+const appData = join(fixture, 'app-data')
+const configPath = join(process.platform === 'win32' ? join(appData, 'G-LLM') : profile, 'g-llm-client.json')
 const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 delete env.ELECTRON_RENDERER_URL
 try {
-  await readFile(asarIndex < 0 ? mainEntry : appRoot) // A normal build or packaged ASAR must precede this test.
-  await mkdir(join(fixture, 'profile'))
-  await mkdir(join(fixture, 'app-data', 'G-LLM'), { recursive: true })
-  await writeFile(join(fixture, 'app-data', 'G-LLM', 'g-llm-client.json'), JSON.stringify({
+  await access(asarIndex < 0 ? mainEntry : appRoot) // A normal build or packaged ASAR must precede this test.
+  await mkdir(profile)
+  await mkdir(appData)
+  await mkdir(dirname(configPath), { recursive: true })
+  await writeFile(configPath, JSON.stringify({
     settings: { language: 'en-US', theme: 'light', setupCompleted: true, telemetryEnabled: false, floatingMascotVisible: false },
     providers: [{ id: 'provider_fixture_other', templateId: 'openai-compatible', name: 'Fixture custom provider', apiBaseUrl: 'http://127.0.0.1:9/v1', apiKey: 'fixture-only-other-provider', defaultModel: 'fixture-custom-model', models: [{ id: 'fixture-custom-model' }], requiresApiKey: true }]
   }))
@@ -36,7 +40,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 const root = ${JSON.stringify(root)}, fixture = ${JSON.stringify(fixture)}, phase = process.argv[2];
-const config = join(fixture, 'app-data', 'G-LLM', 'g-llm-client.json');
+const config = ${JSON.stringify(configPath)};
 const ledgerPath = join(fixture, 'server-ledger.json');
 const token = code => 'sk-' + createHash('sha256').update('fixture-only-' + code).digest('hex').slice(0,48);
 let exchangeCount = 0, accountMode = 'ready', catalogMode = 'ready', exchangeMode = 'ready', opened = [];
@@ -169,13 +173,12 @@ if(phase !== 'callback') {
       console.log('Locked credential passed: unavailable state is explicit, original ciphertext retained through metadata changes.');
     }
     const scanLogs = directory => {for(const item of readdirSync(directory,{withFileTypes:true})){const path=join(directory,item.name);if(item.isDirectory() && !['Cache','Code Cache','GPUCache'].includes(item.name))scanLogs(path);else if(item.isFile()&&item.name.endsWith('.log')){const text=readFileSync(path,'utf8');assert.ok(!text.includes(token('a'.repeat(64)))&&!text.includes(token('b'.repeat(64))),'credential in logs');assert.ok(!text.includes('handoff='+'a'.repeat(64)),'authorization code in logs');}}};
-    scanLogs(join(fixture,'app-data'));
+    scanLogs(fixture);
     app.exit(0);
   })().catch(error=>{console.error('Built account acceptance failed in phase: '+phase+' (credential values suppressed)'); console.error(String(error.stack).split('\\n').filter(line=>line.trim().startsWith('at ')).slice(0,4).join('\\n'));app.exit(1);});
 }
 `)
   for (const phase of ['interactive', 'restart', 'cold', 'reused', 'legacy', 'locked']) {
-    const configPath = join(fixture, 'app-data', 'G-LLM', 'g-llm-client.json')
     if (phase === 'legacy') {
       const { createHash } = await import('node:crypto')
       const config = JSON.parse(await readFile(configPath, 'utf8'))
@@ -195,8 +198,8 @@ if(phase !== 'callback') {
     const code = await new Promise((fulfil, reject) => {
       const child = spawn(require('electron'), args, { env, stdio: 'inherit', windowsHide: true })
       const timeout = setTimeout(() => { child.kill(); reject(new Error(`Account acceptance timed out: ${phase}`)) }, 60_000)
-      child.once('error', reject)
-      child.once('close', code => { clearTimeout(timeout); fulfil(code ?? 1) })
+      child.once('error', error => { clearTimeout(timeout); reject(error) })
+      child.once('exit', code => { clearTimeout(timeout); fulfil(code ?? 1) })
     })
     if (code !== 0) throw new Error(`Account acceptance failed: ${phase}`)
   }
