@@ -1418,5 +1418,38 @@
     "dropHint": "Dropped files are copied here. Click a file to attach it for the AI to read or process.",
     "imported": "Saved {{count}} files to this workspace",
     "readOnly": "This folder is read-only; files cannot be imported."
+  },
+  "account": {
+    "title": "Connect your G-LLM account",
+    "connected": "G-LLM personal account",
+    "introduction": "Register or sign in to configure the official service and available models automatically. No API key copying, endpoint or model entry is needed.",
+    "signIn": "Register / sign in to get started",
+    "signInFirst": "Register or sign in to G-LLM to use your personal account allowance",
+    "manual": "Configure another model provider manually",
+    "reconnect": "Reconnect account",
+    "retry": "Retry",
+    "reopen": "Open browser again",
+    "expired": "The wait timed out. Retry and authorize again on the website.",
+    "cancelled": "This connection was cancelled. Existing credentials and allowance are unchanged.",
+    "credentialUnavailable": "The system cannot read the saved credential right now. Unlock your OS credential store and retry, or reconnect. The original credential is retained.",
+    "loading": "Checking available allowance…",
+    "balance": "Available allowance: {{amount}} billing units",
+    "billingNote": "This is your available billing allowance, converted using the server-provided rate. It is not a model token count.",
+    "exhausted": "Your account allowance is exhausted, so this account cannot currently use model services. Refresh when allowance is available again, or configure another model provider manually.",
+    "unauthorized": "The allowance request was not authorized. The token may have been revoked or expired. Reconnect your account; saved credentials are not cleared automatically.",
+    "unavailable": "Allowance is temporarily unavailable. Try refreshing later. Existing configuration and normal chat are unaffected.",
+    "refresh": "Refresh allowance",
+    "allowanceNote": "New-user allowance follows server registration rules. Signing in, reconnecting or reinstalling does not grant extra allowance. Model usage consumes your personal allowance.",
+    "phase": {
+      "waiting": "Browser opened. Complete registration or sign-in, then return to the client…",
+      "exchanging": "Connecting your personal account securely…",
+      "models": "Account connected. Loading available models…"
+    },
+    "error": {
+      "browser": "Could not open the browser. Retry or configure a provider manually.",
+      "exchange": "Authorization did not complete: the code may have expired, been used, or a network error occurred. Retry and authorize again on the website.",
+      "storage": "System encryption is unavailable. The new credential was not saved as plaintext. Unlock your OS account and retry.",
+      "models": "Your credential is saved securely, but available chat models could not be loaded. Retry without copying a key or registering again."
+    }
   }
 }

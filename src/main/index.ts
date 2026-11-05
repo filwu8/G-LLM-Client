@@ -7,6 +7,8 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { setApplicationSettingsListener } from './applicationConfiguration'
 import { getAppIconPath } from './appIcon'
+import { GllmConnection } from './gllmConnection'
+import { fetchGllmAccount } from './gllmAccount'
 import {
   app,
   BrowserWindow,
@@ -63,7 +65,6 @@ import {
   shouldRestoreMainWindowFromStatusIcon
 } from '../shared/conversationHandoff'
 import {
-  DEFAULT_PROVIDER,
   DEFAULT_PROVIDER_ID,
   applyFetchedProviderModels,
   isOfficialGllmApiProvider,
@@ -199,7 +200,9 @@ async function refreshOfficialProviderCatalog(provider: ApiProvider, force = fal
   const refresh = (async () => {
     try {
       const models = await fetchProviderModels(savedProvider, getSettings().language)
-      const refreshed = saveProvider(applyFetchedProviderModels(savedProvider, models))
+      const current = getProviders().find(item => item.id === savedProvider.id)
+      if (!current || current.apiKey !== savedProvider.apiKey || current.apiBaseUrl !== savedProvider.apiBaseUrl) return current ?? savedProvider
+      const refreshed = saveProvider(applyFetchedProviderModels(current, models))
       broadcastProvidersChange(getProviders())
       void trackTelemetryEvent('provider_models_refreshed', getProviderTelemetryProperties(refreshed))
       return refreshed
@@ -333,7 +336,22 @@ redactGllmDeepLinkArguments(process.argv)
 let pendingDeepLink: GllmDeepLink | null =
   startupDeepLinkResult.kind === 'valid' ? startupDeepLinkResult.link : null
 let isMainProcessReady = false
-const processedHandoffDigests = new Set<string>()
+const gllmConnection = new GllmConnection({
+  openBrowser: url => shell.openExternal(url),
+  exchange: (code, signal) => exchangeGllmHandoff(code, {
+    endpoint: resolveGllmHandoffExchangeUrl(is.dev, process.env.GLLM_HANDOFF_EXCHANGE_URL),
+    request: (url, init) => net.fetch(url, init), signal
+  }),
+  getProvider: () => getProviders().find(provider => provider.id === DEFAULT_PROVIDER_ID),
+  saveProvider: provider => { const saved = saveProvider(provider); broadcastProvidersChange(getProviders()); return saved },
+  fetchModels: (provider, signal) => fetchProviderModels(provider, getSettings().language, signal),
+  activate: () => {
+    const saved = setSettings({ ...getSettings(), activeProviderId: DEFAULT_PROVIDER_ID })
+    broadcastSettingsChange(saved)
+  },
+  notify: state => broadcastDeepLinkHandoffStatus(state)
+})
+let accountPending: { fingerprint: string; promise: Promise<import('../shared/types').GllmAccountState> } | undefined
 const legalDocumentPaths = {
   license: { development: 'LICENSE', packaged: 'LICENSE.txt' },
   'third-party': { development: 'THIRD_PARTY_NOTICES.md', packaged: 'THIRD_PARTY_NOTICES.md' },
@@ -515,7 +533,7 @@ function showMainWindowForDeepLink(link: GllmDeepLink, origin: string): void {
   writeMainLog(`Accepted G-LLM deep link from ${origin}: action=${link.action}${source}${requestedTheme}.`)
 
   let deepLinkSettings: AppSettings | undefined
-  if (link.theme === 'gold') {
+  if (link.theme === 'gold' && !link.handoffCode) {
     deepLinkSettings = setSettings({ ...getSettings(), theme: 'gold' })
   }
 
@@ -594,41 +612,7 @@ function setupLinuxAppImageDeepLinkProtocol(): void {
 }
 
 async function importGllmHandoff(code: string): Promise<void> {
-  const digest = createHash('sha256').update(code).digest('hex')
-  if (processedHandoffDigests.has(digest)) return
-  processedHandoffDigests.add(digest)
-
-  const abortController = new AbortController()
-  const timeout = setTimeout(() => abortController.abort(), 10_000)
-  try {
-    const endpoint = resolveGllmHandoffExchangeUrl(is.dev, process.env.GLLM_HANDOFF_EXCHANGE_URL)
-    const { apiKey } = await exchangeGllmHandoff(code, {
-      endpoint,
-      request: (url, init) => net.fetch(url, init),
-      signal: abortController.signal
-    })
-    const currentProvider = getProviders().find((provider) => provider.id === DEFAULT_PROVIDER_ID)
-    const savedProvider = saveProvider({
-      ...DEFAULT_PROVIDER,
-      ...currentProvider,
-      id: DEFAULT_PROVIDER_ID,
-      templateId: 'gllm',
-      name: DEFAULT_PROVIDER.name,
-      apiBaseUrl: DEFAULT_PROVIDER.apiBaseUrl,
-      apiKey,
-      updatedAt: Date.now()
-    })
-    const savedSettings = setSettings({ ...getSettings(), activeProviderId: DEFAULT_PROVIDER_ID })
-    broadcastProvidersChange(getProviders())
-    broadcastSettingsChange(savedSettings)
-    broadcastDeepLinkHandoffStatus('success')
-    writeMainLog(`Imported API key from one-time G-LLM handoff into provider=${savedProvider.id}.`)
-  } catch (error) {
-    broadcastDeepLinkHandoffStatus('error')
-    writeMainLog('Failed to exchange one-time G-LLM handoff.', error)
-  } finally {
-    clearTimeout(timeout)
-  }
+  await gllmConnection.receive(code)
 }
 
 function getWindowBackgroundColor(settings: Pick<AppSettings, 'theme'>): string {
@@ -1499,16 +1483,16 @@ function broadcastSettingsChange(settings: AppSettings): void {
 }
 
 function broadcastProvidersChange(providers: ApiProvider[]): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.send('providers:changed', providers)
+  for (const window of [mainWindow, quickWindow]) {
+    if (window && !window.isDestroyed()) window.webContents.send('providers:changed', providers)
   }
 }
 
-function broadcastDeepLinkHandoffStatus(status: 'success' | 'error'): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (window.isDestroyed()) continue
+function broadcastDeepLinkHandoffStatus(status: import('../shared/types').DeepLinkHandoffStatusEvent): void {
+  for (const window of [mainWindow, quickWindow]) {
+    if (!window || window.isDestroyed()) continue
     const notify = () => {
-      if (!window.isDestroyed()) window.webContents.send('deep-link:handoff-status', { status })
+      if (!window.isDestroyed()) window.webContents.send('deep-link:handoff-status', status)
     }
     if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', notify)
     else notify()
@@ -1747,6 +1731,18 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
+  ipcMain.handle('gllm:connection-state', () => gllmConnection.getState())
+  ipcMain.handle('gllm:connect', () => gllmConnection.begin())
+  ipcMain.handle('gllm:connect-retry', () => gllmConnection.retry())
+  ipcMain.handle('gllm:connect-cancel', () => gllmConnection.cancel())
+  ipcMain.handle('gllm:account', async () => {
+    const provider = getProviders().find(item => item.id === DEFAULT_PROVIDER_ID)
+    const fingerprint = createHash('sha256').update(`${provider?.apiBaseUrl ?? ''}\0${provider?.apiKey ?? ''}`).digest('hex')
+    if (accountPending?.fingerprint === fingerprint) return accountPending.promise
+    const promise = fetchGllmAccount(provider, (url, init) => net.fetch(url, init), AbortSignal.timeout(10_000))
+    accountPending = { fingerprint, promise }
+    try { return await promise } finally { if (accountPending?.promise === promise) accountPending = undefined }
+  })
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('app:get-update-state', () => autoUpdateManager?.getState())
   ipcMain.handle('app:check-for-updates', () => autoUpdateManager?.checkForUpdates())

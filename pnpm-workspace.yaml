@@ -15,13 +15,17 @@ supportedArchitectures:
 overrides:
   '@xmldom/xmldom': 0.8.15
   dompurify: 3.4.17
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
   js-yaml: 4.3.2
   # KaTeX 0.18.2 fixes inherited trust options; regression coverage lives in dependencySecurity.test.ts.
   katex: 0.18.2
   # argparse 2 retains Mammoth's legacy CLI aliases and removes the unpatched sprintf-js chain.
   'mammoth>argparse': 2.0.1
-  undici: 7.29.1
+  undici: 7.30.1
+  # Fixed glob parsing for the builder's modern minimatch consumers; retain
+  # older callable APIs used by unrelated legacy build dependencies.
+  'minimatch@9': 11.0.1
+  'minimatch@10': 11.0.1
   # Remove the legacy got/cache and global-agent/sprintf-js download chains.
   '@electron/get': 5.1.0
   'brace-expansion@1': 1.1.21

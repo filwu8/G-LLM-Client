@@ -75,6 +75,7 @@ import { useTranslation } from 'react-i18next'
 
 import logo from './assets/gllm-logo.png'
 import { ChatErrorRetry } from './ChatErrorRetry'
+import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { getChatErrorPresentation } from './chatErrors'
 import { findMainConversationTarget } from '@shared/conversationHandoff'
 import type { ComposerSessionTarget, MainConversationOpenRequest } from '@shared/types'
@@ -1223,7 +1224,7 @@ export default function App() {
       if (pendingRequest) void openRequestedMainConversation(pendingRequest)
       if (!state.settings.setupCompleted) {
         setAgreementOpen(true)
-      } else if (isProviderApiKeyMissing(provider)) {
+      } else if (isProviderApiKeyMissing(provider) && !isManagedGllmProvider(provider)) {
         setSettingsOpen(true)
       }
     })
@@ -1266,12 +1267,13 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    return window.gllm.onDeepLinkHandoffStatus(({ status }) => {
+    return window.gllm.onDeepLinkHandoffStatus(({ status, reason }) => {
+      if (status !== 'success' && status !== 'error') return
       if (status === 'success') {
         setSettingsOpen(false)
         void window.gllm.getState().then((state) => applyAppState(state))
       }
-      showToolNotice(t(status === 'success' ? 'notices.browserKeyImported' : 'notices.browserKeyImportFailed'), 3600, {
+      showToolNotice(t(status === 'success' ? 'account.connected' : `account.error.${reason ?? 'exchange'}`), 3600, {
         emphasis: status === 'error'
       })
     })
@@ -3265,7 +3267,7 @@ export default function App() {
     setAgreementOpen(false)
 
     const provider = getProviderById(saved.activeProviderId, providers)
-    if (isProviderApiKeyMissing(provider)) {
+    if (isProviderApiKeyMissing(provider) && !isManagedGllmProvider(provider)) {
       setSettingsOpen(true)
     }
   }
@@ -3610,7 +3612,8 @@ export default function App() {
             refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
             onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
-            {needsApiKey && (
+            {isManagedGllmProvider(conversationProvider) && <GllmAccountPanel provider={conversationProvider} onManualConfiguration={() => setSettingsOpen(true)} />}
+            {needsApiKey && !isManagedGllmProvider(conversationProvider) && (
               <div className="setup-banner">
                 <KeyRound size={18} />
                 <span>{t('app.apiKeyRequired', { provider: conversationProvider.name })}</span>
@@ -4151,7 +4154,7 @@ export default function App() {
                     sendMessage()
                   }
                 }}
-                placeholder={needsApiKey ? t('app.configureApiKey') : t('app.messageAssistant', { assistant: activeAssistantDisplay.name })}
+                placeholder={needsApiKey ? t(isManagedGllmProvider(conversationProvider) ? 'account.signInFirst' : 'app.configureApiKey') : t('app.messageAssistant', { assistant: activeAssistantDisplay.name })}
                 rows={1}
               />
             </div>
@@ -7226,6 +7229,7 @@ function SettingsPanel({
             </div>
 
             <div className="provider-form">
+              <GllmAccountPanel provider={providerDraft} />
               <div className="form-row two provider-default-model-row">
                 <label>
                   <span>{t('provider.name')}</span>

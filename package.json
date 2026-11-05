@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.27",
+  "version": "2.0.28",
   "description": "知言 · G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -16,6 +16,7 @@
   "packageManager": "pnpm@10.29.1",
   "engines": { "node": ">=22.12.0" },
   "scripts": {
+    "test:gllm-account": "node --test --experimental-strip-types src/main/gllmAccount.test.ts src/main/gllmConnection.test.ts src/main/providerCredentials.test.ts && node scripts/test-gllm-account.mjs",
     "test:workspace-experience": "node --test --experimental-strip-types src/main/workspaceFiles.test.ts src/main/applicationConfigPolicy.test.ts src/shared/workspaceRouting.test.ts && node scripts/test-workspace-experience.mjs",
     "test:desktop": "node --test --experimental-strip-types src/main/hostEnvironment.test.ts src/main/dataDirectoryCopy.test.ts src/main/desktopToolPolicy.test.ts src/main/computerCommand.test.ts && node scripts/test-agent-browser.mjs",
     "test:storage": "node --test --experimental-strip-types src/main/managedWorkspace.test.ts src/main/dataRelocation.test.ts src/main/storageTasks.test.ts src/shared/workspaceRouting.test.ts && node scripts/test-storage-migration.mjs",

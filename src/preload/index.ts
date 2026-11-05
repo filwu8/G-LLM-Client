@@ -97,6 +97,11 @@ ipcRenderer.on('composer:open-in-main', (_event, target: ComposerSessionTarget) 
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
+  getGllmConnectionState: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connection-state'),
+  connectGllm: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect'),
+  retryGllmConnection: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect-retry'),
+  cancelGllmConnection: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect-cancel'),
+  getGllmAccount: (): Promise<import('../shared/types').GllmAccountState> => ipcRenderer.invoke('gllm:account'),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   getAppUpdateState: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:get-update-state'),
   checkForUpdates: (): Promise<AppUpdateInfo> => ipcRenderer.invoke('app:check-for-updates'),

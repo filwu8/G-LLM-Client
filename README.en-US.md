@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.27 (submitted for Microsoft Store certification)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.28 (Store preparation; real-account and Store-signed package acceptance pending)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Current public Microsoft Store version: [V2.0.26](https://apps.microsoft.com/detail/9MVD547V4ZN9), published for free on 2026-10-21. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -23,6 +23,14 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.28 Automatic Setup After Registration / Sign-In (Release Preparation)
+
+- First use offers “Register / sign in to get started” for the official provider. Browser authorization saves the user's own credential, activates the official service and selects an available chat model. Waiting, cancellation and retries are supported; other providers retain manual configuration.
+- Only the main process queries the fixed official account endpoint. Allowance is displayed in server-defined billing units rather than model tokens. Zero allowance and revoked tokens have clear messages; query failures are retryable and do not erase credentials or block chat.
+- Provider credentials use OS-backed encryption without plaintext fallback. Legacy records migrate when the OS credential store is available; device migration or a locked credential store may require unlocking or reconnection.
+- Allowance is issued only under server registration rules. Signing in, reinstalling and repeated callbacks do not issue extra allowance. No recharge or purchase entry is added.
+- **Production checks on 2026-11-05** initially found a SPA false positive and account API 404. A later check showed actual registration/sign-in controls on the connection page and an unauthenticated 401 from the account API. The entry page and authentication route are now reachable; the full real-account authorization and allowance response remain unverified. The new package version is `2.0.28.0`; real-account and new Store-signed package acceptance are required before release. See [release preparation](docs/releases/v2.0.28.md).
 
 ## V2.0.27 Projects, Files, and Authorization (Store Certification Pending)
 

@@ -56,7 +56,7 @@ export function isOfficialGllmApiProvider(provider: ApiProvider): boolean {
   try {
     const url = new URL(provider.apiBaseUrl)
     const pathname = url.pathname.replace(/\/+$/, '') || '/'
-    return url.origin === 'https://llm.gprophet.com' && pathname === '/v1'
+    return url.origin === 'https://llm.gprophet.com' && pathname === '/v1' && !url.username && !url.password && !url.search && !url.hash
   } catch {
     return false
   }

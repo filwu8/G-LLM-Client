@@ -6,6 +6,7 @@
 
 import { normalizeEnvNames } from './workspaceAgentPolicy'
 import { app } from 'electron'
+import { openProviderKey, PROVIDER_SECRET_PREFIX, sealProviderKey } from './providerCredentials'
 import Store from 'electron-store'
 import type { TOptions } from 'i18next'
 import type JSZip from 'jszip'
@@ -14,7 +15,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { copyPersistentData, isTransientDataEntry } from './dataDirectoryCopy'
 import { relocateConversation, relocateDataPath, relocateMarkdownLinks, relocateStoredData } from './dataRelocation'
 import { createManagedWorkspace, createProjectWorkspace } from './managedWorkspace'
-import { workspaceVault } from './workspaceSecrets'
+import { systemSecretCrypto, workspaceVault } from './workspaceSecrets'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import { DEFAULT_ASSISTANTS } from '../shared/assistants'
@@ -1397,23 +1398,45 @@ function getMigratedDefaultProvider(): ApiProvider {
 }
 
 export function getProviders(): ApiProvider[] {
-  const providers = store.get('providers', [])
-  const normalized = providers.map(sanitizeProvider)
-  const hasDefaultProvider = normalized.some((provider) => provider.id === DEFAULT_PROVIDER_ID)
-
-  if (normalized.length === 0) {
-    return [getMigratedDefaultProvider()]
+  let providers = store.get('providers', [])
+  if (!providers.some(provider => provider.id === DEFAULT_PROVIDER_ID)) providers = [getMigratedDefaultProvider(), ...providers]
+  // Upgrade legacy plaintext only when the OS keyring is available; never write
+  // decrypted credentials back during metadata saves, directory moves or export.
+  const crypto = systemSecretCrypto()
+  let migrated = false
+  const unavailable = new Set<string>()
+  const secured = providers.map(provider => {
+    if (!provider.apiKey || provider.apiKey.startsWith(PROVIDER_SECRET_PREFIX) || !crypto.available()) return provider
+    try {
+      const apiKey = sealProviderKey(provider.apiKey, crypto)
+      migrated = true
+      return { ...provider, apiKey }
+    } catch { unavailable.add(provider.id); return provider }
+  })
+  if (migrated) {
+    const legacy = store.get('settings') as LegacySettings
+    const { apiKey: _removed, ...settings } = legacy
+    const upgradedDefault = secured.some(provider => provider.id === DEFAULT_PROVIDER_ID && provider.apiKey.startsWith(PROVIDER_SECRET_PREFIX))
+    try { store.store = { ...store.store, providers: secured, settings: upgradedDefault ? settings : legacy } }
+    catch { for (const provider of providers) if (provider.apiKey && !provider.apiKey.startsWith(PROVIDER_SECRET_PREFIX)) unavailable.add(provider.id) }
   }
-
-  return hasDefaultProvider ? normalized : [getMigratedDefaultProvider(), ...normalized]
+  return secured.map(provider => {
+    const opened = unavailable.has(provider.id) ? { key: '', unavailable: true } : openProviderKey(provider.apiKey, crypto)
+    return { ...sanitizeProvider(provider), apiKey: opened.key, credentialUnavailable: opened.unavailable }
+  })
 }
 
 export function saveProvider(provider: ApiProvider): ApiProvider {
   const normalized = sanitizeProvider(provider)
-  const providers = getProviders()
-  const next = [normalized, ...providers.filter((item) => item.id !== normalized.id)]
+  getProviders() // Migrate legacy records before combining with the new one.
+  const providers = store.get('providers', [])
+  const previous = providers.find(item => item.id === normalized.id)
+  const apiKey = normalized.credentialUnavailable && !normalized.apiKey && previous?.apiKey
+    ? previous.apiKey : sealProviderKey(normalized.apiKey, systemSecretCrypto())
+  const stored = { ...normalized, apiKey, credentialUnavailable: undefined }
+  const next = [stored, ...providers.filter((item) => item.id !== normalized.id)]
   store.set('providers', next.slice(0, 40))
-  return normalized
+  return getProviders().find(item => item.id === normalized.id)!
 }
 
 export function deleteProvider(id: string): void {
@@ -1421,7 +1444,7 @@ export function deleteProvider(id: string): void {
 
   store.set(
     'providers',
-    getProviders().filter((provider) => provider.id !== id)
+    store.get('providers', []).filter((provider) => provider.id !== id)
   )
 
   const settings = getSettings()

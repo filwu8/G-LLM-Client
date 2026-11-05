@@ -76,6 +76,7 @@ import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
 import { projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { droppedFileInputs } from './droppedFiles'
@@ -401,6 +402,7 @@ export default function QuickChat() {
     [activeModelId, provider]
   )
   const needsApiKey = Boolean(settings && isProviderApiKeyMissing(selectedProvider))
+  const missingProviderMessage = isManagedGllmProvider(selectedProvider) ? t('account.signInFirst') : t('quickChat.configureProviderApiKey', { provider: selectedProvider.name })
   const messageSendShortcut = settings?.messageSendShortcut ?? 'enter'
   const messageSendShortcutLabel = getMessageSendShortcutLabel(messageSendShortcut)
   const messages = conversation?.messages ?? []
@@ -928,7 +930,7 @@ export default function QuickChat() {
       return
     }
     if (needsApiKey) {
-      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      setStatus(missingProviderMessage)
       return
     }
     const normalizePath = (path: string) => {
@@ -1063,7 +1065,7 @@ export default function QuickChat() {
     const current = conversationRef.current
     if (!settings || isStreamingRef.current || !current?.goalTask || !current.workspace) return
     if ((assistant.status ?? 'active') !== 'active' || needsApiKey) {
-      setStatus(needsApiKey ? t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }) : t('assistantSettings.inactiveNotice'))
+      setStatus(needsApiKey ? missingProviderMessage : t('assistantSettings.inactiveNotice'))
       return
     }
     const now = Date.now()
@@ -1356,7 +1358,7 @@ export default function QuickChat() {
     if (!settings || isStreamingRef.current || !conversation) return
 
     if (needsApiKey) {
-      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      setStatus(missingProviderMessage)
       void openMainWindow()
       return
     }
@@ -1420,7 +1422,7 @@ export default function QuickChat() {
   function resendEditedQuickMessage(messageId: string) {
     if (!settings || isStreamingRef.current || !conversation) return
     if (needsApiKey) {
-      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      setStatus(missingProviderMessage)
       void openMainWindow()
       return
     }
@@ -1494,7 +1496,7 @@ export default function QuickChat() {
     }
 
     if (needsApiKey) {
-      setStatus(t('quickChat.configureProviderApiKey', { provider: selectedProvider.name }))
+      setStatus(missingProviderMessage)
       void openMainWindow()
       return
     }
@@ -1839,6 +1841,7 @@ export default function QuickChat() {
       </header>
 
       <main className={`quick-content ${isWindows ? 'windows-scrollbar' : ''}`} ref={messagesRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
+        <GllmAccountPanel provider={selectedProvider} compact onManualConfiguration={() => void openMainWindow()} />
         {messages.length === 0 ? (
           <section className="quick-empty">
             <p><span>{t('quickChat.greeting')}</span></p>
@@ -2250,7 +2253,7 @@ export default function QuickChat() {
             value={draft}
             disabled={!settings}
             rows={1}
-            placeholder={needsApiKey ? t('app.configureApiKey') : t('app.inputPlaceholder')}
+            placeholder={needsApiKey ? (isManagedGllmProvider(selectedProvider) ? t('account.signInFirst') : t('app.configureApiKey')) : t('app.inputPlaceholder')}
             onChange={(event) => {
               setDraft(event.target.value)
               persistComposerDraft(quickDraftStorageKey, event.target.value)

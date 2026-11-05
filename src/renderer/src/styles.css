@@ -10293,3 +10293,12 @@ img.space-logo {
 .workspace-files-parent { margin: 0 12px 6px; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
 .tool-center-modal.tool-center-embedded { width: 100%; max-width: none; max-height: none; box-shadow: none; border: 0; background: transparent; }
 @media(max-width: 700px) { .workspace-files-heading > button > span, .workspace-files-title span { display: none; } .workspace-files-panel { margin: 6px 8px 0; } }
+.gllm-account-panel { margin: 8px 0 14px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.gllm-account-panel.compact { padding: 12px 14px; }
+.gllm-account-heading, .gllm-account-progress, .gllm-account-actions, .gllm-account-actions button { display: flex; align-items: center; gap: 8px; }
+.gllm-account-heading { color: hsl(var(--primary)); }
+.gllm-account-panel p { margin: 9px 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.gllm-account-panel small { display: block; color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.6; }
+.gllm-account-actions { margin: 10px 0; flex-wrap: wrap; }
+.gllm-account-actions button { font-size: 12px; }
+.gllm-account-balance { margin-top: 8px; font-size: 12px; }

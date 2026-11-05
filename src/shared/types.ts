@@ -13,8 +13,12 @@ export type FloatingMascotSkin = 'blue' | 'gold'
 export type FloatingMascotAppearance = 'auto' | FloatingMascotSkin
 
 export interface DeepLinkHandoffStatusEvent {
-  status: 'success' | 'error'
+  status: 'idle' | 'waiting' | 'exchanging' | 'models' | 'success' | 'error' | 'cancelled' | 'expired'
+  reason?: 'browser' | 'exchange' | 'storage' | 'models'
 }
+
+export type GllmAccountState = { status: 'ready'; remainingQuota: number; quotaPerUnit: number; checkedAt: number }
+  | { status: 'disconnected' | 'credential-unavailable' | 'unauthorized' | 'unavailable' }
 
 export interface ChatMessage {
   id: string
@@ -507,6 +511,7 @@ export interface ApiProvider {
   imageGenerationsPath?: string
   modelsPath?: string
   apiKey: string
+  credentialUnavailable?: boolean
   defaultModel: string
   models: ProviderModel[]
   modelsUpdatedAt?: number

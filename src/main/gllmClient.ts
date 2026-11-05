@@ -1941,13 +1941,15 @@ export async function searchConversations(
   return { mode: 'local', results: localResults, searchedCount }
 }
 
-export async function fetchProviderModels(provider: ApiProvider, language: AppLanguage = 'system'): Promise<ProviderModel[]> {
+export async function fetchProviderModels(provider: ApiProvider, language: AppLanguage = 'system', signal?: AbortSignal): Promise<ProviderModel[]> {
   assertProviderReady(provider, language)
 
   const endpoint = buildProviderUrl(provider, provider.modelsPath ?? '/models')
   const response = await fetch(endpoint, {
     method: 'GET',
-    headers: getProviderHeaders(provider)
+    headers: getProviderHeaders(provider),
+    redirect: 'error',
+    signal: requestSignal(signal, 15_000)
   })
 
   if (!response.ok) {

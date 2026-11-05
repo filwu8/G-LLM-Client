@@ -26,3 +26,10 @@ test('keeps request metadata and bounds log entry size', () => {
   assert.equal(redacted.includes('\n'), false)
   assert.equal(redacted.length, 6_000)
 })
+
+test('authorization callback codes never appear in diagnostic logs', () => {
+  const code = 'a'.repeat(64)
+  const redacted = redactMainLogText(`gllm://providers/api-keys?v=1&source=g-llm&handoff=${code}`)
+  assert.equal(redacted.includes(code), false)
+  assert.match(redacted, /handoff=\[REDACTED\]/)
+})

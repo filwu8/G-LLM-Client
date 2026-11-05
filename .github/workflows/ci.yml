@@ -69,6 +69,9 @@ jobs:
       - name: Verify generated notices are committed
         run: git diff --exit-code -- THIRD_PARTY_NOTICES.md
 
+      - name: Test account authorization and fail-closed Linux credential storage
+        run: xvfb-run -a pnpm test:gllm-account
+
   native-sandbox:
     name: Native sandbox (${{ matrix.os }})
     strategy:
@@ -112,6 +115,9 @@ jobs:
       - name: Test project files and assistant configuration
         if: runner.os != 'Linux'
         run: pnpm test:workspace-experience
+      - name: Build and test account sign-in with OS credential persistence
+        if: runner.os != 'Linux'
+        run: pnpm build && pnpm test:gllm-account
       - name: Test browser interaction in Electron (Linux display)
         if: runner.os == 'Linux'
         run: xvfb-run -a node scripts/test-agent-browser.mjs
