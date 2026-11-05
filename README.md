@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.28（商店发布准备，真实账号与商店签名包待验收）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.29（Windows 商店发布准备）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Microsoft Store 当前公开版：[V2.0.26](https://apps.microsoft.com/detail/9MVD547V4ZN9)，2026-10-21 免费公开发布。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -24,13 +24,13 @@ Microsoft Store 当前公开版：[V2.0.26](https://apps.microsoft.com/detail/9M
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.28 注册 / 登录后自动配置（发布准备中）
+## V2.0.29 注册 / 登录后自动配置（Windows 发布准备中）
 
 - 官方供应商首次使用提供“注册 / 登录，开始使用”，在浏览器完成授权后自动保存个人凭据、激活官方服务并选择实际可用的对话模型；支持等待、取消和重试，保留其他供应商的手动配置。
 - 主进程固定请求官方额度接口，按服务端比例显示计费单位，明确区分模型 token；零额度和失效令牌有提示，查询失败可重试且不删除凭据、不阻断聊天。
 - 供应商凭据使用系统安全存储加密；没有可用加密后端时不以明文保存。旧配置在密钥存储可用时迁移，设备迁移或密钥存储锁定时需解锁或重新连接。
 - 额度仅由服务端注册规则发放；登录、重装和重复回调不发放额外额度；未增加充值或购买入口。
-- **2026-11-05 生产检查**：首次检查发现 SPA 假 200 和额度接口 404；复查时连接页已实际显示注册/登录入口，额度接口返回未登录 401。入口与鉴权路由已可达，但真实个人账号的完整授权与额度返回尚未验收，不能认定完整链路上线。新包版本为 `2.0.28.0`，发布前仍需真实账号及新商店签名包验收。详见 [发布准备记录](docs/releases/v2.0.28.md)。
+- 授权兑换或额度查询遇到服务端限流时，客户端显示可以重试的时间，并在等待期间暂停对应请求。Windows 候选包版本为 `2.0.29.0`，实机验收与提交状态见 [Windows 发布记录](docs/releases/v2.0.29.md)。
 
 ## V2.0.27 项目、文件与授权体验（商店认证中）
 

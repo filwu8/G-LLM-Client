@@ -51,3 +51,19 @@ test('zero balance, revoked tokens, redirects, malformed/SPA responses and trans
   assert.equal(provider.apiKey, 'fixture-personal-credential')
   assert.equal((await fetchGllmAccount(provider, async () => response({ success: true, data: { remaining_quota: 1, quota_per_unit: 10 } }))).status, 'ready')
 })
+
+test('429 honors Retry-After and refreshes during the cooldown make no network request', async () => {
+  const start = Date.now()
+  const limited = await fetchGllmAccount(provider, async () => ({
+    ...response({}, 429), headers: new Headers({ 'Retry-After': '90' })
+  }))
+  assert.equal(limited.status, 'rate-limited')
+  if (limited.status !== 'rate-limited') return
+  assert.ok(limited.retryAt >= start + 90_000)
+  let calls = 0
+  const request = async () => { calls++; return response({}, 401) }
+  assert.deepEqual(await fetchGllmAccount(provider, request, undefined, limited.retryAt), limited)
+  assert.equal(calls, 0)
+  assert.equal((await fetchGllmAccount(provider, request, undefined, start - 1)).status, 'unauthorized')
+  assert.equal(calls, 1)
+})

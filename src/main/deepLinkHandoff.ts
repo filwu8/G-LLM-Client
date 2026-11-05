@@ -4,6 +4,8 @@
  * Change Date: 2030-08-01
  */
 
+import { gllmRetryAt } from './gllmRateLimit.ts'
+
 export const GLLM_HANDOFF_EXCHANGE_URL = 'https://llm.gprophet.com/api/client/handoff/exchange'
 
 const HANDOFF_CODE_PATTERN = /^[A-Za-z0-9]{64}$/
@@ -12,7 +14,18 @@ const MAX_RESPONSE_LENGTH = 4096
 
 interface HandoffFetchResponse {
   ok: boolean
+  status?: number
+  headers?: Pick<Headers, 'get'>
   text: () => Promise<string>
+}
+
+export class GllmExchangeRateLimitError extends Error {
+  readonly retryAt: number
+
+  constructor(retryAt: number) {
+    super('G-LLM handoff exchange is rate limited')
+    this.retryAt = retryAt
+  }
 }
 
 export type HandoffFetch = (url: string, init: RequestInit) => Promise<HandoffFetchResponse>
@@ -60,6 +73,7 @@ export async function exchangeGllmHandoff(
     referrerPolicy: 'no-referrer',
     signal: options.signal
   })
+  if (response.status === 429) throw new GllmExchangeRateLimitError(gllmRetryAt(response.headers?.get('Retry-After')))
   const text = await response.text()
   if (!response.ok || text.length > MAX_RESPONSE_LENGTH) throw new Error('G-LLM handoff exchange failed')
 

@@ -8,6 +8,7 @@ import test from 'node:test'
 import { GllmConnection } from './gllmConnection.ts'
 import { DEFAULT_PROVIDER } from '../shared/providers.ts'
 import { GLLM_CONNECT_URL } from './gllmAccount.ts'
+import { exchangeGllmHandoff } from './deepLinkHandoff.ts'
 import type { ApiProvider, DeepLinkHandoffStatusEvent } from '../shared/types'
 
 function fixture(waitMs = 180_000) {
@@ -50,6 +51,33 @@ test('model refresh retry retains the consumed-code credential and does not exch
   f.setMode('success'); await f.connection.retry()
   assert.equal(f.connection.getState().status, 'success')
   assert.equal(f.counts().exchanges, 1)
+})
+
+test('exchange 429 stops repeated browser launches and new callbacks during the server cooldown', async () => {
+  let requests = 0, browserOpens = 0
+  const connection = new GllmConnection({
+    openBrowser: async () => { browserOpens++ },
+    exchange: (code, signal) => exchangeGllmHandoff(code, {
+      signal,
+      request: async () => {
+        requests++
+        return new Response(null, { status: 429, headers: { 'Retry-After': '45' } })
+      }
+    }),
+    getProvider: () => undefined,
+    saveProvider: () => assert.fail('a rate-limited exchange cannot save a key'),
+    fetchModels: async () => [], activate: () => {}, notify: () => {}
+  })
+  await connection.begin()
+  await connection.receive('a'.repeat(64))
+  const state = connection.getState()
+  assert.equal(state.reason, 'rateLimit')
+  assert.ok(state.retryAt && state.retryAt > Date.now())
+  await connection.retry()
+  await connection.receive('b'.repeat(64))
+  assert.deepEqual(connection.getState(), state)
+  assert.equal(browserOpens, 1)
+  assert.equal(requests, 1)
 })
 test('cancel rejects late callbacks, and waiting timeout allows explicit retry', async () => {
   const f = fixture(10); await f.connection.begin(); f.connection.cancel(); await f.connection.receive('e'.repeat(64))

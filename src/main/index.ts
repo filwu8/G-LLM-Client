@@ -352,6 +352,7 @@ const gllmConnection = new GllmConnection({
   notify: state => broadcastDeepLinkHandoffStatus(state)
 })
 let accountPending: { fingerprint: string; promise: Promise<import('../shared/types').GllmAccountState> } | undefined
+let accountRetryAt = 0
 const legalDocumentPaths = {
   license: { development: 'LICENSE', packaged: 'LICENSE.txt' },
   'third-party': { development: 'THIRD_PARTY_NOTICES.md', packaged: 'THIRD_PARTY_NOTICES.md' },
@@ -1739,7 +1740,11 @@ app.whenReady().then(() => {
     const provider = getProviders().find(item => item.id === DEFAULT_PROVIDER_ID)
     const fingerprint = createHash('sha256').update(`${provider?.apiBaseUrl ?? ''}\0${provider?.apiKey ?? ''}`).digest('hex')
     if (accountPending?.fingerprint === fingerprint) return accountPending.promise
-    const promise = fetchGllmAccount(provider, (url, init) => net.fetch(url, init), AbortSignal.timeout(10_000))
+    const promise = fetchGllmAccount(provider, (url, init) => net.fetch(url, init), AbortSignal.timeout(10_000), accountRetryAt)
+      .then(state => {
+        if (state.status === 'rate-limited') accountRetryAt = Math.max(accountRetryAt, state.retryAt)
+        return state
+      })
     accountPending = { fingerprint, promise }
     try { return await promise } finally { if (accountPending?.promise === promise) accountPending = undefined }
   })

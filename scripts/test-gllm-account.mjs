@@ -43,7 +43,7 @@ const root = ${JSON.stringify(root)}, fixture = ${JSON.stringify(fixture)}, phas
 const config = ${JSON.stringify(configPath)};
 const ledgerPath = join(fixture, 'server-ledger.json');
 const token = code => 'sk-' + createHash('sha256').update('fixture-only-' + code).digest('hex').slice(0,48);
-let exchangeCount = 0, accountMode = 'ready', catalogMode = 'ready', exchangeMode = 'ready', opened = [];
+let exchangeCount = 0, accountCount = 0, accountMode = 'ready', catalogMode = 'ready', exchangeMode = 'ready', opened = [];
 const response = (body, status=200) => new Response(JSON.stringify(body), {status, headers:{'Content-Type':'application/json'}});
 app.setName('g-llm-client'); app.setAppPath(${JSON.stringify(appRoot)}); app.setVersion(JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version);
 app.setPath('userData', join(fixture,'profile')); app.setPath('appData', join(fixture,'app-data'));
@@ -52,6 +52,7 @@ shell.openExternal = async url => { opened.push(url); };
 net.fetch = async (url, init={}) => {
   if(url === 'https://llm.gprophet.com/api/client/handoff/exchange') {
     exchangeCount++; assert.equal(init.redirect,'error'); const {code}=JSON.parse(init.body);
+    if(exchangeMode==='limited') return new Response(null,{status:429,headers:{'Retry-After':'45'}});
     if(exchangeMode==='offline') throw new Error('fixture-only exchange failure');
     const ledger=existsSync(ledgerPath)?JSON.parse(readFileSync(ledgerPath,'utf8')):{};
     if(ledger[code]) return response({success:false},410);
@@ -59,10 +60,12 @@ net.fetch = async (url, init={}) => {
     return response({success:true,data:{api_key:token(code)}});
   }
   if(url === 'https://llm.gprophet.com/api/client/account') {
+    accountCount++;
     assert.equal(init.redirect,'error'); assert.equal(init.credentials,'omit');
     assert.ok(new Headers(init.headers).get('Authorization')?.startsWith('Bearer sk-'));
     if(accountMode==='revoked') return response({success:false},401);
     if(accountMode==='offline') throw new Error('fixture-only network failure');
+    if(accountMode==='limited') return new Response(null,{status:429,headers:{'Retry-After':'45'}});
     return response({success:true,data:{remaining_quota:accountMode==='zero'?0:100,quota_per_unit:200}});
   }
   throw new Error('Unexpected external request blocked by fixture');
@@ -148,6 +151,16 @@ if(phase !== 'callback') {
       assert.equal((await connection()).reason,'exchange');
       assert.ok((await state()).providers.find(p=>p.id==='provider_gllm').apiKey===token('a'.repeat(64)),'exchange network failure changed an existing account');
       await invoke('cancelGllmConnection');
+      exchangeMode='limited'; await invoke('connectGllm'); await secondary('x'.repeat(64));
+      await wait(async()=> (await connection()).reason==='rateLimit','exchange rate limit was not reported');
+      const previousExchanges=exchangeCount, previousOpens=opened.length;
+      await invoke('retryGllmConnection'); await secondary('y'.repeat(64));
+      assert.equal(exchangeCount,previousExchanges); assert.equal(opened.length,previousOpens);
+      accountMode='limited'; assert.equal((await invoke('getGllmAccount')).status,'rate-limited');
+      const previousAccounts=accountCount;
+      await refreshPanel('The service is limiting allowance requests');
+      assert.equal((await invoke('getGllmAccount')).status,'rate-limited');
+      assert.equal(accountCount,previousAccounts,'refresh bypassed the account cooldown');
       console.log('Built app passed: first-use UI, fixed browser URL, cancel/late callback, actual second-instance callback, secure persistence, model retry, duplicate callback, personal quota, zero/revoked/network states.');
     } else if(phase==='restart') {
       assert.ok((await state()).providers.find(p=>p.id==='provider_gllm').apiKey===token('a'.repeat(64)),'OS credential did not survive process restart');

@@ -5,23 +5,31 @@
  */
 import { DEFAULT_PROVIDER_ID, isOfficialGllmApiProvider } from '../shared/providers.ts'
 import type { ApiProvider, GllmAccountState } from '../shared/types'
+import { gllmRetryAt } from './gllmRateLimit.ts'
 
 export const GLLM_CONNECT_URL = 'https://llm.gprophet.com/client/connect'
 export const GLLM_ACCOUNT_URL = 'https://llm.gprophet.com/api/client/account'
-export type AccountFetch = (url: string, init: RequestInit) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
+export type AccountFetch = (url: string, init: RequestInit) => Promise<{
+  ok: boolean
+  status: number
+  headers?: Pick<Headers, 'get'>
+  text(): Promise<string>
+}>
 
 // Deliberately no endpoint/provider/key argument exposed through IPC. Callers
 // supply the persisted official record from the main process, never renderer data.
-export async function fetchGllmAccount(provider: ApiProvider | undefined, request: AccountFetch, signal?: AbortSignal): Promise<GllmAccountState> {
+export async function fetchGllmAccount(provider: ApiProvider | undefined, request: AccountFetch, signal?: AbortSignal, retryAt = 0): Promise<GllmAccountState> {
   if (!provider || provider.id !== DEFAULT_PROVIDER_ID || !isOfficialGllmApiProvider(provider)) return { status: 'disconnected' }
   if (provider.credentialUnavailable) return { status: 'credential-unavailable' }
   if (!provider.apiKey.trim()) return { status: 'disconnected' }
+  if (Date.now() < retryAt) return { status: 'rate-limited', retryAt }
   try {
     const response = await request(GLLM_ACCOUNT_URL, {
       method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${provider.apiKey}`, 'Cache-Control': 'no-store' },
       cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal
     })
     if (response.status === 401 || response.status === 403) return { status: 'unauthorized' }
+    if (response.status === 429) return { status: 'rate-limited', retryAt: gllmRetryAt(response.headers?.get('Retry-After')) }
     if (!response.ok) return { status: 'unavailable' }
     const text = await response.text()
     if (text.length > 8192) return { status: 'unavailable' }

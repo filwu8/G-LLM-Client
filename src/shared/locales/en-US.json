@@ -1438,6 +1438,7 @@
     "exhausted": "Your account allowance is exhausted, so this account cannot currently use model services. Refresh when allowance is available again, or configure another model provider manually.",
     "unauthorized": "The allowance request was not authorized. The token may have been revoked or expired. Reconnect your account; saved credentials are not cleared automatically.",
     "unavailable": "Allowance is temporarily unavailable. Try refreshing later. Existing configuration and normal chat are unaffected.",
+    "rateLimited": "The service is limiting allowance requests. Try refreshing after {{time}}.",
     "refresh": "Refresh allowance",
     "allowanceNote": "New-user allowance follows server registration rules. Signing in, reconnecting or reinstalling does not grant extra allowance. Model usage consumes your personal allowance.",
     "phase": {
@@ -1448,6 +1449,7 @@
     "error": {
       "browser": "Could not open the browser. Retry or configure a provider manually.",
       "exchange": "Authorization did not complete: the code may have expired, been used, or a network error occurred. Retry and authorize again on the website.",
+      "rateLimit": "The service is limiting authorization requests. Retry after {{time}} and authorize again in the browser.",
       "storage": "System encryption is unavailable. The new credential was not saved as plaintext. Unlock your OS account and retry.",
       "models": "Your credential is saved securely, but available chat models could not be loaded. Retry without copying a key or registering again."
     }

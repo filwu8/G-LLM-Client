@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { DEFAULT_PROVIDER, isOfficialGllmApiProvider } from '../shared/providers.ts'
 import type { ApiProvider, DeepLinkHandoffStatusEvent, ProviderModel } from '../shared/types'
 import { GLLM_CONNECT_URL } from './gllmAccount.ts'
+import { GllmExchangeRateLimitError } from './deepLinkHandoff.ts'
 
 interface ConnectionDependencies {
   openBrowser(url: string): Promise<void>
@@ -24,6 +25,7 @@ export class GllmConnection {
   private controller?: AbortController
   private expiry?: ReturnType<typeof setTimeout>
   private accepting = true // A cold-start protocol callback must work without an open renderer.
+  private exchangeRetryAt = 0
   private readonly completed = new Set<string>()
   private readonly pending = new Set<string>()
   private readonly deps: ConnectionDependencies
@@ -43,6 +45,10 @@ export class GllmConnection {
     return this.getState()
   }
   async begin(): Promise<DeepLinkHandoffStatusEvent> {
+    if (Date.now() < this.exchangeRetryAt) {
+      this.publish({ status: 'error', reason: 'rateLimit', retryAt: this.exchangeRetryAt })
+      return this.getState()
+    }
     const epoch = this.stop()
     this.accepting = true
     this.publish({ status: 'waiting' })
@@ -81,6 +87,10 @@ export class GllmConnection {
   }
   async receive(code: string): Promise<void> {
     if (!this.accepting) return
+    if (Date.now() < this.exchangeRetryAt) {
+      this.publish({ status: 'error', reason: 'rateLimit', retryAt: this.exchangeRetryAt })
+      return
+    }
     const digest = createHash('sha256').update(code).digest('hex')
     if (this.pending.has(digest) || this.completed.has(digest)) return
     this.pending.add(digest)
@@ -97,8 +107,13 @@ export class GllmConnection {
       this.completed.add(digest)
       if (this.completed.size > 128) this.completed.delete(this.completed.values().next().value!)
       await this.loadModels(saved, epoch, controller.signal)
-    } catch {
-      if (epoch === this.epoch) this.publish({ status: 'error', reason })
+    } catch (error) {
+      if (error instanceof GllmExchangeRateLimitError) {
+        this.exchangeRetryAt = Math.max(this.exchangeRetryAt, error.retryAt)
+        if (epoch === this.epoch) this.publish({ status: 'error', reason: 'rateLimit', retryAt: this.exchangeRetryAt })
+      } else if (epoch === this.epoch) {
+        this.publish({ status: 'error', reason })
+      }
     } finally {
       clearTimeout(timer)
       this.pending.delete(digest)

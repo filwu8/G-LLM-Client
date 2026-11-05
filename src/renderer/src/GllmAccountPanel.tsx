@@ -47,19 +47,24 @@ export function GllmAccountPanel({ provider, onManualConfiguration, compact = fa
   }
   const balance = account.status === 'ready'
     ? new Intl.NumberFormat(i18n.language, { maximumSignificantDigits: 12 }).format(Math.max(0, account.remainingQuota / account.quotaPerUnit)) : ''
+  const retryTime = (retryAt: number) => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'medium' }).format(retryAt)
   return <section className={`gllm-account-panel ${compact || connected ? 'compact' : ''}`} aria-label={t('account.title')}>
     <div className="gllm-account-heading"><LogIn size={18} /><strong>{t(connected ? 'account.connected' : 'account.title')}</strong></div>
     {!connected && <p>{t('account.introduction')}</p>}
     {provider.credentialUnavailable && <p role="alert">{t('account.credentialUnavailable')}</p>}
     {busy && <p role="status" className="gllm-account-progress"><LoaderCircle className="spin" size={15} />{t(`account.phase.${connection.status}`)}</p>}
-    {connection.status === 'error' && <p role="alert">{t(`account.error.${connection.reason ?? 'exchange'}`)}</p>}
+    {connection.status === 'error' && <p role="alert">{connection.reason === 'rateLimit' && connection.retryAt
+      ? t('account.error.rateLimit', { time: retryTime(connection.retryAt) })
+      : t(`account.error.${connection.reason ?? 'exchange'}`)}</p>}
     {connection.status === 'expired' && <p role="status">{t('account.expired')}</p>}
     {connection.status === 'cancelled' && <p role="status">{t('account.cancelled')}</p>}
     {connected && <div className="gllm-account-balance" aria-live="polite">
       {loading ? <span>{t('account.loading')}</span> : account.status === 'ready'
         ? <><strong>{t('account.balance', { amount: balance })}</strong><small>{t('account.billingNote')}</small>
           {account.remainingQuota <= 0 && <p role="status">{t('account.exhausted')}</p>}</>
-        : <span>{t(account.status === 'unauthorized' ? 'account.unauthorized' : 'account.unavailable')}</span>}
+        : account.status === 'rate-limited'
+          ? <span>{t('account.rateLimited', { time: retryTime(account.retryAt) })}</span>
+          : <span>{t(account.status === 'unauthorized' ? 'account.unauthorized' : 'account.unavailable')}</span>}
     </div>}
     <div className="gllm-account-actions">
       {busy ? <button className="secondary-action" type="button" onClick={() => void window.gllm.cancelGllmConnection().catch(() => {})}>{t('common.cancel')}</button>

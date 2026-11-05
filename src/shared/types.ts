@@ -14,10 +14,12 @@ export type FloatingMascotAppearance = 'auto' | FloatingMascotSkin
 
 export interface DeepLinkHandoffStatusEvent {
   status: 'idle' | 'waiting' | 'exchanging' | 'models' | 'success' | 'error' | 'cancelled' | 'expired'
-  reason?: 'browser' | 'exchange' | 'storage' | 'models'
+  reason?: 'browser' | 'exchange' | 'storage' | 'models' | 'rateLimit'
+  retryAt?: number
 }
 
 export type GllmAccountState = { status: 'ready'; remainingQuota: number; quotaPerUnit: number; checkedAt: number }
+  | { status: 'rate-limited'; retryAt: number }
   | { status: 'disconnected' | 'credential-unavailable' | 'unauthorized' | 'unavailable' }
 
 export interface ChatMessage {
