@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.30 (Windows candidate)](https://github.com/filwu8/G-LLM-Client/tree/main)
+Current code version: [V2.0.30 (Windows Store private flight in certification)](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Current public Microsoft Store version: [V2.0.27](https://apps.microsoft.com/detail/9MVD547V4ZN9), confirmed live on 2026-11-09. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -24,12 +24,12 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.30 Windows Browser Takeover and App Control (Candidate)
+## V2.0.30 Windows Browser Takeover and App Control (Private Flight in Certification)
 
 - Enable browser takeover and Windows app control separately in Computer & Browser → Agent Settings. The assistant can operate a selected existing browser or desktop window, with confirmation before each action. Models with image input can use a window screenshot to locate controls.
-- This version includes the `2.0.29` personal account setup and allowance features. The Windows x64 package version is `2.0.30.0`. See the [Windows candidate record](docs/releases/v2.0.30.md).
+- This version includes the `2.0.29` personal account setup and allowance features. Windows x64 package `2.0.30.0` was submitted for Microsoft Store private flight certification. See the [Windows release record](docs/releases/v2.0.30.md).
 
-## V2.0.29 Automatic Setup After Registration / Sign-In (Windows Private Flight Submission)
+## V2.0.29 Automatic Setup After Registration / Sign-In (Available in Windows Private Flight)
 
 - First use offers “Register / sign in to get started” for the official provider. Browser authorization saves the user's own credential, activates the official service and selects an available chat model. Waiting, cancellation and retries are supported; other providers retain manual configuration.
 - Only the main process queries the fixed official account endpoint. Allowance is displayed in server-defined billing units rather than model tokens. Zero allowance and revoked tokens have clear messages; query failures are retryable and do not erase credentials or block chat.

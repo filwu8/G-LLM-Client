@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.30（Windows 候选版）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.30（Windows 商店私有测试认证中）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
 Microsoft Store 当前公开版：[V2.0.27](https://apps.microsoft.com/detail/9MVD547V4ZN9)，2026-11-09 核实已上架。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -24,12 +24,12 @@ Microsoft Store 当前公开版：[V2.0.27](https://apps.microsoft.com/detail/9M
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.30 Windows 浏览器接管与应用操控（候选版）
+## V2.0.30 Windows 浏览器接管与应用操控（私有测试认证中）
 
 - 在「电脑与浏览器 → Agent 设置」分别开启浏览器接管和 Windows 应用操控。助手可以操作选定的现有浏览器窗口或桌面窗口，执行前逐次确认。支持图像输入的模型可根据窗口截图定位控件。
-- 新功能继承 `2.0.29` 的个人账号连接与额度查询。Windows x64 包版本为 `2.0.30.0`，见 [Windows 候选版记录](docs/releases/v2.0.30.md)。
+- 新功能继承 `2.0.29` 的个人账号连接与额度查询。Windows x64 包 `2.0.30.0` 已提交 Microsoft Store 私有测试认证，见 [Windows 发布记录](docs/releases/v2.0.30.md)。
 
-## V2.0.29 注册 / 登录后自动配置（Windows 私有测试提交）
+## V2.0.29 注册 / 登录后自动配置（Windows 私有测试已上架）
 
 - 官方供应商首次使用提供“注册 / 登录，开始使用”，在浏览器完成授权后自动保存个人凭据、激活官方服务并选择实际可用的对话模型；支持等待、取消和重试，保留其他供应商的手动配置。
 - 主进程固定请求官方额度接口，按服务端比例显示计费单位，明确区分模型 token；零额度和失效令牌有提示，查询失败可重试且不删除凭据、不阻断聊天。
