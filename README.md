@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.29（Windows 商店发布准备）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.29（Windows 商店私有测试认证中）](https://github.com/filwu8/G-LLM-Client/tree/main)
 
-Microsoft Store 当前公开版：[V2.0.26](https://apps.microsoft.com/detail/9MVD547V4ZN9)，2026-10-21 免费公开发布。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
+Microsoft Store 当前公开版：[V2.0.27](https://apps.microsoft.com/detail/9MVD547V4ZN9)，2026-11-09 核实已上架。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -24,7 +24,7 @@ Microsoft Store 当前公开版：[V2.0.26](https://apps.microsoft.com/detail/9M
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.29 注册 / 登录后自动配置（Windows 发布准备中）
+## V2.0.29 注册 / 登录后自动配置（Windows 私有测试认证中）
 
 - 官方供应商首次使用提供“注册 / 登录，开始使用”，在浏览器完成授权后自动保存个人凭据、激活官方服务并选择实际可用的对话模型；支持等待、取消和重试，保留其他供应商的手动配置。
 - 主进程固定请求官方额度接口，按服务端比例显示计费单位，明确区分模型 token；零额度和失效令牌有提示，查询失败可重试且不删除凭据、不阻断聊天。
@@ -32,14 +32,14 @@ Microsoft Store 当前公开版：[V2.0.26](https://apps.microsoft.com/detail/9M
 - 额度仅由服务端注册规则发放；登录、重装和重复回调不发放额外额度；未增加充值或购买入口。
 - 授权兑换或额度查询遇到服务端限流时，客户端显示可以重试的时间，并在等待期间暂停对应请求。Windows 候选包版本为 `2.0.29.0`，实机验收与提交状态见 [Windows 发布记录](docs/releases/v2.0.29.md)。
 
-## V2.0.27 项目、文件与授权体验（商店认证中）
+## V2.0.27 项目、文件与授权体验（已公开）
 
 - 项目直接绑定文件夹；未选择文件夹时自动在数据目录建立工作空间。文件可拖入或上传到工作空间，原文件保留，并可在会话文件面板中查看和处理。
 - 数据目录迁移先检查所有运行任务，再校验复制文件并更新工作空间、附件和产物路径；修复 macOS Chromium 单实例链接导致的迁移失败。
 - 助手获知当前操作系统，电脑与浏览器操作分别授权、逐次确认；可通过对话预览并批准支持的设置和技能修改。
 - 扩展与技能集中到设置，修复工作空间栏重叠和开发时构建导致任务模块丢失的问题。
 - AI 浏览器使用应用图标，会话提供“查看 AI 浏览器”入口以唤起已有窗口。当前每个会话一个页面，暂不支持多标签页；完整 MCP/插件执行仍未接通。
-- Windows、macOS、Linux 自动检查均通过；2026-10-23 已提交 Microsoft Store 认证，认证通过后自动免费公开发布。[本版说明与验证记录](docs/releases/v2.0.27.md)。本版尚未在商店上线。
+- Windows、macOS、Linux 自动检查均通过。Microsoft Store 已公开上架 `2.0.27.0`，并通过 Windows 安装和协议唤起验证。[本版说明与验证记录](docs/releases/v2.0.27.md)。
 
 ## V2.0.26 商店更新入口修复（已公开）
 
