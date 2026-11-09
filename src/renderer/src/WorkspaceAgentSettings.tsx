@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Plus, Trash2 } from 'lucide-react'
 import type { ConversationWorkspace } from '@shared/types'
-export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess'>
+export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess' | 'computerWindowAccess' | 'browserWindowAccess'>
 interface VariableRow { name: string; description: string; configured: boolean; value: string; enabled: boolean }
 export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { workspace?: ConversationWorkspace; onSave: (workspace: ConversationWorkspace) => Promise<void>; onClose: () => void }) {
   const { t } = useTranslation()
@@ -28,6 +28,8 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   const [nativeExecution, setNativeExecution] = useState(workspace.nativeExecution === true)
   const [computerAccess, setComputerAccess] = useState(workspace.computerAccess === true)
   const [browserAccess, setBrowserAccess] = useState(workspace.browserAccess === true)
+  const [computerWindowAccess, setComputerWindowAccess] = useState(workspace.computerWindowAccess === true)
+  const [browserWindowAccess, setBrowserWindowAccess] = useState(workspace.browserWindowAccess === true)
   const [accessibilityGranted, setAccessibilityGranted] = useState<boolean | null>(null)
   useEffect(() => {
     if (window.gllm.platform !== 'darwin') return
@@ -77,7 +79,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       const updates = rows.filter(row => row.value !== '').map(row => ({ name: row.name, description: row.description, value: row.value }))
       if (updates.length || removed.length) await window.gllm.saveWorkspaceVariables(workspace.rootPath, [...updates, ...[...new Set(removed)].filter(name => /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && !rows.some(row => row.name === name)).map(name => ({ name, description: '', remove: true }))])
       setRows(current => current.map(row => ({ ...row, value: '' })))
-      await onSave({ nativeExecution, computerAccess, browserAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork })
+      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork })
       onClose()
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setSaving(false) }
@@ -86,6 +88,13 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
     <section className="workspace-approval-dialog workspace-agent-settings" role="dialog" aria-modal="true" aria-labelledby="workspace-agent-settings-title">
       <header><div><strong id="workspace-agent-settings-title">{t('workspace.agentSettings')}</strong><small>{workspace.rootPath}</small></div><button className="icon-button" aria-label={t('common.close')} onClick={onClose} disabled={saving}><X size={18} /></button></header>
       <p><strong>{t('workspace.desktopAccess')}</strong> · {window.gllm.platform === 'darwin' ? 'macOS' : window.gllm.platform === 'win32' ? 'Windows' : 'Linux'}</p>
+      {window.gllm.platform === 'win32' && <>
+        <label><input type="checkbox" checked={browserWindowAccess} onChange={event => setBrowserWindowAccess(event.target.checked)} />{t('workspace.browserWindowAccess')}</label>
+        <p>{t('workspace.browserWindowAccessDescription')}</p>
+        <label><input type="checkbox" checked={computerWindowAccess} onChange={event => setComputerWindowAccess(event.target.checked)} />{t('workspace.computerWindowAccess')}</label>
+        <p>{t('workspace.computerWindowAccessDescription')}</p>
+        <p>{t('workspace.windowDataNotice')}</p>
+      </>}
       <label><input type="checkbox" checked={computerAccess} onChange={event => setComputerAccess(event.target.checked)} />{t('workspace.computerAccess')}</label>
       <p>{t('workspace.computerAccessDescription')}</p>
       {computerAccess && window.gllm.platform === 'darwin' && <div>

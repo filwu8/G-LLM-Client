@@ -37,6 +37,7 @@ import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
 import { copyMermaidSvgAsPng } from './mermaidPng'
 import { closeAgentBrowser, isAgentBrowserOpen, setAgentBrowserStateListener, showAgentBrowser } from './agentBrowser'
+import { isWindowControlTool } from './windowControlPolicy'
 import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
 
 import type {
@@ -2247,6 +2248,12 @@ app.whenReady().then(() => {
             pendingWorkspaceApprovals.set(id, { senderId: event.sender.id, resolve: finish })
             approvalSignal.addEventListener('abort', handleAbort, { once: true })
             event.sender.send('workspace-agent:approval-requested', prompt)
+            if (isWindowControlTool(approval.tool)) {
+              const owner = BrowserWindow.fromWebContents(event.sender)
+              if (owner?.isMinimized()) owner.restore()
+              owner?.show()
+              owner?.focus()
+            }
           })
         },
         active.controller.signal,

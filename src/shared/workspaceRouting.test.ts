@@ -10,6 +10,8 @@ test('automatic workspace allocation preserves regular Q&A while file tasks use 
   for (const content of ['你好', '5%的年收益，20年后的收益多少？', '帮我写一句生日祝福', 'Generate an image of a cat', '如何创建 PDF 文件？', '你有哪些生成文件的能力', 'Explain how to create a report']) assert.equal(usesWorkspaceAgent({ workspace, messages: [message(content)] }), false, content)
   for (const content of ['帮我生成一个 Word 报告', '把报告保存为 PDF', '读取工作区的文件', 'Create a spreadsheet', '请修改这个项目代码']) assert.equal(usesWorkspaceAgent({ workspace, messages: [message(content)] }), true, content)
   assert.equal(usesWorkspaceAgent({ workspace: { ...workspace, browserAccess: true }, messages: [message('打开网页')] }), true)
+  assert.equal(usesWorkspaceAgent({ workspace: { ...workspace, browserWindowAccess: true }, messages: [message('在 Edge 里打开已有标签页')] }), true)
+  assert.equal(usesWorkspaceAgent({ workspace: { ...workspace, computerWindowAccess: true }, messages: [message('帮我操作记事本')] }), true)
   assert.equal(usesWorkspaceAgent({ workspace: { ...workspace, kind: 'external' }, messages: [message('你好')] }), true)
   assert.equal(usesWorkspaceAgent({ workspace, messages: [{ ...message('Produced'), workspaceChangedFiles: ['report.pdf'] }, message('继续修改')] }), true)
   assert.equal(usesWorkspaceAgent({ workspace, messages: [{ ...message('请审阅'), attachments: [{ id: 'contract', name: '合同.docx', size: 100, kind: 'file', mimeType: 'application/octet-stream', workspaceRelativePath: 'incoming/合同.docx' }] }] }), true)

@@ -107,6 +107,10 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
 }) {
   const { t } = useTranslation()
   const configuration = prompt.tool === 'update_application_settings' || prompt.tool === 'configure_assistant_skill'
+  const windowControl = prompt.tool === 'computer_window' || prompt.tool === 'browser_window'
+  const desktopDescription = prompt.tool === 'computer_window' ? 'workspace.computerWindowAccessDescription'
+    : prompt.tool === 'browser_window' ? 'workspace.browserWindowAccessDescription'
+    : prompt.capability === 'computer' ? 'workspace.computerAccessDescription' : 'workspace.browserAccessDescription'
   return (
     <div className="assistant-modal-backdrop workspace-approval-backdrop">
       <section aria-modal="true" className="workspace-approval-dialog workspace-operation-approval" role="alertdialog">
@@ -121,10 +125,11 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
           <strong>{prompt.purpose}</strong>
         </div>
         {!prompt.capability && !configuration && <p>{prompt.canWrite ? t('workspace.operationWriteAccess') : t('workspace.operationReadAccess')}</p>}
-        <p className={prompt.nativeExecution || prompt.capability ? 'workspace-native-warning' : ''}>{t(configuration ? 'workspace.configurationApprovalDescription' : prompt.capability ? (prompt.capability === 'computer' ? 'workspace.computerAccessDescription' : 'workspace.browserAccessDescription') : prompt.nativeExecution ? (prompt.executionMode === 'host' ? 'workspace.agentNativeBoundary' : 'workspace.agentSandboxBoundary') : 'workspace.operationBoundary')}</p>
+        <p className={prompt.nativeExecution || prompt.capability ? 'workspace-native-warning' : ''}>{t(configuration ? 'workspace.configurationApprovalDescription' : prompt.capability ? desktopDescription : prompt.nativeExecution ? (prompt.executionMode === 'host' ? 'workspace.agentNativeBoundary' : 'workspace.agentSandboxBoundary') : 'workspace.operationBoundary')}</p>
+        {windowControl && <p>{t('workspace.windowDataNotice')}</p>}
         {prompt.nativeExecution && prompt.executionMode !== 'host' && <p>{t(prompt.sandboxNetwork ? 'workspace.agentNetworkOn' : 'workspace.agentNetworkOff')}</p>}
         {prompt.cwd && <p><strong>{t('workspace.agentWorkingDirectory')}</strong> {prompt.cwd}</p>}
-        {(prompt.nativeExecution || prompt.capability === 'computer') && <p>{t('workspace.agentInjectedNames')}: {prompt.envNames?.join(', ') || t('workspace.agentNoEnv')}</p>}
+        {(prompt.nativeExecution || prompt.tool === 'run_computer_command') && <p>{t('workspace.agentInjectedNames')}: {prompt.envNames?.join(', ') || t('workspace.agentNoEnv')}</p>}
         {prompt.backgroundTimeoutMs && <p>{t('workspace.agentBackgroundLimit', { seconds: prompt.backgroundTimeoutMs / 1000 })}</p>}
         {prompt.preview && <pre className="workspace-code-preview"><code>{prompt.preview}</code></pre>}
         {prompt.code && <pre className="workspace-code-preview"><code>{prompt.code}</code></pre>}
@@ -202,9 +207,11 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAp
               <ChevronDown size={12} />
             </button>
             {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
-            {(workspace.computerAccess || workspace.browserAccess) && <div className="workspace-capabilities">
+            {(workspace.computerAccess || workspace.browserAccess || workspace.computerWindowAccess || workspace.browserWindowAccess) && <div className="workspace-capabilities">
               {workspace.computerAccess && <small>{t('workspace.computerAccess')}</small>}
               {workspace.browserAccess && <small>{t('workspace.browserAccess')}</small>}
+              {workspace.computerWindowAccess && <small>{t('workspace.computerWindowAccess')}</small>}
+              {workspace.browserWindowAccess && <small>{t('workspace.browserWindowAccess')}</small>}
             </div>}
           </div>
         </div>

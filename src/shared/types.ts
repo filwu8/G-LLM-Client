@@ -581,6 +581,8 @@ export interface ConversationWorkspace {
   nativeExecution?: boolean
   computerAccess?: boolean
   browserAccess?: boolean
+  computerWindowAccess?: boolean
+  browserWindowAccess?: boolean
   loadAgentsMd?: boolean
   envNames?: string[]
   grantedAt: number

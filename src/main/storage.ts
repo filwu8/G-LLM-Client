@@ -1211,6 +1211,8 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
           nativeExecution: conversation.workspace.nativeExecution === true,
           computerAccess: conversation.workspace.computerAccess === true,
           browserAccess: conversation.workspace.browserAccess === true,
+          computerWindowAccess: conversation.workspace.computerWindowAccess === true,
+          browserWindowAccess: conversation.workspace.browserWindowAccess === true,
           loadAgentsMd: conversation.workspace.loadAgentsMd !== false,
           envNames: normalizeEnvNames(conversation.workspace.envNames),
           grantedAt: Number.isFinite(conversation.workspace.grantedAt) ? conversation.workspace.grantedAt : now,

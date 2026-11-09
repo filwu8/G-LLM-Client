@@ -1,6 +1,6 @@
 {
   "name": "g-llm-client",
-  "version": "2.0.29",
+  "version": "2.0.30",
   "description": "知言 · G-LLM Client desktop application",
   "main": "./out/main/index.js",
   "author": "GPROPHET LIMITED <licensing@gprophet.com>",
@@ -161,6 +161,10 @@
       {
         "from": "resources/workspace-appcontainer.cs",
         "to": "resources/workspace-appcontainer.cs"
+      },
+      {
+        "from": "resources/windows-window-control.cs",
+        "to": "resources/windows-window-control.cs"
       }
     ],
     "files": [

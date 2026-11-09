@@ -8,12 +8,20 @@ import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
 const require = createRequire(import.meta.url)
+const windows = process.argv.includes('--windows')
+if (windows && process.platform !== 'win32') throw new Error('The window-control integration test requires a Windows desktop session')
 const temporary = await mkdtemp(join(tmpdir(), 'gllm-browser-test-'))
 try {
   await writeFile(join(temporary, 'package.json'), '{"type":"commonjs"}')
-  for (const name of ['appIcon', 'agentBrowser', 'agentBrowserScript', 'desktopToolPolicy', 'agentBrowser.integration']) {
-    const source = await readFile(resolve('src/main', `${name}.ts`), 'utf8')
-    const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } })
+  const sources = windows
+    ? ['main/windowControl', 'main/windowControl.integration', 'main/workspaceProcess', 'shared/serialTaskQueue']
+    : ['main/appIcon', 'main/agentBrowser', 'main/agentBrowserScript', 'main/agentBrowser.integration']
+  sources.push('main/desktopToolPolicy', 'main/windowControlPolicy')
+  await mkdir(join(temporary, 'main'))
+  if (windows) await mkdir(join(temporary, 'shared'))
+  for (const name of sources) {
+    const source = await readFile(resolve('src', `${name}.ts`), 'utf8')
+    const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, rewriteRelativeImportExtensions: true } })
     await writeFile(join(temporary, `${name}.js`), compiled.outputText)
   }
   if (process.argv.includes('--built')) {
@@ -39,19 +47,20 @@ try {
       }
     }
     if (names.size) throw new Error(`Missing production browser code: ${[...names].join(', ')}`)
-    const builtFile = join(temporary, 'browser-built.mjs')
+    const builtFile = join(temporary, 'main', 'browser-built.mjs')
     const appImports = [...appBindings].map(name => name === 'app' ? 'app' : `app as ${name}`).join(', ')
     const joinImports = [...joinBindings].map(name => name === 'join' ? 'join' : `join as ${name}`).join(', ')
     await writeFile(builtFile, `import { BrowserWindow, session, ${appImports} } from 'electron'; import { ${joinImports} } from 'node:path'; import { createHash, randomUUID } from 'node:crypto';\n${compiled.join('\n')}\nexport { runBrowserAction, closeAgentBrowser, isAgentBrowserOpen, showAgentBrowser, setAgentBrowserStateListener };`)
     const url = pathToFileURL(builtFile).href
-    await writeFile(join(temporary, 'agentBrowser.js'), `const loaded = import(${JSON.stringify(url)}); for (const name of ['runBrowserAction', 'closeAgentBrowser', 'isAgentBrowserOpen', 'showAgentBrowser', 'setAgentBrowserStateListener']) exports[name] = async (...args) => (await loaded)[name](...args);`)
+    await writeFile(join(temporary, 'main', 'agentBrowser.js'), `const loaded = import(${JSON.stringify(url)}); for (const name of ['runBrowserAction', 'closeAgentBrowser', 'isAgentBrowserOpen', 'showAgentBrowser', 'setAgentBrowserStateListener']) exports[name] = async (...args) => (await loaded)[name](...args);`)
   }
   const profile = join(temporary, 'profile')
   await mkdir(profile)
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
   const exitCode = await new Promise((resolvePromise, reject) => {
-    const child = spawn(require('electron'), [join(temporary, 'agentBrowser.integration.js'), profile], { env, stdio: 'inherit', windowsHide: true })
+    const entry = windows ? 'windowControl.integration.js' : 'agentBrowser.integration.js'
+    const child = spawn(require('electron'), [join(temporary, 'main', entry), profile], { env, stdio: 'inherit', windowsHide: true })
     child.once('error', reject)
     child.once('close', code => resolvePromise(code ?? 1))
   })

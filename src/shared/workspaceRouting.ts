@@ -13,7 +13,7 @@ const fileAction = /生成|创建|新建|制作|做|编写|写|起草|导出|保
 export function usesWorkspaceAgent(conversation: Pick<Conversation, 'workspace' | 'messages'>): conversation is Pick<Conversation, 'messages'> & { workspace: ConversationWorkspace } {
   const workspace = conversation.workspace
   if (!workspace) return false
-  if (workspace.projectId || workspace.kind !== 'managed' || workspace.nativeExecution || workspace.computerAccess || workspace.browserAccess) return true
+  if (workspace.projectId || workspace.kind !== 'managed' || workspace.nativeExecution || workspace.computerAccess || workspace.browserAccess || workspace.computerWindowAccess || workspace.browserWindowAccess) return true
   if (conversation.messages.findLast(message => message.role === 'user')?.attachments?.some(attachment => attachment.workspaceRelativePath)) return true
   const request = conversation.messages.findLast(message => message.role === 'user')?.content ?? ''
   const advice = /怎么|如何|为什么|什么是|有哪些|有什么|我想了解|介绍|解释|教程|\b(?:how (?:do|can|to)|what (?:is|are)|explain|tutorial)\b/i.test(request)
