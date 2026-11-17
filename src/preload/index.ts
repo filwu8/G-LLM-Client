@@ -49,7 +49,6 @@ import type {
   ToolConfig,
   WorkspaceAgentProgress,
   WorkspaceAgentRequest,
-  WorkspaceAgentResult,
   WorkspaceApprovalPrompt
 } from '../shared/types'
 
@@ -141,7 +140,7 @@ const api = {
     ipcRenderer.on('desktop:browser-changed', handler)
     return () => ipcRenderer.removeListener('desktop:browser-changed', handler)
   },
-  runWorkspaceAgent: (request: WorkspaceAgentRequest): Promise<WorkspaceAgentResult> =>
+  runWorkspaceAgent: (request: WorkspaceAgentRequest): Promise<Conversation> =>
     ipcRenderer.invoke('workspace-agent:run', request),
   revealWorkspaceFile: (rootPath: string, relativePath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:reveal-file', rootPath, relativePath),

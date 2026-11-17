@@ -24,6 +24,7 @@ import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID } from '../shared/providers'
 import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../shared/assistantPromptPolicy'
 import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
 import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
+import { estimateTokenCount } from '../shared/tokenEstimate'
 import type {
   AgentExecutionPlan,
   ApiProvider,
@@ -55,7 +56,9 @@ import type {
   ThemeRequestUsage,
   WebResearchAudit,
   WebSearchActivity,
-  WebSearchResult
+  WebSearchResult,
+  WorkspaceAgentRequest,
+  WorkspaceAgentResult
 } from '../shared/types'
 import {
   GOLD_THEME_REVIEW_REQUEST_COUNT,
@@ -1112,8 +1115,6 @@ function sanitizeGoalTask(value: Conversation['goalTask']): Conversation['goalTa
     goal: String(value.goal ?? '').trim().slice(0, 2000),
     acceptanceCriteria: String(value.acceptanceCriteria ?? '').trim().slice(0, 3000),
     status: statuses.includes(value.status) ? value.status : 'paused',
-    maxSteps: Math.max(3, Math.min(14, Math.round(Number(value.maxSteps) || 8))),
-    maxDurationMinutes: Math.max(5, Math.min(240, Math.round(Number(value.maxDurationMinutes) || 60))),
     webSearchMode: webSearchModes.includes(value.webSearchMode as typeof webSearchModes[number]) ? value.webSearchMode : undefined,
     webSearchScope: webSearchScopes.includes(value.webSearchScope as typeof webSearchScopes[number]) ? value.webSearchScope : undefined,
     webSearchDomains: normalizeGoalWebSearchDomains(value.webSearchDomains),
@@ -1160,7 +1161,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     attachments: attachments.length > 0 ? attachments : undefined,
     knowledgeRefs: knowledgeRefs.length > 0 ? knowledgeRefs : undefined,
     webSearch: sanitizeWebSearchActivity(message.webSearch),
-    workspaceActivities: (message.workspaceActivities ?? []).slice(0, 80).map((activity) => ({
+    workspaceActivities: (message.workspaceActivities ?? []).slice(-80).map((activity) => ({
       id: String(activity.id ?? '').trim() || `activity_${Date.now()}`,
       tool: String(activity.tool ?? '').trim(),
       label: String(activity.label ?? '').trim() || '工作区操作',
@@ -1810,6 +1811,48 @@ export function saveConversation(conversation: Conversation, projectId = getActi
   const next = [normalized, ...conversations.filter((item) => item.id !== normalized.id)]
   store.set('conversations', next.slice(0, 1000))
   return normalized
+}
+
+export function getWorkspaceRunConversation(request: WorkspaceAgentRequest): Conversation | undefined {
+  const conversation = getAllConversations().find(item => item.id === request.conversationId)
+  const userMessage = request.messages.findLast(message => message.role === 'user')
+  if (!conversation?.workspace || !userMessage || conversation.messages.at(-1)?.id !== userMessage.id ||
+    !isSamePath(conversation.workspace.rootPath, request.workspace.rootPath)) return undefined
+
+  if (request.goalId && (conversation.goalTask?.id !== request.goalId || conversation.goalTask.status !== 'running')) return undefined
+  return conversation
+}
+
+export function saveWorkspaceAgentResult(request: WorkspaceAgentRequest, result: WorkspaceAgentResult, startedAt: number, runId: string): Conversation | undefined {
+  const conversation = getWorkspaceRunConversation(request)
+  if (!conversation?.workspace) return undefined
+  const goal = conversation.goalTask
+  const succeeded = result.plan.status === 'succeeded'
+  const now = Date.now()
+  const outputTokens = estimateTokenCount(result.content)
+  const message: ChatMessage = {
+    id: `workspace_${runId}`, role: 'assistant', content: result.content, createdAt: now,
+    inputTokens: 0, outputTokens, tokenCount: outputTokens,
+    responseStartedAt: startedAt, responseCompletedAt: now,
+    workspaceActivities: result.activities, workspaceChangedFiles: result.changedFiles,
+    workspaceArtifactRoot: conversation.workspace.rootPath, agentPlan: result.plan,
+    contextSavings: result.contextSavings, retryAttempts: request.retryAttempts
+  }
+  return saveConversation({
+    ...conversation,
+    messages: [...conversation.messages, message],
+    goalTask: request.goalId && goal ? {
+      ...goal,
+      status: succeeded ? 'completed' : 'paused',
+      lastPlan: result.plan,
+      lastError: succeeded ? undefined : result.plan.verification,
+      updatedAt: now,
+      completedAt: succeeded ? now : undefined
+    } : goal,
+    totalTokens: (conversation.totalTokens ?? 0) + outputTokens,
+    totalOutputTokens: (conversation.totalOutputTokens ?? 0) + outputTokens,
+    updatedAt: now
+  }, conversation.projectId)
 }
 
 export function deleteConversation(id: string): void {

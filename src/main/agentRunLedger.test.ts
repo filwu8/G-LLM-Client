@@ -77,3 +77,15 @@ test('does not reopen a terminal run', () => {
   assert.equal(unchanged.status, 'stopped')
   assert.equal(unchanged.eventCount, 2)
 })
+
+test('keeps an older active task while newer finished runs roll out of the log', () => {
+  const { directory, ledger } = createLedger()
+  const task = { kind: 'workspace' as const, conversationId: 'long-task', providerId: 'provider', modelId: 'model' }
+  const active = ledger.start(task)
+  for (let index = 0; index < 100; index += 1) {
+    const other = ledger.start({ ...task, conversationId: `short-${index}` })
+    ledger.record(other.id, 'run_succeeded', 'succeeded')
+  }
+  assert.equal(new AgentRunLedger(directory).get(active.id)?.status, 'queued')
+  assert.equal(ledger.record(active.id, 'tool_started', 'running_tool').status, 'running_tool')
+})

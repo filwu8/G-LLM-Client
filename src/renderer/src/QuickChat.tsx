@@ -75,10 +75,10 @@ import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
 import { getModelOptions, ModelPickerMenu } from './ModelPicker'
 import { applyDocumentTheme } from './theme'
 import { formatMessageTimestamp } from './timeZone'
-import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog, WorkspaceResumeNotice } from './WorkspaceBar'
 import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
-import { projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
+import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { droppedFileInputs } from './droppedFiles'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
@@ -88,7 +88,8 @@ import { getSkillInstallIntent } from '@shared/skillInstallation'
 import { prepareSkillInstallationConversation, saveSkillInstallationFailure } from './conversationSkillInstallation'
 import { DEFAULT_PROVIDER, getProviderById, isProviderApiKeyMissing, resolveProviderModelId } from '@shared/providers'
 import { decideConversationWebSearch } from '@shared/webSearchMode'
-import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
+import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
+import { estimateTokenCount } from '@shared/tokenEstimate'
 import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
 import type {
   ApiProvider,
@@ -112,6 +113,7 @@ import type {
   WebSearchMode,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt,
+  WorkspaceRunSnapshot,
   WorkspaceToolActivity
 } from '@shared/types'
 
@@ -135,19 +137,6 @@ interface RenderedImageContextMenu {
 
 function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
-}
-
-function estimateTokenCount(text: string): number {
-  const normalized = text.trim()
-  if (!normalized) return 0
-
-  const cjkCount = normalized.match(/[\u4e00-\u9fff]/g)?.length ?? 0
-  const nonCjkTokens =
-    normalized
-      .replace(/[\u4e00-\u9fff]/g, ' ')
-      .match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0
-
-  return Math.max(1, Math.ceil(cjkCount + nonCjkTokens * 0.75))
 }
 
 function formatTokenUnit(value: number): string {
@@ -351,6 +340,7 @@ export default function QuickChat() {
   const autoFollowMessagesRef = useRef(true)
   const conversationRef = useRef<Conversation | null>(null)
   const streamingConversationIdRef = useRef<string | null>(null)
+  const attachedWorkspaceRunRef = useRef<WorkspaceRunSnapshot | null>(null)
   const responseStartedAtRef = useRef<number | null>(null)
   const isStreamingRef = useRef(false)
   const workspaceActivitiesRef = useRef<WorkspaceToolActivity[]>([])
@@ -366,6 +356,21 @@ export default function QuickChat() {
   function beginQuickResponse(startedAt = Date.now()) {
     responseStartedAtRef.current = startedAt
     updateStreaming(true)
+  }
+
+  function followWorkspaceRun(run?: WorkspaceRunSnapshot) {
+    if (streamingConversationIdRef.current || (!run && !attachedWorkspaceRunRef.current)) return
+    attachedWorkspaceRunRef.current = run ?? null
+    if (run) {
+      beginQuickResponse(run.startedAt)
+      workspaceActivitiesRef.current = run.activities
+      workspaceChangedFilesRef.current = run.changedFiles
+      setWorkspaceActivities(run.activities)
+      setWorkspaceChangedFiles(run.changedFiles)
+    } else {
+      responseStartedAtRef.current = null
+      updateStreaming(false)
+    }
   }
 
   const assistant = useMemo(() => getAssistantById(activeAssistantId, assistants), [activeAssistantId, assistants])
@@ -457,6 +462,7 @@ export default function QuickChat() {
     setComposerTarget(target)
     setConversation(selectedConversation)
     conversationRef.current = selectedConversation
+    followWorkspaceRun(state.workspaceRuns.find(run => run.conversationId === selectedConversation?.id))
     setDraft(readComposerDraft(getComposerDraftStorageKey(getComposerSessionKey(
       target.conversationId,
       target.projectId,
@@ -544,13 +550,24 @@ export default function QuickChat() {
   }, [])
 
   useEffect(() => {
+    return window.gllm.onChatActivity((activity) => {
+      if (activity.kind !== 'workspace' || activity.conversationId !== conversationRef.current?.id) return
+      if (activity.active) {
+        followWorkspaceRun({ conversationId: activity.conversationId, startedAt: activity.startedAt ?? Date.now(), activities: [], changedFiles: [] })
+      } else if (attachedWorkspaceRunRef.current?.conversationId === activity.conversationId) {
+        followWorkspaceRun()
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     return window.gllm.onWorkspaceAgentProgress((progress) => {
       if (conversationRef.current?.id !== progress.conversationId) return
       setWorkspaceActivities((current) => {
         const index = current.findIndex((activity) => activity.id === progress.activity.id)
         const next = index >= 0
           ? current.map((activity, activityIndex) => activityIndex === index ? progress.activity : activity)
-          : [...current, progress.activity]
+          : [...current, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
         workspaceActivitiesRef.current = next
         return next
       })
@@ -672,10 +689,11 @@ export default function QuickChat() {
     setMessageAutoFollow(true)
     setIsNearMessageBottom(true)
     setDraftWorkspace(undefined)
-    setWorkspaceActivities([])
-    workspaceActivitiesRef.current = []
-    setWorkspaceChangedFiles([])
-    workspaceChangedFilesRef.current = []
+    const run = attachedWorkspaceRunRef.current?.conversationId === conversation?.id ? attachedWorkspaceRunRef.current : null
+    workspaceActivitiesRef.current = run?.activities ?? []
+    workspaceChangedFilesRef.current = run?.changedFiles ?? []
+    setWorkspaceActivities(workspaceActivitiesRef.current)
+    setWorkspaceChangedFiles(workspaceChangedFilesRef.current)
     window.requestAnimationFrame(() => scrollToLatest('auto', { resumeAutoFollow: true }))
   }, [conversation?.id])
 
@@ -963,8 +981,6 @@ export default function QuickChat() {
       goal: value.goal,
       acceptanceCriteria: value.acceptanceCriteria,
       status: 'running',
-      maxSteps: value.maxSteps,
-      maxDurationMinutes: value.maxDurationMinutes,
       webSearchMode: value.webSearchMode,
       webSearchScope: value.webSearchScope,
       webSearchDomains: value.webSearchDomains,
@@ -988,9 +1004,7 @@ export default function QuickChat() {
     )
     const goalMessage = createMessage('user', t('goalMode.executionPrompt', {
       goal: value.goal,
-      criteria: value.acceptanceCriteria,
-      steps: value.maxSteps,
-      minutes: value.maxDurationMinutes
+      criteria: value.acceptanceCriteria || t('goalMode.inferAcceptance')
     }))
     goalTask.contextStartMessageId = goalMessage.id
     const nextConversation: Conversation = {
@@ -1080,7 +1094,7 @@ export default function QuickChat() {
     }
     const resumeMessage = createMessage('user', t('goalMode.resumePrompt', {
       goal: goalTask.goal,
-      criteria: goalTask.acceptanceCriteria
+      criteria: goalTask.acceptanceCriteria || t('goalMode.inferAcceptance')
     }))
     const updated: Conversation = {
       ...current,
@@ -1104,84 +1118,55 @@ export default function QuickChat() {
     retryAttempts: MessageRetryAttempt[] = []
   ) {
     if (!settings) return
+    const goalTask = nextConversation.goalTask?.status === 'running' ? nextConversation.goalTask : undefined
     const responseStartedAt = responseStartedAtRef.current ?? nextConversation.messages.at(-1)?.createdAt ?? Date.now()
     setWorkspaceActivities([])
     workspaceActivitiesRef.current = []
     setWorkspaceChangedFiles([])
     workspaceChangedFilesRef.current = []
     try {
-      const result = await window.gllm.runWorkspaceAgent({
+      const completedConversation = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
+        goalId: goalTask?.id,
+        retryAttempts,
         assistant,
         assistantSkills,
         assistantTools,
         availableAssistants: assistants,
         workspace,
         provider: selectedProvider,
-        messages: selectGoalContextMessages(nextConversation.messages, nextConversation.goalTask),
+        messages: selectGoalContextMessages(nextConversation.messages, goalTask),
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory,
-        executionLimits: nextConversation.goalTask
-          ? {
-              maxTurns: nextConversation.goalTask.maxSteps,
-              maxDurationMs: nextConversation.goalTask.maxDurationMinutes * 60_000
-            }
-          : undefined
+        projectMemory: goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory
       })
-      const assistantMessage: ChatMessage = {
-        ...createMessage('assistant', result.content),
-        responseStartedAt,
-        responseCompletedAt: Date.now(),
-        workspaceActivities: result.activities,
-        workspaceChangedFiles: result.changedFiles,
-        workspaceArtifactRoot: workspace.rootPath,
-        agentPlan: result.plan,
-        contextSavings: result.contextSavings,
-        retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
-      }
-      const nextMessages = [...nextConversation.messages, assistantMessage]
-      const completedConversation: Conversation = {
-        ...nextConversation,
-        workspace,
-        goalTask: nextConversation.goalTask
-          ? {
-              ...nextConversation.goalTask,
-              status: result.plan.status === 'succeeded' ? 'completed' : 'paused',
-              lastPlan: result.plan,
-              lastError: result.plan.status === 'succeeded' ? undefined : result.plan.verification,
-              updatedAt: Date.now(),
-              completedAt: result.plan.status === 'succeeded' ? Date.now() : undefined
-            }
-          : undefined,
-        messages: nextMessages,
-        totalTokens: nextMessages.reduce((sum, message) => sum + (message.tokenCount ?? 0), 0),
-        updatedAt: Date.now()
-      }
       setConversation(completedConversation)
       setConversations((current) => [completedConversation, ...current.filter((item) => item.id !== completedConversation.id)])
       conversationRef.current = completedConversation
-      await window.gllm.saveConversation(completedConversation)
-      if (result.changedFiles.length > 0) setStatus(t('workspace.filesChanged', { count: result.changedFiles.length }))
+      const changedFiles = completedConversation.messages.at(-1)?.workspaceChangedFiles?.length ?? 0
+      if (changedFiles > 0) setStatus(t('workspace.filesChanged', { count: changedFiles }))
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : t('workspaceErrors.unknown')
+      if (rawMessage.includes(WORKSPACE_ALREADY_RUNNING)) {
+        setStatus(formatQuickWorkspaceError(rawMessage.replace(`${WORKSPACE_ALREADY_RUNNING}:`, '')))
+        return
+      }
       if (/AbortError|aborted|任务已停止/i.test(rawMessage)) {
         setStatus(t('workspace.generationStopped'))
         return
       }
-      const reachedGoalTimeLimit = Boolean(nextConversation.goalTask && isGoalExecutionTimeLimitMessage(rawMessage))
-      const message = formatQuickWorkspaceError(rawMessage.replace(`${GOAL_EXECUTION_TIME_LIMIT}:`, '').trim())
+      const message = formatQuickWorkspaceError(rawMessage)
       const attempt: MessageRetryAttempt = {
         attemptedAt: Date.now(),
         error: message,
         activities: workspaceActivitiesRef.current
       }
       const failedMessage: ChatMessage = {
-        ...createMessage('assistant', reachedGoalTimeLimit ? t('goalMode.timeLimitPaused', { message }) : t('workspace.taskFailed', { message })),
+        ...createMessage('assistant', t('workspace.taskFailed', { message })),
         responseStartedAt,
         responseCompletedAt: Date.now(),
-        error: reachedGoalTimeLimit ? undefined : message,
+        error: message,
         workspaceActivities: workspaceActivitiesRef.current,
         workspaceChangedFiles: workspaceChangedFilesRef.current,
         workspaceArtifactRoot: workspace.rootPath,
@@ -1191,14 +1176,14 @@ export default function QuickChat() {
       const failedConversation: Conversation = {
         ...nextConversation,
         workspace,
-        goalTask: nextConversation.goalTask
+        goalTask: goalTask
           ? {
-              ...nextConversation.goalTask,
-              status: reachedGoalTimeLimit ? 'paused' : 'failed',
+              ...goalTask,
+              status: 'failed',
               lastError: message,
               updatedAt: Date.now()
             }
-          : undefined,
+          : nextConversation.goalTask,
         messages: nextMessages,
         totalTokens: nextMessages.reduce((sum, item) => sum + (item.tokenCount ?? 0), 0),
         updatedAt: Date.now()
@@ -1406,6 +1391,25 @@ export default function QuickChat() {
       reasoningEffort: nextConversation.reasoningEffort,
       ...getQuickWebSearchRequestSettings(webSearchMode, nextConversation)
     })
+  }
+
+  function resumeWorkspaceTask() {
+    const current = conversationRef.current
+    if (!settings || isStreamingRef.current || !current || !usesWorkspaceAgent(current) || !hasUnfinishedWorkspaceTask(current)) return
+    if ((assistant.status ?? 'active') !== 'active' || needsApiKey) {
+      setStatus(needsApiKey ? missingProviderMessage : t('assistantSettings.inactiveNotice'))
+      return
+    }
+    const latest = current.messages.at(-1)
+    if (latest?.role === 'assistant') {
+      retryMessage(latest.id)
+      return
+    }
+    setStatus('')
+    beginQuickResponse()
+    streamingConversationIdRef.current = current.id
+    setMessageAutoFollow(true)
+    void executeQuickWorkspaceConversation(current, current.workspace)
   }
 
   function editQuickMessage(message: ChatMessage) {
@@ -2186,6 +2190,7 @@ export default function QuickChat() {
             onClear={clearQuickGoal}
           />
         )}
+        {!isStreaming && hasUnfinishedWorkspaceTask(conversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} />}
         {currentWorkspace && (
           <WorkspaceBar
             workspace={currentWorkspace}

@@ -19,6 +19,7 @@ import {
   net,
   nativeImage,
   nativeTheme,
+  powerSaveBlocker,
   protocol,
   screen,
   shell,
@@ -58,7 +59,8 @@ import type {
   MainConversationOpenRequest,
   PreparedAttachment,
   WorkspaceAgentRequest,
-  WorkspaceApprovalPrompt
+  WorkspaceApprovalPrompt,
+  WorkspaceRunSnapshot
 } from '../shared/types'
 import {
   normalizeComposerSessionTarget,
@@ -74,6 +76,8 @@ import {
 } from '../shared/providers'
 import { ActiveResponseRegistry } from './activeResponse'
 import { AgentRunLedger } from './agentRunLedger'
+import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
+import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
 import { AutoUpdateManager } from './autoUpdateManager'
@@ -111,6 +115,7 @@ import {
   getAssistants,
   getConversationSearchSources,
   getConversations,
+  getWorkspaceRunConversation,
   getDataResourceFilePathFromUrl,
   getDataResourceProtocol,
   getDataLocationInfo,
@@ -131,6 +136,7 @@ import {
   saveAssistant,
   reorderAssistants,
   saveConversation,
+  saveWorkspaceAgentResult,
   saveMemory,
   saveNote,
   saveProject,
@@ -175,6 +181,7 @@ let mainComposerTarget: ComposerSessionTarget | null = null
 let quickComposerTarget: ComposerSessionTarget | null = null
 const conversationMemoryUpdates = new Set<string>()
 const activeResponses = new ActiveResponseRegistry()
+const activeWorkspaceRuns = new Map<string, WorkspaceRunSnapshot>()
 const storageTasks = new StorageTasks()
 
 function assertDataLocationIdle(): void {
@@ -311,7 +318,7 @@ let floatingMascotHintIndex = 0
 
 function broadcastChatActivity(activity: ChatActivityEvent): void {
   for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.send('chat:activity', activity)
+    if (!window.isDestroyed() && !window.webContents.isCrashed()) window.webContents.send('chat:activity', activity)
   }
   if (!activity.active && activity.error) {
     pendingFloatingMascotHint = {
@@ -426,6 +433,11 @@ function getMainLogDirectory(): string {
 function getAgentRunLedger(): AgentRunLedger {
   agentRunLedger ??= new AgentRunLedger(getMainLogDirectory())
   return agentRunLedger
+}
+
+function removeWorkspaceCheckpoint(conversationId: string, taskId?: string): void {
+  try { new WorkspaceCheckpointStore(getDataLocationInfo().activePath, conversationId).remove(taskId) }
+  catch (error) { writeMainLog('Could not remove a workspace checkpoint', error) }
 }
 
 function writeMainLog(message: string, error?: unknown): void {
@@ -1517,7 +1529,7 @@ function broadcastConversationChange(
     : { action, conversationId, conversation }
 
   for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
+    if (!window.isDestroyed() && !window.webContents.isCrashed()) {
       window.webContents.send('conversation:changed', change)
     }
   }
@@ -1536,6 +1548,7 @@ function getAppStateSnapshot() {
     providers: getProviders(),
     assistants: getAssistants(activeProjectId),
     conversations: getConversations(activeProjectId),
+    workspaceRuns: [...activeWorkspaceRuns.values()],
     notes: getNotes(activeProjectId),
     memories: getMemories(activeProjectId),
     tools: getTools(activeProjectId),
@@ -2000,6 +2013,7 @@ app.whenReady().then(() => {
     for (const conversationId of deletedConversationIds) { cancelActiveResponse(conversationId); closeAgentBrowser(conversationId) }
     deleteAssistant(id)
     for (const conversationId of deletedConversationIds) {
+      removeWorkspaceCheckpoint(conversationId)
       broadcastConversationChange(conversationId, 'deleted')
     }
     return getAppStateSnapshot()
@@ -2061,6 +2075,7 @@ app.whenReady().then(() => {
     cancelActiveResponse(id)
     closeAgentBrowser(id)
     deleteConversation(id)
+    removeWorkspaceCheckpoint(id)
     broadcastConversationChange(id, 'deleted')
   })
   ipcMain.handle('note:save', (_, note) => saveNote(note))
@@ -2188,6 +2203,12 @@ app.whenReady().then(() => {
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
     if (!request.workspace?.rootPath?.trim()) throw new Error('Authorize a workspace folder before using local Agent tools')
     request = { ...request, workspace: { ...request.workspace, rootPath: resolveCurrentDataPath(request.workspace.rootPath) } }
+    if (activeResponses.activeConversationIds.includes(request.conversationId)) {
+      throw new Error(`${WORKSPACE_ALREADY_RUNNING}: ${mainT('main.workspace.alreadyRunning', request.settings.language)}`)
+    }
+    const storedWorkspace = getWorkspaceRunConversation(request)?.workspace
+    if (!storedWorkspace) throw new Error(mainT('main.workspace.conversationChanged', request.settings.language))
+    request = { ...request, workspace: storedWorkspace }
     const requestStartedAt = Date.now()
     const runLedger = getAgentRunLedger()
     const run = runLedger.start({
@@ -2201,23 +2222,37 @@ app.whenReady().then(() => {
         webSearchMode: request.webSearchMode ?? 'legacy'
       }
     })
-    const activityStates = new Map<string, string>()
     const active = registerActiveResponse('workspace', request.conversationId)
+    const snapshot: WorkspaceRunSnapshot = { conversationId: request.conversationId, startedAt: requestStartedAt, activities: [], changedFiles: [] }
+    activeWorkspaceRuns.set(request.conversationId, snapshot)
+    const endActivity = (error?: string) => {
+      activeWorkspaceRuns.delete(request.conversationId)
+      if (isCurrentActiveResponse(active.key, active.controller)) {
+        broadcastChatActivity({ conversationId: request.conversationId, kind: 'workspace', active: false, error })
+      }
+    }
+    let powerBlockerId: number | undefined
     writeMainLog(
       `Workspace request started: conversation=${request.conversationId}, provider=${request.provider.id}, model=${request.provider.defaultModel}, messages=${request.messages.length}, webSearchMode=${request.webSearchMode ?? 'legacy'}, webSearch=${Boolean(request.webSearchEnabled)}.`
     )
-    broadcastChatActivity({ conversationId: request.conversationId, active: true })
+    broadcastChatActivity({ conversationId: request.conversationId, kind: 'workspace', active: true, startedAt: requestStartedAt })
     try {
+      if (!request.executionLimits) powerBlockerId = powerSaveBlocker.start('prevent-app-suspension')
       const { runWorkspaceAgent } = await import('./workspaceAgent')
       const prepared = await prepareProviderRequestModel(request)
       const result = await runWorkspaceAgent(
         prepared.request,
         (progress) => {
-          event.sender.send('workspace-agent:progress', progress)
+          const index = snapshot.activities.findIndex(activity => activity.id === progress.activity.id)
+          const previous = snapshot.activities[index]
+          if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
+          else snapshot.activities[index] = progress.activity
+          if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
+            if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:progress', progress)
+          }
           if (progress.activity.tool === 'model_request_retry') return
-          const stateKey = `${progress.activity.status}:${progress.activity.detail ?? ''}`
-          if (activityStates.get(progress.activity.id) === stateKey) return
-          activityStates.set(progress.activity.id, stateKey)
+          if (previous?.status === progress.activity.status && previous.detail === progress.activity.detail) return
           const type = progress.activity.status === 'running'
             ? 'tool_started'
             : progress.activity.status === 'completed'
@@ -2229,6 +2264,10 @@ app.whenReady().then(() => {
           })
         },
         async (approval, approvalSignal = active.controller.signal) => {
+          const sender = [event.sender, mainWindow?.webContents, quickWindow?.webContents].find(
+            candidate => candidate && !candidate.isDestroyed() && !candidate.isCrashed() && !candidate.isLoadingMainFrame()
+          )
+          if (!sender) return false
           const id = randomUUID()
           const prompt: WorkspaceApprovalPrompt = { id, conversationId: request.conversationId, ...approval }
           runLedger.record(run.id, 'approval_waiting', 'waiting_approval', {
@@ -2240,16 +2279,22 @@ app.whenReady().then(() => {
             const finish = (approved: boolean) => {
               pendingWorkspaceApprovals.delete(id)
               approvalSignal.removeEventListener('abort', handleAbort)
+              sender.removeListener('destroyed', handleAbort)
+              sender.removeListener('render-process-gone', handleAbort)
+              sender.removeListener('did-start-loading', handleAbort)
               runLedger.record(run.id, 'approval_resolved', 'running_tool', { approved })
               resolvePromise(approved)
             }
             const handleAbort = () => finish(false)
             if (approvalSignal.aborted) { finish(false); return }
-            pendingWorkspaceApprovals.set(id, { senderId: event.sender.id, resolve: finish })
+            pendingWorkspaceApprovals.set(id, { senderId: sender.id, resolve: finish })
             approvalSignal.addEventListener('abort', handleAbort, { once: true })
-            event.sender.send('workspace-agent:approval-requested', prompt)
+            sender.once('destroyed', handleAbort)
+            sender.once('render-process-gone', handleAbort)
+            sender.once('did-start-loading', handleAbort)
+            sender.send('workspace-agent:approval-requested', prompt)
             if (isWindowControlTool(approval.tool)) {
-              const owner = BrowserWindow.fromWebContents(event.sender)
+              const owner = BrowserWindow.fromWebContents(sender)
               if (owner?.isMinimized()) owner.restore()
               owner?.show()
               owner?.focus()
@@ -2265,11 +2310,19 @@ app.whenReady().then(() => {
         ),
         run.id
       )
-      if (isCurrentActiveResponse(active.key, active.controller)) {
-        broadcastChatActivity({ conversationId: request.conversationId, active: false })
+      active.controller.signal.throwIfAborted()
+      const saved = saveWorkspaceAgentResult(request, result, requestStartedAt, run.id)
+      if (!saved) {
+        active.controller.abort()
+        throw active.controller.signal.reason
       }
+      endActivity()
+      broadcastConversationChange(saved.id, 'saved', saved)
+      void maybeUpdateProjectMemory(saved)
       const durationMs = Date.now() - requestStartedAt
       if (result.plan.status === 'succeeded') {
+        const userMessage = request.messages.findLast(message => message.role === 'user')
+        if (userMessage) removeWorkspaceCheckpoint(saved.id, workspaceTaskId(userMessage.id, request.goalId))
         writeMainLog(
           `Workspace request completed: conversation=${request.conversationId}, durationMs=${durationMs}, changedFiles=${result.changedFiles.length}.`
         )
@@ -2290,13 +2343,11 @@ app.whenReady().then(() => {
           error: reason
         })
       }
-      return result
+      return saved
     } catch (error) {
       if (active.controller.signal.aborted) {
         const isCurrent = isCurrentActiveResponse(active.key, active.controller)
-        if (isCurrent) {
-          broadcastChatActivity({ conversationId: request.conversationId, active: false })
-        }
+        endActivity()
         writeMainLog(
           `Workspace request ${isCurrent ? 'cancelled' : 'replaced'}: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}.`
         )
@@ -2307,9 +2358,7 @@ app.whenReady().then(() => {
         throw new Error('任务已停止')
       }
       const message = error instanceof Error ? error.message : String(error)
-      if (isCurrentActiveResponse(active.key, active.controller)) {
-        broadcastChatActivity({ conversationId: request.conversationId, active: false, error: message })
-      }
+      endActivity(message)
       writeMainLog(
         `Workspace request failed: conversation=${request.conversationId}, durationMs=${Date.now() - requestStartedAt}, category=${getErrorCategory(error)}.`,
         error
@@ -2321,6 +2370,8 @@ app.whenReady().then(() => {
       })
       throw error
     } finally {
+      activeWorkspaceRuns.delete(request.conversationId)
+      if (powerBlockerId !== undefined) powerSaveBlocker.stop(powerBlockerId)
       releaseActiveResponse(active.key, active.controller)
     }
   })

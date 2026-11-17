@@ -126,9 +126,9 @@ import {
   localizeAssistantPresetCategory,
   searchLocalizedAssistantPresets
 } from './localizedContent'
-import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog } from './WorkspaceBar'
+import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog, WorkspaceResumeNotice } from './WorkspaceBar'
 import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
-import { projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
+import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
@@ -206,7 +206,8 @@ import type {
   WorkspaceApprovalPrompt,
   WorkspaceToolActivity
 } from '@shared/types'
-import { GOAL_EXECUTION_TIME_LIMIT, isGoalExecutionTimeLimitMessage } from '@shared/goalMode'
+import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
+import { estimateTokenCount } from '@shared/tokenEstimate'
 import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
 
 const iconMap: Record<AssistantIcon, LucideIcon> = {
@@ -332,19 +333,6 @@ function stopModalClick(event: ReactMouseEvent) {
 
 function createId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
-}
-
-function estimateTokenCount(text: string): number {
-  const normalized = text.trim()
-  if (!normalized) return 0
-
-  const cjkCount = normalized.match(/[\u4e00-\u9fff]/g)?.length ?? 0
-  const nonCjkTokens =
-    normalized
-      .replace(/[\u4e00-\u9fff]/g, ' ')
-      .match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0
-
-  return Math.max(1, Math.ceil(cjkCount + nonCjkTokens * 0.75))
 }
 
 function sanitizeLocalToken(value: unknown): number | null {
@@ -963,8 +951,8 @@ export default function App() {
     setConversationRunStates(next)
   }
 
-  function beginConversationRun(conversationId: string) {
-    replaceConversationRunStates(startConversationRun(conversationRunStatesRef.current, conversationId))
+  function beginConversationRun(conversationId: string, startedAt?: number) {
+    replaceConversationRunStates(startConversationRun(conversationRunStatesRef.current, conversationId, startedAt))
   }
 
   function completeConversationRun(conversationId: string, outcome: 'completed' | 'error') {
@@ -1153,6 +1141,15 @@ export default function App() {
     setMemories(state.memories ?? [])
     setTools(state.tools ?? [])
     setSkills(state.skills ?? [])
+    for (const run of state.workspaceRuns) {
+      if (!isConversationRunning(conversationRunStatesRef.current, run.conversationId)) beginConversationRun(run.conversationId, run.startedAt)
+      workspaceActivitiesRef.current[run.conversationId] = run.activities
+      workspaceChangedFilesRef.current[run.conversationId] = run.changedFiles
+    }
+    if (state.workspaceRuns.length) {
+      setWorkspaceActivitiesByConversation({ ...workspaceActivitiesRef.current })
+      setWorkspaceChangedFilesByConversation({ ...workspaceChangedFilesRef.current })
+    }
 
     if (options.selectFirstConversation) {
       selectConversation(firstConversation?.id ?? null)
@@ -1405,7 +1402,7 @@ export default function App() {
   useEffect(() => {
     return window.gllm.onChatActivity((activity) => {
       if (activity.active) {
-        beginConversationRun(activity.conversationId)
+        beginConversationRun(activity.conversationId, activity.startedAt)
       } else {
         completeConversationRun(activity.conversationId, activity.error ? 'error' : 'completed')
       }
@@ -1490,7 +1487,7 @@ export default function App() {
         const activities = current[progress.conversationId] ?? []
         const existing = activities.findIndex((activity) => activity.id === progress.activity.id)
         const next = existing < 0
-          ? [...activities, progress.activity]
+          ? [...activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
           : activities.map((activity, index) => index === existing ? progress.activity : activity)
         workspaceActivitiesRef.current[progress.conversationId] = next
         return { ...current, [progress.conversationId]: next }
@@ -2561,71 +2558,44 @@ export default function App() {
   ) {
     if (!settings) return
     const conversationId = nextConversation.id
+    const goalTask = nextConversation.goalTask?.status === 'running' ? nextConversation.goalTask : undefined
     streamingConversationDraftsRef.current[conversationId] = nextConversation
     const responseStartedAt = conversationRunStatesRef.current[conversationId]?.startedAt ?? Date.now()
     clearWorkspaceActivities(conversationId)
     let outcome: 'completed' | 'error' = 'completed'
     try {
-      const result = await window.gllm.runWorkspaceAgent({
+      const completedConversation = await window.gllm.runWorkspaceAgent({
         conversationId: nextConversation.id,
+        goalId: goalTask?.id,
+        retryAttempts,
         assistant: activeAssistant,
         assistantSkills: activeAssistantSkills,
         assistantTools: activeAssistantTools,
         availableAssistants: assistants,
         workspace,
         provider,
-        messages: selectGoalContextMessages(nextConversation.messages, nextConversation.goalTask),
+        messages: selectGoalContextMessages(nextConversation.messages, goalTask),
         settings,
         reasoningEffort: nextConversation.reasoningEffort,
         ...getWebSearchRequestSettings(webSearchMode, nextConversation),
-        projectMemory: nextConversation.goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory,
-        executionLimits: nextConversation.goalTask
-          ? {
-              maxTurns: nextConversation.goalTask.maxSteps,
-              maxDurationMs: nextConversation.goalTask.maxDurationMinutes * 60_000
-            }
-          : undefined
-      })
-      const assistantMessage: ChatMessage = {
-        ...createMessage('assistant', result.content),
-        responseStartedAt,
-        responseCompletedAt: Date.now(),
-        workspaceActivities: result.activities,
-        workspaceChangedFiles: result.changedFiles,
-        workspaceArtifactRoot: workspace.rootPath,
-        agentPlan: result.plan,
-        contextSavings: result.contextSavings,
-        retryAttempts: retryAttempts.length > 0 ? retryAttempts : undefined
-      }
-      const completedConversation = withConversationTokens({
-        ...nextConversation,
-        workspace,
-        goalTask: nextConversation.goalTask
-          ? {
-              ...nextConversation.goalTask,
-              status: result.plan.status === 'succeeded' ? 'completed' : 'paused',
-              lastPlan: result.plan,
-              lastError: result.plan.status === 'succeeded' ? undefined : result.plan.verification,
-              updatedAt: Date.now(),
-              completedAt: result.plan.status === 'succeeded' ? Date.now() : undefined
-            }
-          : undefined,
-        messages: [...nextConversation.messages, assistantMessage],
-        updatedAt: Date.now()
+        projectMemory: goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory
       })
       streamingConversationDraftsRef.current[conversationId] = completedConversation
       setConversations((current) => [completedConversation, ...current.filter((item) => item.id !== completedConversation.id)])
-      void window.gllm.saveConversation(completedConversation)
-      if (result.changedFiles.length > 0) showToolNotice(t('workspace.filesChanged', { count: result.changedFiles.length }))
+      const changedFiles = completedConversation.messages.at(-1)?.workspaceChangedFiles?.length ?? 0
+      if (changedFiles > 0) showToolNotice(t('workspace.filesChanged', { count: changedFiles }))
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : t('workspaceErrors.unknown')
+      if (rawMessage.includes(WORKSPACE_ALREADY_RUNNING)) {
+        showToolNotice(formatWorkspaceError(rawMessage.replace(`${WORKSPACE_ALREADY_RUNNING}:`, '')))
+        return
+      }
       if (/任务已停止|AbortError|aborted/i.test(rawMessage)) {
         showToolNotice(t('workspace.generationStopped'))
         return
       }
-      const reachedGoalTimeLimit = Boolean(nextConversation.goalTask && isGoalExecutionTimeLimitMessage(rawMessage))
-      outcome = reachedGoalTimeLimit ? 'completed' : 'error'
-      const message = formatWorkspaceError(rawMessage.replace(`${GOAL_EXECUTION_TIME_LIMIT}:`, '').trim())
+      outcome = 'error'
+      const message = formatWorkspaceError(rawMessage)
       const currentActivities = workspaceActivitiesRef.current[conversationId] ?? []
       const currentChangedFiles = workspaceChangedFilesRef.current[conversationId] ?? []
       const currentAttempt: MessageRetryAttempt = {
@@ -2636,23 +2606,23 @@ export default function App() {
       const failedConversation = withConversationTokens({
         ...nextConversation,
         workspace,
-        goalTask: nextConversation.goalTask
+        goalTask: goalTask
           ? {
-              ...nextConversation.goalTask,
-              status: reachedGoalTimeLimit ? 'paused' : 'failed',
+              ...goalTask,
+              status: 'failed',
               lastError: message,
               updatedAt: Date.now()
             }
-          : undefined,
+          : nextConversation.goalTask,
         messages: [...nextConversation.messages, {
-          ...createMessage('assistant', reachedGoalTimeLimit ? t('goalMode.timeLimitPaused', { message }) : t('workspace.taskFailed', { message })),
+          ...createMessage('assistant', t('workspace.taskFailed', { message })),
           responseStartedAt,
           responseCompletedAt: Date.now(),
-          error: reachedGoalTimeLimit ? undefined : message,
+          error: message,
           workspaceActivities: currentActivities,
           workspaceChangedFiles: currentChangedFiles,
           workspaceArtifactRoot: workspace.rootPath,
-          retryAttempts: reachedGoalTimeLimit ? undefined : [...retryAttempts, currentAttempt]
+          retryAttempts: [...retryAttempts, currentAttempt]
         }],
         updatedAt: Date.now()
       })
@@ -2721,6 +2691,26 @@ export default function App() {
   function shouldPrepareLocalTask(text: string): boolean {
     return pendingAttachments.some((attachment) => attachment.localExecutable) &&
       /压缩|文件太大|附件太大|超出.{0,6}(限制|大小)|上传.{0,6}限制|不超过\s*\d+|最多\s*\d+|2097152|帮我弄一下|compress|too\s+large|size\s+limit|under\s+\d+|no\s+more\s+than\s+\d+/i.test(text)
+  }
+
+  function resumeWorkspaceTask() {
+    if (!settings || isStreaming || !activeConversation || !usesWorkspaceAgent(activeConversation) || !hasUnfinishedWorkspaceTask(activeConversation)) return
+    if (needsApiKey) {
+      setSettingsOpen(true)
+      return
+    }
+    if ((activeAssistant.status ?? 'active') !== 'active') {
+      showToolNotice(t('notices.inactiveAssistant'))
+      return
+    }
+    const latest = activeConversation.messages.at(-1)
+    if (latest?.role === 'assistant') {
+      regenerateMessage(latest.id)
+      return
+    }
+    beginConversationRun(activeConversation.id)
+    setMessageAutoFollow(true)
+    void executeWorkspaceConversation(activeConversation, activeConversation.workspace, conversationProvider)
   }
 
   function openWorkspaceArtifactMenu(event: ReactMouseEvent, rootPath: string, relativePath: string) {
@@ -2953,8 +2943,6 @@ export default function App() {
       goal: value.goal,
       acceptanceCriteria: value.acceptanceCriteria,
       status: 'running',
-      maxSteps: value.maxSteps,
-      maxDurationMinutes: value.maxDurationMinutes,
       webSearchMode: value.webSearchMode,
       webSearchScope: value.webSearchScope,
       webSearchDomains: value.webSearchDomains,
@@ -2974,9 +2962,7 @@ export default function App() {
     const baseConversation = activeConversation ?? createConversation(activeAssistant, assistantDefaultProvider, activeProjectId)
     const goalMessage = createMessage('user', t('goalMode.executionPrompt', {
       goal: value.goal,
-      criteria: value.acceptanceCriteria,
-      steps: value.maxSteps,
-      minutes: value.maxDurationMinutes
+      criteria: value.acceptanceCriteria || t('goalMode.inferAcceptance')
     }))
     goalTask.contextStartMessageId = goalMessage.id
     const nextConversation = withConversationTokens({
@@ -3056,7 +3042,7 @@ export default function App() {
     }
     const resumeMessage = createMessage('user', t('goalMode.resumePrompt', {
       goal: goalTask.goal,
-      criteria: goalTask.acceptanceCriteria
+      criteria: goalTask.acceptanceCriteria || t('goalMode.inferAcceptance')
     }))
     const nextConversation = withConversationTokens({
       ...activeConversation,
@@ -4030,6 +4016,7 @@ export default function App() {
                 onClear={clearGoalTask}
               />
             )}
+            {!isStreaming && hasUnfinishedWorkspaceTask(activeConversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} />}
             {currentWorkspace && (
               <WorkspaceBar
                 workspace={currentWorkspace}

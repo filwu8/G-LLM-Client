@@ -379,8 +379,6 @@ export interface GoalTask {
   goal: string
   acceptanceCriteria: string
   status: GoalTaskStatus
-  maxSteps: number
-  maxDurationMinutes: number
   webSearchMode?: WebSearchMode
   webSearchScope?: GoalWebSearchScope
   webSearchDomains?: string[]
@@ -636,6 +634,8 @@ export interface WorkspaceApprovalPrompt {
 
 export interface WorkspaceAgentRequest {
   conversationId: string
+  goalId?: string
+  retryAttempts?: MessageRetryAttempt[]
   assistant: Assistant
   assistantSkills?: SkillConfig[]
   assistantTools?: ToolConfig[]
@@ -661,6 +661,13 @@ export interface WorkspaceAgentProgress {
   conversationId: string
   activity: WorkspaceToolActivity
   changedFiles?: string[]
+}
+
+export interface WorkspaceRunSnapshot {
+  conversationId: string
+  startedAt: number
+  activities: WorkspaceToolActivity[]
+  changedFiles: string[]
 }
 
 export interface WorkspaceAgentResult {
@@ -859,6 +866,8 @@ export interface ChatActivityEvent {
   conversationId: string
   active: boolean
   error?: string
+  kind?: AgentRunKind
+  startedAt?: number
 }
 
 export interface FloatingMascotHintEvent {
@@ -911,6 +920,7 @@ export interface AppStateSnapshot {
   providers: ApiProvider[]
   assistants: Assistant[]
   conversations: Conversation[]
+  workspaceRuns: WorkspaceRunSnapshot[]
   notes: KnowledgeNote[]
   memories: AssistantMemory[]
   tools: ToolConfig[]

@@ -62,25 +62,27 @@ export function formatWorkspaceToolResult(output: string, exitCode?: number): st
 /** Per-run side-effect ledger. A claimed ID remains claimed even if execution
  * throws, because its external side-effect state may be uncertain. */
 export class WorkspaceToolCallLedger {
-  private readonly entries = new Map<string, { state: 'running' } | { state: 'completed'; result: string }>()
+  private readonly claimed = new Set<string>()
+  private readonly results = new Map<string, string>()
 
   claim(callId: string): boolean {
-    if (this.entries.has(callId)) return false
-    this.entries.set(callId, { state: 'running' })
+    if (this.claimed.has(callId)) return false
+    this.claimed.add(callId)
     return true
   }
 
   complete(callId: string, result: string): void {
-    if (this.entries.has(callId)) this.entries.set(callId, { state: 'completed', result })
+    if (!this.claimed.has(callId)) return
+    this.results.set(callId, result)
+    if (this.results.size > 128) this.results.delete(this.results.keys().next().value!)
   }
 
   replayResult(callId: string): string | undefined {
-    const entry = this.entries.get(callId)
-    return entry?.state === 'completed' ? entry.result : undefined
+    return this.results.get(callId)
   }
 
   wasClaimed(callId: string): boolean {
-    return this.entries.has(callId)
+    return this.claimed.has(callId)
   }
 }
 

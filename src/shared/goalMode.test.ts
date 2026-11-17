@@ -19,8 +19,6 @@ const task: GoalTask = {
   goal: 'Ship the project',
   acceptanceCriteria: 'All checks pass',
   status: 'running',
-  maxSteps: 8,
-  maxDurationMinutes: 60,
   runCount: 1,
   startedAt: 10,
   lastRunStartedAt: 10,
@@ -32,12 +30,12 @@ test('treats a persisted running goal as resumable after restart', () => {
   assert.equal(getEffectiveGoalTaskStatus(task, true), 'running')
 })
 
-test('clamps goal execution limits without limiting ordinary workspace runs by time', () => {
+test('honors explicit limits while ordinary workspace tasks can keep running', () => {
   assert.deepEqual(normalizeGoalExecutionLimits({ maxTurns: 99, maxDurationMs: 1 }), {
     maxTurns: 14,
     maxDurationMs: 60_000
   })
-  assert.equal(normalizeGoalExecutionLimits().maxDurationMs, Number.POSITIVE_INFINITY)
+  assert.deepEqual(normalizeGoalExecutionLimits(), { maxTurns: Number.POSITIVE_INFINITY, maxDurationMs: Number.POSITIVE_INFINITY })
 })
 
 test('recognizes the stable execution time limit marker', () => {

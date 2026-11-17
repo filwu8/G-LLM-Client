@@ -9719,17 +9719,17 @@ img.space-logo {
 .space-workspace-field button { display: inline-flex; align-items: center; gap: 6px; }
 
 .workspace-bar { margin: 0 0 9px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--muted) / .38); overflow: hidden; }
-.workspace-bar-head { display: grid; min-width: 0; gap: 5px; padding: 7px 10px; }
-.workspace-bar-location { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.workspace-bar-head { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 5px 12px; padding: 7px 10px; }
+.workspace-bar-location { display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 7px; }
 .workspace-bar-location > svg { flex: 0 0 auto; color: hsl(var(--muted-foreground)); }
-.workspace-bar-controls { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 5px 12px; }
+.workspace-bar-controls { display: flex; min-width: 0; max-width: 100%; flex: 1 1 auto; align-items: center; flex-wrap: wrap; gap: 5px 12px; }
 .workspace-bar-head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: 11px; }
 .workspace-bar-head button { display: grid; min-width: 0; place-items: center; border: 0; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; }
-.workspace-bar-location > button.workspace-path-button { display: block; min-width: 0; max-width: 100%; flex: 1 1 0; overflow: hidden; padding: 2px 0; text-align: left; }
+.workspace-bar-location > button.workspace-path-button { display: block; min-width: 0; max-width: 100%; overflow: hidden; padding: 2px 0; text-align: left; }
 .workspace-bar-location > button.workspace-path-button small { display: block; transition: color 140ms ease; }
 .workspace-bar-location > button.workspace-path-button:hover small { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
 .workspace-bar-location > button.workspace-path-button:focus-visible { border-radius: 4px; outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-.workspace-bar-location > button.workspace-unbind-button { flex: 0 0 auto; padding: 4px; }
+.workspace-bar-controls > button.workspace-unbind-button { flex: 0 0 auto; margin-inline-start: auto; padding: 4px; }
 .workspace-bar-controls > button.workspace-approval-trigger { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 5px; padding: 3px 2px; font-size: 11px; line-height: 1.4; text-align: left; white-space: normal; transition: opacity 140ms ease; }
 .workspace-bar-controls > button.workspace-approval-trigger svg { flex: 0 0 auto; }
 .workspace-bar-controls > button.workspace-approval-trigger.mode-ask { color: hsl(var(--warning)); }

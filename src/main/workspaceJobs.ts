@@ -24,7 +24,11 @@ export class WorkspaceJobs {
   list() { return [...this.jobs.values()].map(({ id, status, collected, truncated }) => ({ id, status, collected, truncated })) }
   start(run: JobRunner, signal?: AbortSignal) {
     if (this.busy) throw new Error('Wait for or stop the active job before starting another command')
-    if (this.jobs.size >= 16) throw new Error('The per-run job limit (16) has been reached')
+    if (this.jobs.size >= 16) {
+      const collected = [...this.jobs.values()].find(job => job.collected)
+      if (!collected) throw new Error('Collect the previous background jobs before starting another command')
+      this.jobs.delete(collected.id)
+    }
     signal?.throwIfAborted()
     const job: Job = { id: randomUUID(), status: 'running', controller: new AbortController(), done: Promise.resolve(), raw: { stdout: '', stderr: '' }, decoder: { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') }, cursor: { stdout: 0, stderr: 0 }, collected: false, bytes: 0, truncated: false }
     this.jobs.set(job.id, job)

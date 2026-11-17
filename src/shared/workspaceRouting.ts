@@ -24,6 +24,14 @@ export function usesWorkspaceAgent(conversation: Pick<Conversation, 'workspace' 
   return fileSubject.test(request) && fileAction.test(request)
 }
 
+export function hasUnfinishedWorkspaceTask(conversation: Conversation | null | undefined): boolean {
+  if (!conversation || !usesWorkspaceAgent(conversation)) return false
+  const goal = conversation.goalTask
+  if (goal && ['running', 'paused', 'failed'].includes(goal.status)) return false
+  const latest = conversation.messages.at(-1)
+  return latest?.role === 'user' || latest?.agentPlan?.status === 'failed' || Boolean(latest?.error && latest.workspaceArtifactRoot)
+}
+
 export function relocateWorkspaceLocation(path: string, previousRoot: string, nextRoot: string, windows: boolean): string {
   const normalized = path.replace(/\\/g, '/'), previous = previousRoot.replace(/\\/g, '/').replace(/\/+$/, ''), next = nextRoot.replace(/\\/g, '/').replace(/\/+$/, '')
   const compare = (value: string) => windows ? value.toLowerCase() : value

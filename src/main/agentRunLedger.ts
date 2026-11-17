@@ -225,7 +225,9 @@ export class AgentRunLedger {
   }
 
   private persistSnapshot(): void {
-    const retained = this.list(maxPersistedRuns)
+    const activeRuns = [...this.runs.values()].filter(run => !terminalStatuses.has(run.status))
+    const recentFinished = this.list(maxPersistedRuns).filter(run => terminalStatuses.has(run.status))
+    const retained = [...activeRuns, ...recentFinished.slice(0, Math.max(0, maxPersistedRuns - activeRuns.length))]
     const retainedIds = new Set(retained.map((run) => run.id))
     for (const id of this.runs.keys()) {
       if (!retainedIds.has(id)) this.runs.delete(id)

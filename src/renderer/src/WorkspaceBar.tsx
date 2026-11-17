@@ -186,7 +186,6 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAp
             <button className="workspace-path-button" onClick={onOpen} title={`${t('workspace.openDirectory')}\n${workspace.rootPath}`} type="button">
               <small>{workspace.projectId ? workspace.displayName : workspace.kind === 'managed' ? t('workspace.managedDirectory') : workspace.displayName}</small>
             </button>
-            {!workspace.projectId && <button className="workspace-unbind-button" aria-label={t('workspace.unbind')} title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>}
           </div>
           <div className="workspace-bar-controls">
             {workspace.browserAccess && browserConversationId === conversationId && conversationId && <button className="workspace-approval-trigger" title={t('workspace.showBrowserDescription')} type="button" onClick={() => {
@@ -213,6 +212,7 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAp
               {workspace.computerWindowAccess && <small>{t('workspace.computerWindowAccess')}</small>}
               {workspace.browserWindowAccess && <small>{t('workspace.browserWindowAccess')}</small>}
             </div>}
+            {!workspace.projectId && <button className="workspace-unbind-button" aria-label={t('workspace.unbind')} title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>}
           </div>
         </div>
         {browserError && <small role="alert">{t('workspace.showBrowserFailed')}</small>}
@@ -307,6 +307,18 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+export function WorkspaceResumeNotice({ onResume }: { onResume: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="composer-notice" role="status">
+      <span>{t('workspace.resumeAvailable')}</span>
+      <div className="composer-notice-actions">
+        <button type="button" onClick={onResume}>{t('workspace.resumeTask')}</button>
+      </div>
     </div>
   )
 }

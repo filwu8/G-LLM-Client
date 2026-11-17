@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.30（Windows 商店私有测试认证中）](https://github.com/filwu8/G-LLM-Client/tree/main)
+当前代码版本：[V2.0.31](docs/releases/v2.0.31.md)
 
-Microsoft Store 当前公开版：[V2.0.27](https://apps.microsoft.com/detail/9MVD547V4ZN9)，2026-11-09 核实已上架。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
+Microsoft Store 当前公开版：[V2.0.31](https://apps.microsoft.com/detail/9MVD547V4ZN9)，发布于 2026-11-13。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -24,10 +24,15 @@ Microsoft Store 当前公开版：[V2.0.27](https://apps.microsoft.com/detail/9M
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
 
-## V2.0.30 Windows 浏览器接管与应用操控（私有测试认证中）
+## V2.0.31 工作区任务持续执行与恢复
+
+- 工作区 Agent 根据用户目标和已验证的结果判断任务是否完成。长任务自动整理上下文，遇到短暂服务故障可重试。会话界面重载后可接回进行中的任务，应用重启后可从已保存的进度恢复。
+- 工作区名称、权限和操作入口在空间足够时显示为一行，空间不足时自动换行。
+
+## V2.0.30 Windows 浏览器接管与应用操控（私有测试已上架）
 
 - 在「电脑与浏览器 → Agent 设置」分别开启浏览器接管和 Windows 应用操控。助手可以操作选定的现有浏览器窗口或桌面窗口，执行前逐次确认。支持图像输入的模型可根据窗口截图定位控件。
-- 新功能继承 `2.0.29` 的个人账号连接与额度查询。Windows x64 包 `2.0.30.0` 已提交 Microsoft Store 私有测试认证，见 [Windows 发布记录](docs/releases/v2.0.30.md)。
+- 新功能继承 `2.0.29` 的个人账号连接与额度查询。Microsoft Store 私有测试渠道已提供 Windows x64 包 `2.0.30.0`。见 [Windows 发布记录](docs/releases/v2.0.30.md)。
 
 ## V2.0.29 注册 / 登录后自动配置（Windows 私有测试已上架）
 

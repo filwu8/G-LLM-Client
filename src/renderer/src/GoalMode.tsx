@@ -17,8 +17,6 @@ export interface GoalSetupValue {
   acceptanceCriteria: string
   rootPath: string
   approvalMode: NonNullable<ConversationWorkspace['approvalMode']>
-  maxSteps: number
-  maxDurationMinutes: number
   webSearchMode: WebSearchMode
   webSearchScope: GoalWebSearchScope
   webSearchDomains: string[]
@@ -39,8 +37,6 @@ export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initia
   const [contextMode, setContextMode] = useState<GoalContextMode>('auto')
   const [rootPath, setRootPath] = useState(currentWorkspace?.rootPath ?? '')
   const [approvalMode, setApprovalMode] = useState<NonNullable<ConversationWorkspace['approvalMode']>>(currentWorkspace?.approvalMode ?? 'auto')
-  const [maxSteps, setMaxSteps] = useState(8)
-  const [maxDurationMinutes, setMaxDurationMinutes] = useState(60)
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>(defaultWebSearchMode ?? 'auto')
   const [webSearchScope, setWebSearchScope] = useState<GoalWebSearchScope>('all')
   const [webSearchDomains, setWebSearchDomains] = useState('')
@@ -98,8 +94,6 @@ export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initia
 
         <div className="goal-limit-grid">
           {rootPath && <label><span>{t('goalMode.approvalMode')}</span><select value={approvalMode} onChange={(event) => setApprovalMode(event.target.value as typeof approvalMode)}><option value="ask">{t('workspace.approvalAsk')}</option><option value="auto">{t('workspace.approvalAuto')}</option><option value="full">{t('workspace.approvalFull')}</option></select></label>}
-          <label><span>{t('goalMode.maxSteps')}</span><select value={maxSteps} onChange={(event) => setMaxSteps(Number(event.target.value))}><option value={5}>5</option><option value={8}>8</option><option value={12}>12</option><option value={14}>14</option></select></label>
-          <label><span>{t('goalMode.maxDuration')}</span><select value={maxDurationMinutes} onChange={(event) => setMaxDurationMinutes(Number(event.target.value))}><option value={15}>15 {t('goalMode.minutes')}</option><option value={30}>30 {t('goalMode.minutes')}</option><option value={60}>60 {t('goalMode.minutes')}</option><option value={120}>120 {t('goalMode.minutes')}</option></select></label>
         </div>
 
         <section className="goal-search-settings">
@@ -112,7 +106,7 @@ export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initia
         </section>
 
         <div className="goal-safety-note"><ShieldCheck size={16} /><span>{t('goalMode.safetyNote')}</span></div>
-        <footer><button className="secondary-action" onClick={onClose} type="button">{t('common.cancel')}</button><button className="primary-action" disabled={!goal.trim() || !acceptanceCriteria.trim() || !rootPath || (webSearchMode !== 'off' && webSearchScope === 'specified' && normalizeGoalWebSearchDomains(webSearchDomains).length === 0)} onClick={() => onStart({ goal: goal.trim(), acceptanceCriteria: acceptanceCriteria.trim(), rootPath, approvalMode, maxSteps, maxDurationMinutes, webSearchMode, webSearchScope, webSearchDomains: normalizeGoalWebSearchDomains(webSearchDomains), contextMode })} type="button"><Play size={15} />{t('goalMode.start')}</button></footer>
+        <footer><button className="secondary-action" onClick={onClose} type="button">{t('common.cancel')}</button><button className="primary-action" disabled={!goal.trim() || !rootPath || (webSearchMode !== 'off' && webSearchScope === 'specified' && normalizeGoalWebSearchDomains(webSearchDomains).length === 0)} onClick={() => onStart({ goal: goal.trim(), acceptanceCriteria: acceptanceCriteria.trim(), rootPath, approvalMode, webSearchMode, webSearchScope, webSearchDomains: normalizeGoalWebSearchDomains(webSearchDomains), contextMode })} type="button"><Play size={15} />{t('goalMode.start')}</button></footer>
       </section>
     </div>
   )
@@ -138,8 +132,6 @@ export function GoalTaskPanel({ task, running, onPause, onResume, onClear, onNew
           <small>{t(`goalMode.status.${displayStatus}`)}</small>
         </header>
         <div className="goal-task-meta">
-          <span>{t('goalMode.runCount', { count: task.runCount })}</span>
-          <span>{t('goalMode.limits', { steps: task.maxSteps, minutes: task.maxDurationMinutes })}</span>
           {task.resolvedContextMode && <span>{t(`goalMode.contextResolved.${task.resolvedContextMode}`)}</span>}
           {task.lastPlan?.steps.map((step) => (
             <span className={`goal-task-step ${step.status}`} key={step.id} title={step.detail}>
