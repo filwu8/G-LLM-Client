@@ -1,10 +1,92 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Plus, Trash2 } from 'lucide-react'
 import type { ConversationWorkspace } from '@shared/types'
-export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess' | 'computerWindowAccess' | 'browserWindowAccess'>
+export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess' | 'computerWindowAccess' | 'browserWindowAccess' | 'harness'>
 interface VariableRow { name: string; description: string; configured: boolean; value: string; enabled: boolean }
+
+type WorkspaceAgentSettingsPayload = Awaited<ReturnType<typeof window.gllm.getWorkspaceAgentSettings>>
+
+/**
+ * The dialog used to mount with empty state, request the settings, and then repaint
+ * the whole form when the IPC landed. Measured on a cold start that repaint is a
+ * ~60ms long frame about 120ms after the click — the pause users describe as "the
+ * first open is slow". Prefetching lets the first paint already carry the real data,
+ * so there is no second render at all.
+ */
+const settingsPrefetch = new Map<string, WorkspaceAgentSettingsPayload>()
+const settingsInFlight = new Map<string, Promise<WorkspaceAgentSettingsPayload>>()
+
+function requestWorkspaceAgentSettings(rootPath: string): Promise<WorkspaceAgentSettingsPayload> {
+  const existing = settingsInFlight.get(rootPath)
+  if (existing) return existing
+  const promise = window.gllm.getWorkspaceAgentSettings(rootPath)
+    .then((value) => {
+      settingsPrefetch.set(rootPath, value)
+      return value
+    })
+    .finally(() => { settingsInFlight.delete(rootPath) })
+  settingsInFlight.set(rootPath, promise)
+  return promise
+}
+
+export function prefetchWorkspaceAgentSettings(rootPath?: string): void {
+  if (!rootPath || settingsPrefetch.has(rootPath)) return
+  void requestWorkspaceAgentSettings(rootPath).catch(() => {})
+}
+
+type ExecutionCheckResult = Awaited<ReturnType<typeof window.gllm.checkWorkspaceExecution>>
+
+const executionCheckCache = new Map<string, ExecutionCheckResult>()
+const executionCheckInFlight = new Map<string, Promise<ExecutionCheckResult>>()
+
+function executionCheckKey(rootPath: string, mode: string, sandboxNetwork: boolean): string {
+  return `${rootPath}|${mode}|${sandboxNetwork ? 1 : 0}`
+}
+
+function requestWorkspaceExecutionCheck(
+  rootPath: string,
+  mode: string,
+  sandboxNetwork: boolean
+): Promise<ExecutionCheckResult> {
+  const executionMode = mode === 'host' ? 'host' : 'sandbox'
+  const network = sandboxNetwork === true
+  const key = executionCheckKey(rootPath, executionMode, network)
+  const existing = executionCheckInFlight.get(key)
+  if (existing) return existing
+  const promise = window.gllm.checkWorkspaceExecution(rootPath, { executionMode, sandboxNetwork: network })
+    .then((result) => {
+      executionCheckCache.set(key, result)
+      return result
+    })
+    .finally(() => { executionCheckInFlight.delete(key) })
+  executionCheckInFlight.set(key, promise)
+  return promise
+}
+
+/**
+ * Runs the sandbox probe before the dialog opens. `checkWorkspaceExecution` spawns
+ * work in the main process and its result repaints the diagnostics list, which is
+ * measured as a long frame just after the click on a cold start.
+ */
+export function prefetchWorkspaceExecutionCheck(rootPath?: string, mode?: string, sandboxNetwork?: boolean): void {
+  if (!rootPath) return
+  const key = executionCheckKey(rootPath, mode === 'host' ? 'host' : 'sandbox', sandboxNetwork === true)
+  if (executionCheckCache.has(key)) return
+  void requestWorkspaceExecutionCheck(rootPath, mode ?? 'sandbox', sandboxNetwork === true).catch(() => {})
+}
+
+function buildVariableRows(value: WorkspaceAgentSettingsPayload, workspace: ConversationWorkspace): VariableRow[] {  const names = [...new Set([...(workspace.envNames ?? []), ...value.variables.map(item => item.name), ...value.suggestedNames])]
+  return names.map(name => ({
+    name,
+    description: value.variables.find(item => item.name === name)?.description ?? '',
+    configured: value.variables.find(item => item.name === name)?.configured ?? false,
+    value: '',
+    enabled: workspace.envNames?.includes(name) ?? false
+  }))
+}
+
 export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { workspace?: ConversationWorkspace; onSave: (workspace: ConversationWorkspace) => Promise<void>; onClose: () => void }) {
   const { t } = useTranslation()
   const [candidate, setCandidate] = useState(workspace)
@@ -25,6 +107,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   workspace: ConversationWorkspace; onSave: (settings: WorkspaceAgentSettings) => Promise<void>; onClose: () => void
 }) {
   const { t } = useTranslation()
+  const prefetched = settingsPrefetch.get(workspace.rootPath)
   const [nativeExecution, setNativeExecution] = useState(workspace.nativeExecution === true)
   const [computerAccess, setComputerAccess] = useState(workspace.computerAccess === true)
   const [browserAccess, setBrowserAccess] = useState(workspace.browserAccess === true)
@@ -40,10 +123,12 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   const [executionMode, setExecutionMode] = useState<'sandbox' | 'host'>(workspace.executionMode === 'host' ? 'host' : 'sandbox')
   const [sandboxNetwork, setSandboxNetwork] = useState(workspace.sandboxNetwork === true)
   const [loadAgentsMd, setLoadAgentsMd] = useState(workspace.loadAgentsMd !== false)
-  const [rows, setRows] = useState<VariableRow[]>([])
+  const [harnessEnabled, setHarnessEnabled] = useState(workspace.harness?.enabled === true)
+  const [harnessDelegateAll, setHarnessDelegateAll] = useState(workspace.harness?.delegateAll === true)
+  const [rows, setRows] = useState<VariableRow[]>(() => prefetched ? buildVariableRows(prefetched, workspace) : [])
   const [removed, setRemoved] = useState<string[]>([])
-  const [status, setStatus] = useState<Awaited<ReturnType<typeof window.gllm.getWorkspaceAgentSettings>>>()
-  const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState<WorkspaceAgentSettingsPayload | undefined>(prefetched)
+  const [loading, setLoading] = useState(!prefetched)
   const [saving, setSaving] = useState(false)
   const [checkRevision, setCheckRevision] = useState(0)
   const [checking, setChecking] = useState(false)
@@ -51,22 +136,37 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   const [checkError, setCheckError] = useState('')
   useEffect(() => {
     let active = true
-    setDiagnostics(undefined); setCheckError('')
-    if (!nativeExecution) { setChecking(false); return }
+    setCheckError('')
+    if (!nativeExecution) { setChecking(false); setDiagnostics(undefined); return }
+    // A cached probe result means the dialog can paint its diagnostics immediately.
+    // See prefetchWorkspaceExecutionCheck: without it the check lands ~120ms after
+    // the click and repaints the list as two long frames.
+    const key = executionCheckKey(workspace.rootPath, executionMode, sandboxNetwork)
+    const cached = checkRevision === 0 ? executionCheckCache.get(key) : undefined
+    if (cached) {
+      setDiagnostics(cached)
+      setChecking(false)
+      return () => { active = false }
+    }
+    setDiagnostics(undefined)
     setChecking(true)
-    window.gllm.checkWorkspaceExecution(workspace.rootPath, { executionMode, sandboxNetwork }).then(result => {
-      if (active) setDiagnostics(result)
+    requestWorkspaceExecutionCheck(workspace.rootPath, executionMode, sandboxNetwork).then(result => {
+      // Filling in diagnostics is not urgent: a transition keeps the update
+      // interruptible so it cannot freeze the dialog while the user is reading it.
+      if (active) startTransition(() => setDiagnostics(result))
     }).catch(reason => { if (active) setCheckError(String(reason)) }).finally(() => { if (active) setChecking(false) })
     return () => { active = false }
   }, [workspace.rootPath, nativeExecution, executionMode, sandboxNetwork, checkRevision])
   const [error, setError] = useState('')
   useEffect(() => {
+    // Prefetched before the dialog opened: the first paint is already final, so skip
+    // the request entirely instead of repainting the form a moment later.
+    if (settingsPrefetch.has(workspace.rootPath)) return
     let active = true
-    window.gllm.getWorkspaceAgentSettings(workspace.rootPath).then(value => {
+    requestWorkspaceAgentSettings(workspace.rootPath).then(value => {
       if (!active) return
       setStatus(value)
-      const names = [...new Set([...(workspace.envNames ?? []), ...value.variables.map(item => item.name), ...value.suggestedNames])]
-      setRows(names.map(name => ({ name, description: value.variables.find(item => item.name === name)?.description ?? '', configured: value.variables.find(item => item.name === name)?.configured ?? false, value: '', enabled: workspace.envNames?.includes(name) ?? false })))
+      setRows(buildVariableRows(value, workspace))
     }).catch(reason => { if (active) setError(String(reason)) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [workspace.rootPath])
@@ -79,7 +179,11 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       const updates = rows.filter(row => row.value !== '').map(row => ({ name: row.name, description: row.description, value: row.value }))
       if (updates.length || removed.length) await window.gllm.saveWorkspaceVariables(workspace.rootPath, [...updates, ...[...new Set(removed)].filter(name => /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && !rows.some(row => row.name === name)).map(name => ({ name, description: '', remove: true }))])
       setRows(current => current.map(row => ({ ...row, value: '' })))
-      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork })
+      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork, harness: { ...(workspace.harness ?? {}), enabled: harnessEnabled, delegateAll: harnessDelegateAll } })
+      // Saved values invalidate the prefetch: refresh it so the next open is fast
+      // and shows the new state.
+      settingsPrefetch.delete(workspace.rootPath)
+      prefetchWorkspaceAgentSettings(workspace.rootPath)
       onClose()
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setSaving(false) }
@@ -115,6 +219,13 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
         {status && !status.sandbox.available && <p>{status.sandbox.detail}</p>}
         <label><input type="checkbox" checked={sandboxNetwork} onChange={event => setSandboxNetwork(event.target.checked)} />{t('workspace.agentNetworkOn')}</label>
         <p>{t('workspace.agentNetworkDescription')}</p>
+      </>}
+      <label><input type="checkbox" checked={harnessEnabled} onChange={event => { setHarnessEnabled(event.target.checked); if (!event.target.checked) setHarnessDelegateAll(false) }} />{t('workspace.harnessEnable')}</label>
+      <p>{t('workspace.harnessDescription')}</p>
+      {status?.harness && <p role="status" className={status.harness.installed ? 'harness-ready' : 'harness-missing'}>{t(status.harness.installed ? 'workspace.harnessReady' : 'workspace.harnessMissing')}{status.harness.nodeVersion ? ` (Node ${status.harness.nodeVersion})` : ''}</p>}
+      {harnessEnabled && <>
+        <label><input type="checkbox" checked={harnessDelegateAll} onChange={event => setHarnessDelegateAll(event.target.checked)} />{t('workspace.harnessDelegateAll')}</label>
+        <p>{t('workspace.harnessDelegateAllDescription')}</p>
       </>}
       {nativeExecution && <section className="workspace-execution-check" aria-live="polite">
         <p><strong>{t('workspace.checkTitle')}</strong></p>

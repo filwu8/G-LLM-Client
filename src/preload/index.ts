@@ -145,12 +145,24 @@ const api = {
   revealWorkspaceFile: (rootPath: string, relativePath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:reveal-file', rootPath, relativePath),
   checkWorkspaceExecution: (rootPath: string, options: import('../shared/types').WorkspaceDiagnosticOptions): Promise<import('../shared/types').WorkspaceDiagnosticResult> => ipcRenderer.invoke('workspace:check-execution', rootPath, options),
-  getWorkspaceAgentSettings: (rootPath: string): Promise<{ encryptionAvailable: boolean; variables: Array<{ name: string; description: string; configured: boolean }>; suggestedNames: string[]; sandbox: { backend: string; available: boolean; detail: string } }> => ipcRenderer.invoke('workspace:agent-settings-status', rootPath),
+  getWorkspaceAgentSettings: (rootPath: string): Promise<{ encryptionAvailable: boolean; variables: Array<{ name: string; description: string; configured: boolean }>; suggestedNames: string[]; sandbox: { backend: string; available: boolean; detail: string }; harness: import('../shared/types').HarnessRuntimeStatus }> => ipcRenderer.invoke('workspace:agent-settings-status', rootPath),
   saveWorkspaceVariables: (rootPath: string, updates: Array<{ name: string; description: string; value?: string; remove?: boolean }>): Promise<void> => ipcRenderer.invoke('workspace:save-variables', rootPath, updates),
   openWorkspaceDirectory: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:open-directory', rootPath),
   respondWorkspaceApproval: (id: string, approved: boolean): void =>
     ipcRenderer.send('workspace-agent:approval-response', id, approved),
+  respondWorkspaceInteraction: (response: import('../shared/types').WorkspaceInteractionResponse): void =>
+    ipcRenderer.send('workspace-agent:interaction-response', response),
+  cancelWorkspaceInteraction: (id: string): void =>
+    ipcRenderer.send('workspace-agent:cancel-interaction', id),
+  listPendingWorkspaceInteractions: (conversationId?: string): Promise<import('../shared/types').WorkspaceInteractionRequest[]> =>
+    ipcRenderer.invoke('workspace-agent:pending-interactions', conversationId),
+  getAgentPermissionMode: (conversationId: string): Promise<import('../shared/types').AgentPermissionMode> =>
+    ipcRenderer.invoke('workspace-agent:permission-mode:get', conversationId),
+  setAgentPermissionMode: (conversationId: string, mode: import('../shared/types').AgentPermissionMode): Promise<import('../shared/types').AgentPermissionModeChange> =>
+    ipcRenderer.invoke('workspace-agent:permission-mode:set', { conversationId, mode }),
+  acknowledgeFullAccess: (): Promise<AppSettings> =>
+    ipcRenderer.invoke('workspace-agent:permission-mode:acknowledge'),
   deleteProject: (id: string): Promise<AppStateSnapshot> => ipcRenderer.invoke('project:delete', id),
   saveAssistant: (assistant: Assistant): Promise<Assistant> => ipcRenderer.invoke('assistant:save', assistant),
   exportAssistantTemplate: (id: string): Promise<string | null> => ipcRenderer.invoke('assistant:export-template', id),
@@ -160,6 +172,8 @@ const api = {
   deleteAssistant: (id: string): Promise<AppStateSnapshot> => ipcRenderer.invoke('assistant:delete', id),
   suggestAssistant: (request: AssistantSuggestionRequest): Promise<AssistantSuggestion> =>
     ipcRenderer.invoke('assistant:suggest', request),
+  assessGoal: (request: import('../shared/types').GoalAssessRequest): Promise<import('../shared/types').GoalAssessResult> =>
+    ipcRenderer.invoke('goal:assess', request),
   saveConversation: (conversation: Conversation): Promise<Conversation> =>
     ipcRenderer.invoke('conversation:save', conversation),
   setConversationPinned: (id: string, pinned: boolean): Promise<Conversation> =>
@@ -323,6 +337,21 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, prompt: WorkspaceApprovalPrompt) => listener(prompt)
     ipcRenderer.on('workspace-agent:approval-requested', handler)
     return () => ipcRenderer.removeListener('workspace-agent:approval-requested', handler)
+  },
+  onWorkspaceInteractionRequested: (listener: (request: import('../shared/types').WorkspaceInteractionRequest) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, request: import('../shared/types').WorkspaceInteractionRequest) => listener(request)
+    ipcRenderer.on('workspace-agent:interaction-requested', handler)
+    return () => ipcRenderer.removeListener('workspace-agent:interaction-requested', handler)
+  },
+  onWorkspaceInteractionResolved: (listener: (payload: { id: string; response: import('../shared/types').WorkspaceInteractionResponse }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; response: import('../shared/types').WorkspaceInteractionResponse }) => listener(payload)
+    ipcRenderer.on('workspace-agent:interaction-resolved', handler)
+    return () => ipcRenderer.removeListener('workspace-agent:interaction-resolved', handler)
+  },
+  onAgentPermissionModeChanged: (listener: (change: import('../shared/types').AgentPermissionModeChange) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, change: import('../shared/types').AgentPermissionModeChange) => listener(change)
+    ipcRenderer.on('workspace-agent:permission-mode', handler)
+    return () => ipcRenderer.removeListener('workspace-agent:permission-mode', handler)
   },
   onConversationChanged: (listener: (event: ConversationChangeEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, change: ConversationChangeEvent) => listener(change)

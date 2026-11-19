@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { WorkspaceToolActivity } from '../shared/types.ts'
+import type { WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
 
 export const WORKSPACE_EVIDENCE_HISTORY = 128
 
@@ -25,6 +25,19 @@ export interface WorkspaceCheckpoint {
   stalledTurns: number
   hasExecutionEvidence: boolean
   pendingTool?: string
+  /**
+   * A question the agent asked and is still waiting on. Unlike pendingTool this
+   * is a safe resume point: the run can continue once an answer exists, and the
+   * same request id is reused so the user is never asked twice.
+   */
+  pendingInteraction?: WorkspaceInteractionRequest
+  /** Side-effecting tool call ids already executed in this task, across resumes. */
+  completedCallIds?: string[]
+  /**
+   * Operations the user explicitly rejected in this task. They stay blocked
+   * across resumes and are never auto-approved by a permission-mode change.
+   */
+  deniedApprovals?: string[]
 }
 
 export function workspaceTaskId(messageId: string, goalId?: string): string {

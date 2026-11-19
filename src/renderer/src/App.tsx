@@ -104,19 +104,24 @@ import {
   type MessageSelectionSnapshot
 } from './clipboard'
 import {
+  flushComposerDraftPersist,
   getComposerDraftStorageKey,
   getComposerSessionKey,
   MAIN_COMPOSER_DRAFT_KEY,
   persistComposerDraft,
   readComposerDraft,
-  resizeComposerTextarea
+  resizeComposerTextarea,
+  scheduleComposerDraftPersist
 } from './composerInput'
 import { getMessageSendShortcutLabel, shouldSendMessageFromKeyboard } from './keyboard'
 import { applyRendererLanguage, rendererI18n } from './i18n'
+import { primeOverlayPipeline } from './overlayPrewarm'
 import { ImagePreviewDialog, type ImagePreviewSource } from './ImagePreviewDialog'
 import { MarkdownMessage } from './MarkdownMessage'
 import { ResponseDuration } from './ResponseDuration'
 import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
+import { GoalChoiceCards } from './GoalChoiceCards'
+import { AgentActivityPanel, type OutlineEntry } from './AgentActivityPanel'
 import { UsageAnalyticsPanel } from './UsageAnalytics'
 import { calculateLocalUsageStats } from './localUsageStats'
 import { LocalTaskPanel } from './LocalTaskPanel'
@@ -127,15 +132,18 @@ import {
   searchLocalizedAssistantPresets
 } from './localizedContent'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog, WorkspaceResumeNotice } from './WorkspaceBar'
-import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
+import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
+import { AgentPermissionPicker } from './AgentPermissionPicker'
+import { AGENT_PERMISSION_MODES } from '@shared/types'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
 import { applyDocumentTheme } from './theme'
-import { formatMessageTimestamp, getTimeZoneOptionLabel, resolveTimeZone, TIME_ZONE_OPTIONS } from './timeZone'
+import { cachedDateTimeFormat, formatMessageTimestamp, getTimeZoneOptionLabel, resolveTimeZone, TIME_ZONE_OPTIONS } from './timeZone'
 import { sortAssistantsForSidebar, sortConversationsForSidebar } from '@shared/sidebarOrdering'
 import {
   ASSISTANT_PRESET_CATEGORIES,
@@ -178,6 +186,9 @@ import type {
   ChatMessage,
   ClipboardAttachmentInput,
   Conversation,
+  GoalDraft,
+  GoalAssessResult,
+  GoalChoice,
   GoalTask,
   ConversationSearchResponse,
   ConversationSearchResult,
@@ -203,11 +214,15 @@ import type {
   WebSearchMode,
   WorkspaceAgentRequest,
   ConversationWorkspace,
+  AgentPermissionMode,
   WorkspaceApprovalPrompt,
+  WorkspaceInteractionRequest,
+  WorkspaceInteractionResponse,
   WorkspaceToolActivity
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
 import { estimateTokenCount } from '@shared/tokenEstimate'
+import { extractChoicesFromReply } from '@shared/choiceExtraction'
 import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
 
 const iconMap: Record<AssistantIcon, LucideIcon> = {
@@ -588,12 +603,12 @@ function formatSidebarConversationTime(timestamp: number, locale: string): strin
   const now = new Date()
   const sameDay = date.toDateString() === now.toDateString()
   if (sameDay) {
-    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date)
+    return cachedDateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date)
   }
   if (date.getFullYear() === now.getFullYear()) {
-    return new Intl.DateTimeFormat(locale, { month: '2-digit', day: '2-digit' }).format(date)
+    return cachedDateTimeFormat(locale, { month: '2-digit', day: '2-digit' }).format(date)
   }
-  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+  return cachedDateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 }
 
 function getKnowledgeReferenceText(knowledgeRefs: KnowledgeReference[] = []): string {
@@ -706,7 +721,56 @@ function applyChatChunkToConversation(
     }
   }
 
-  return withConversationTokens({ ...conversation, messages, updatedAt: Date.now() })
+  const completed = withConversationTokens({ ...conversation, messages, updatedAt: Date.now() })
+  return chunk.done ? withPendingChoice(completed) : completed
+}
+
+/**
+ * When a finished reply asks the user to pick between options, surface them as
+ * tappable cards above the composer. The cards are dropped again as soon as the
+ * latest reply is an ordinary answer.
+ */
+/**
+ * Re-derive option cards for recently active conversations, so an existing
+ * "方案 A / 方案 B" reply shows its options without needing a new turn.
+ */
+function withRecentPendingChoices(conversations: Conversation[]): Conversation[] {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  let changed = false
+  const next = conversations.map((conversation) => {
+    if ((conversation.updatedAt ?? 0) < cutoff) return conversation
+    const settled = withPendingChoice(conversation)
+    if (settled !== conversation) changed = true
+    return settled
+  })
+  return changed ? next : conversations
+}
+
+function withPendingChoice(conversation: Conversation): Conversation {
+  const last = conversation.messages[conversation.messages.length - 1]
+  if (!last || last.role !== 'assistant' || last.error) {
+    return conversation.pendingChoice ? { ...conversation, pendingChoice: undefined } : conversation
+  }
+  const extracted = extractChoicesFromReply(last.content ?? '')
+  if (!extracted) {
+    return conversation.pendingChoice ? { ...conversation, pendingChoice: undefined } : conversation
+  }
+  if (
+    conversation.pendingChoice?.messageId === last.id &&
+    conversation.pendingChoice.prompt === extracted.prompt &&
+    conversation.pendingChoice.options.join('\u0000') === extracted.options.join('\u0000')
+  ) {
+    return conversation
+  }
+  return {
+    ...conversation,
+    pendingChoice: {
+      prompt: extracted.prompt,
+      options: extracted.options,
+      messageId: last.id,
+      createdAt: Date.now()
+    }
+  }
 }
 
 function AssistantAvatar({ assistant, className = '' }: { assistant: Assistant; className?: string }) {
@@ -727,6 +791,8 @@ function getComparableSettings(settings: AppSettings) {
     timeZone: settings.timeZone,
     theme: settings.theme,
     webSearchMode: settings.webSearchMode,
+    agentPermissionMode: settings.agentPermissionMode,
+    rememberAgentPermission: settings.rememberAgentPermission,
     temperature: Number(settings.temperature),
     enableTemperature: settings.enableTemperature,
     maxTokens: Number(settings.maxTokens),
@@ -818,6 +884,9 @@ export default function App() {
   const [pendingWorkspaceRoot, setPendingWorkspaceRoot] = useState<string | null>(null)
   const [desktopSetupOpen, setDesktopSetupOpen] = useState(false)
   const [workspaceApprovalPrompts, setWorkspaceApprovalPrompts] = useState<WorkspaceApprovalPrompt[]>([])
+  const [agentPermissionMode, setAgentPermissionMode] = useState<AgentPermissionMode>('ask')
+  const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false)
+  const [workspaceInteractions, setWorkspaceInteractions] = useState<WorkspaceInteractionRequest[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
   const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -828,6 +897,14 @@ export default function App() {
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(true)
   const [goalSetupOpen, setGoalSetupOpen] = useState(false)
+  const [goalModeArmed, setGoalModeArmed] = useState(false)
+  const [goalAssessing, setGoalAssessing] = useState(false)
+  const goalAssessingRef = useRef(false)
+  const goalFlowTokenRef = useRef(0)
+  const [outlineActiveId, setOutlineActiveId] = useState<string | null>(null)
+  // The activity panel starts collapsed: a quiet reading layout by default,
+  // expanded on demand or when the agent genuinely needs the user.
+  const [outlineOpen, setOutlineOpen] = useState(false)
   const [spaceCenterOpen, setSpaceCenterOpen] = useState(false)
   const [agreementOpen, setAgreementOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
@@ -858,7 +935,6 @@ export default function App() {
   const [editingMessageContent, setEditingMessageContent] = useState('')
   const [autoFollowMessages, setAutoFollowMessages] = useState(true)
   const [isNearMessageBottom, setIsNearMessageBottom] = useState(true)
-  const [composerHeight, setComposerHeight] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLFormElement>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -1030,7 +1106,70 @@ export default function App() {
   )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
   const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace)
+
+  // Fetch the workspace-agent settings before the user opens the dialog, so the
+  // first paint there carries real data instead of repainting ~120ms later.
+  const currentWorkspaceRoot = currentWorkspace?.rootPath
+  const currentWorkspaceNative = currentWorkspace?.nativeExecution === true
+  const currentWorkspaceMode = currentWorkspace?.executionMode
+  const currentWorkspaceNetwork = currentWorkspace?.sandboxNetwork === true
+  useEffect(() => {
+    if (!currentWorkspaceRoot) return
+    prefetchWorkspaceAgentSettings(currentWorkspaceRoot)
+    if (!currentWorkspaceNative) return
+    // The sandbox probe is heavy, so let first paint settle before running it.
+    const timer = window.setTimeout(() => {
+      prefetchWorkspaceExecutionCheck(currentWorkspaceRoot, currentWorkspaceMode, currentWorkspaceNetwork)
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [currentWorkspaceRoot, currentWorkspaceNative, currentWorkspaceMode, currentWorkspaceNetwork])
+  const outlineEntries = useMemo<OutlineEntry[]>(() => {
+    if (!activeConversation) return []
+    return activeConversation.messages
+      .filter((message) => message.role === 'user' && message.content.trim())
+      .map((message) => ({
+        id: message.id,
+        label: message.content.trim().replace(/\s+/g, ' ').slice(0, 40)
+      }))
+  }, [activeConversation])
+  const outlinePlan = activeConversation?.goalTask?.lastPlan
+  const panelActivities = useMemo<WorkspaceToolActivity[]>(() => {
+    const merged = new Map<string, WorkspaceToolActivity>()
+    for (const message of activeConversation?.messages ?? []) {
+      for (const activity of message.workspaceActivities ?? []) merged.set(activity.id, activity)
+    }
+    for (const activity of workspaceActivities) merged.set(activity.id, activity)
+    return [...merged.values()]
+  }, [activeConversation, workspaceActivities])
+  const panelChangedFiles = useMemo(() => {
+    if (workspaceChangedFiles.length > 0) return workspaceChangedFiles
+    const latest = [...(activeConversation?.messages ?? [])]
+      .reverse()
+      .find((message) => (message.workspaceChangedFiles?.length ?? 0) > 0)
+    return latest?.workspaceChangedFiles ?? []
+  }, [activeConversation, workspaceChangedFiles])
+  const panelGoal = outlinePlan?.goal ?? activeConversation?.goalTask?.goal ?? outlineEntries.at(-1)?.label
   const workspaceApprovalPrompt = currentWorkspace ? workspaceApprovalPrompts.find(prompt => prompt.conversationId === activeConversation?.id) ?? null : null
+  const activeInteraction = activeConversation
+    ? workspaceInteractions.find((request) => request.conversationId === activeConversation.id) ?? null
+    : null
+  const showActivityPanel = Boolean(activeConversation) && outlineOpen
+  // The collapsed handle only exists when there is something to look at, so an
+  // ordinary chat leaves the right edge completely empty.
+  const hasPanelContent = Boolean(activeConversation) && (
+    isStreaming ||
+    outlineOpen ||
+    panelActivities.length > 0 ||
+    panelChangedFiles.length > 0 ||
+    Boolean(outlinePlan) ||
+    Boolean(workspaceApprovalPrompt) ||
+    Boolean(activeInteraction)
+  )
+  // Runs no longer force the panel open: the collapsed handle already reports
+  // progress. Only a request that blocks on the user justifies interrupting.
+  useEffect(() => {
+    if (workspaceApprovalPrompt || activeInteraction) setOutlineOpen(true)
+  }, [workspaceApprovalPrompt?.id, activeInteraction?.id])
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
     [activeConversation, assistantDefaultProvider, providers]
@@ -1136,7 +1275,7 @@ export default function App() {
     setSettings(state.settings)
     setProviders(nextProviders)
     setAssistants(nextAssistants)
-    setConversations(state.conversations)
+    setConversations(withRecentPendingChoices(state.conversations))
     setNotes(state.notes)
     setMemories(state.memories ?? [])
     setTools(state.tools ?? [])
@@ -1284,6 +1423,13 @@ export default function App() {
     if (settings) applyRendererLanguage(settings.language)
   }, [settings?.language])
 
+  // Warm the overlay pipeline once per language so the first modal a user opens
+  // does not pay the one-time shaping / layout / compositing cost.
+  useEffect(() => {
+    if (!settings) return
+    primeOverlayPipeline((key) => String(t(key)), settings.language)
+  }, [settings?.language, t])
+
   useEffect(() => {
     void window.gllm.setActiveAssistantId(activeAssistantId)
   }, [activeAssistantId])
@@ -1308,7 +1454,7 @@ export default function App() {
   }, [activeProjectId, composerSessionKey])
 
   useEffect(() => {
-    persistComposerDraft(getComposerDraftStorageKey(composerSessionKey), draft)
+    scheduleComposerDraftPersist(getComposerDraftStorageKey(composerSessionKey), draft)
   }, [composerSessionKey, draft])
 
   useEffect(() => {
@@ -1513,6 +1659,47 @@ export default function App() {
     []
   )
 
+  // Structured agent questions: live requests plus ones left pending by a
+  // previous session, so reopening the app still shows what the agent waits on.
+  useEffect(() => {
+    const merge = (requests: WorkspaceInteractionRequest[]) => setWorkspaceInteractions((current) => {
+      const next = [...current]
+      for (const request of requests) {
+        const index = next.findIndex((item) => item.id === request.id)
+        if (index >= 0) next[index] = request
+        else next.push(request)
+      }
+      return next
+    })
+    const offRequested = window.gllm.onWorkspaceInteractionRequested((request) => merge([request]))
+    const offResolved = window.gllm.onWorkspaceInteractionResolved(({ id }) => {
+      setWorkspaceInteractions((current) => current.filter((item) => item.id !== id))
+    })
+    void window.gllm.listPendingWorkspaceInteractions().then(merge).catch(() => undefined)
+    return () => {
+      offRequested()
+      offResolved()
+    }
+  }, [])
+
+  // The permission selector always shows the mode that is actually enforced:
+  // the conversation's stored mode, or the configured default for a new task.
+  useEffect(() => {
+    setAgentPermissionMode(
+      activeConversation?.workspace?.approvalMode
+      ?? draftWorkspace?.approvalMode
+      ?? settings?.agentPermissionMode
+      ?? 'ask'
+    )
+  }, [activeConversation?.id, activeConversation?.workspace?.approvalMode, draftWorkspace?.approvalMode, settings?.agentPermissionMode])
+
+  useEffect(() => setFullAccessAcknowledged(Boolean(settings?.fullAccessAcknowledged)), [settings?.fullAccessAcknowledged])
+
+  // Another window (quick chat or settings) may change the mode too.
+  useEffect(() => window.gllm.onAgentPermissionModeChanged((change) => {
+    if (change.conversationId === activeConversationIdRef.current) setAgentPermissionMode(change.mode)
+  }), [])
+
   useEffect(() => {
     setEditingMessageId(null)
     setEditingMessageContent('')
@@ -1525,17 +1712,6 @@ export default function App() {
     if (!isStreaming || workspaceActivities.length === 0) return
     window.requestAnimationFrame(() => scrollToLatest('smooth', { requireAutoFollow: true }))
   }, [workspaceActivities])
-
-  useEffect(() => {
-    const composer = composerRef.current
-    if (!composer) return
-
-    const updateHeight = () => setComposerHeight(composer.getBoundingClientRect().height)
-    updateHeight()
-    const resizeObserver = new ResizeObserver(updateHeight)
-    resizeObserver.observe(composer)
-    return () => resizeObserver.disconnect()
-  }, [])
 
   useEffect(() => {
     if (!autoFollowMessages) return
@@ -1719,6 +1895,7 @@ export default function App() {
 
   function updateMessageScrollState() {
     setSelectionMenu(null)
+    updateOutlineActive()
     const distanceToBottom = getDistanceToMessageBottom()
     const isAtBottom = distanceToBottom <= 4
     const isNearBottom = distanceToBottom <= bottomFollowThreshold
@@ -1731,6 +1908,26 @@ export default function App() {
 
     setIsNearMessageBottom(isNearBottom)
     setMessageAutoFollow(isNearBottom)
+  }
+
+  function updateOutlineActive() {
+    const list = listRef.current
+    if (!list) return
+    const threshold = list.getBoundingClientRect().top + 96
+    const nodes = list.querySelectorAll<HTMLElement>('[data-message-id]')
+    let active: string | null = null
+    for (const node of nodes) {
+      if (node.getBoundingClientRect().top <= threshold) active = node.dataset.messageId ?? active
+      else break
+    }
+    setOutlineActiveId(active)
+  }
+
+  function jumpToMessage(messageId: string) {
+    const node = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
+    if (!node) return
+    setMessageAutoFollow(false)
+    node.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   function scrollToLatest(
@@ -2581,7 +2778,9 @@ export default function App() {
         projectMemory: goalTask?.resolvedContextMode === 'isolated' ? undefined : nextConversation.projectMemory
       })
       streamingConversationDraftsRef.current[conversationId] = completedConversation
-      setConversations((current) => [completedConversation, ...current.filter((item) => item.id !== completedConversation.id)])
+      const settledConversation = withPendingChoice(completedConversation)
+      if (settledConversation !== completedConversation) void window.gllm.saveConversation(settledConversation)
+      setConversations((current) => [settledConversation, ...current.filter((item) => item.id !== settledConversation.id)])
       const changedFiles = completedConversation.messages.at(-1)?.workspaceChangedFiles?.length ?? 0
       if (changedFiles > 0) showToolNotice(t('workspace.filesChanged', { count: changedFiles }))
     } catch (error) {
@@ -2861,6 +3060,46 @@ export default function App() {
     await saveDesktopWorkspace(workspace)
   }
 
+  /**
+   * The global permission switch. The main process is authoritative: it updates
+   * the runtime policy map first, then persists the conversation and, when the
+   * user asked to remember it, the default for new tasks.
+   */
+  async function changeAgentPermissionMode(mode: AgentPermissionMode) {
+    setAgentPermissionMode(mode)
+    let persisted = false
+    if (activeConversation) {
+      try {
+        const change = await window.gllm.setAgentPermissionMode(activeConversation.id, mode)
+        persisted = change.persisted
+      } catch (error) {
+        showToolNotice(error instanceof Error ? error.message : t('agentPermission.changeFailed'))
+        return
+      }
+    }
+    // No bound workspace yet (or a plain chat): keep the draft aligned and, when
+    // the user asked to remember the choice, update the default for new tasks.
+    if (!persisted) {
+      setDraftWorkspace((current) => current ? { ...current, approvalMode: mode } : current)
+      if (settings?.rememberAgentPermission) {
+        try {
+          await saveSettings({ ...settings, agentPermissionMode: mode })
+        } catch {
+          // The selector already reflects the choice; persistence can retry later.
+        }
+      }
+    }
+  }
+
+  async function acknowledgeFullAccess() {
+    setFullAccessAcknowledged(true)
+    try {
+      setSettings(await window.gllm.acknowledgeFullAccess())
+    } catch {
+      // Acknowledgement is advisory; the runtime still enforces the hard limits.
+    }
+  }
+
   async function unbindConversationWorkspace() {
     clearWorkspaceActivities()
     if (!activeConversation) {
@@ -2871,6 +3110,8 @@ export default function App() {
     void window.gllm.closeAgentBrowser(activeConversation.id)
     for (const prompt of workspaceApprovalPrompts.filter(item => item.conversationId === activeConversation.id)) window.gllm.respondWorkspaceApproval(prompt.id, false)
     setWorkspaceApprovalPrompts(current => current.filter(item => item.conversationId !== activeConversation.id))
+    for (const request of workspaceInteractions.filter(item => item.conversationId === activeConversation.id)) window.gllm.cancelWorkspaceInteraction(request.id)
+    setWorkspaceInteractions(current => current.filter(item => item.conversationId !== activeConversation.id))
     setDraftWorkspace(undefined)
     const nextConversation = { ...activeConversation, workspace: undefined, updatedAt: Date.now() }
     try {
@@ -3056,8 +3297,175 @@ export default function App() {
     await executeWorkspaceConversation(nextConversation, activeConversation.workspace, conversationProvider)
   }
 
+  async function launchGoalFromAssessment(
+    conversation: Conversation,
+    workspace: ConversationWorkspace,
+    provider: ApiProvider,
+    result: GoalAssessResult,
+    assumptions: string[]
+  ) {
+    if (!settings) return
+    const now = Date.now()
+    const goal = result.goal.trim() || conversation.goalDraft?.latestInput || ''
+    if (!goal) return
+    const criteria = result.acceptanceCriteria.trim() || t('goalMode.inferAcceptance')
+    const goalTask: GoalTask = {
+      id: createId('goal'),
+      goal,
+      acceptanceCriteria: criteria,
+      status: 'running',
+      contextMode: 'auto',
+      resolvedContextMode: resolveGoalContextMode('auto', goal, criteria, conversation.goalTask, conversation.messages),
+      assumptions,
+      runCount: 1,
+      startedAt: now,
+      lastRunStartedAt: now,
+      updatedAt: now
+    }
+    const goalMessage = createMessage('user', t('goalMode.executionPrompt', { goal, criteria }))
+    goalTask.contextStartMessageId = goalMessage.id
+    const nextConversation = withConversationTokens({
+      ...conversation,
+      goalDraft: undefined,
+      goalTask,
+      workspace,
+      title: conversation.messages.length === 0 ? goal.slice(0, 28) : conversation.title,
+      messages: [...conversation.messages, goalMessage],
+      updatedAt: now
+    })
+    setGoalModeArmed(false)
+    setDraft('')
+    setDraftWorkspace(undefined)
+    if (!activeConversation) moveComposerSessionToConversation(nextConversation.id, true)
+    beginConversationRun(nextConversation.id)
+    setMessageAutoFollow(true)
+    selectConversation(nextConversation.id)
+    setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
+    void window.gllm.saveConversation(nextConversation)
+    if (assumptions.length > 0) showToolNotice(t('goalMode.launchedWithAssumptions', { count: assumptions.length }))
+    await executeWorkspaceConversation(nextConversation, workspace, provider)
+  }
+
+  async function runGoalFlow(
+    nextConversation: Conversation,
+    workspace: ConversationWorkspace,
+    provider: ApiProvider,
+    userText: string
+  ) {
+    if (!settings) return
+    const token = ++goalFlowTokenRef.current
+    const priorDraft = nextConversation.goalDraft
+    const round = priorDraft?.status === 'clarifying' ? priorDraft.round + 1 : 0
+    const askedQuestions = Array.from(new Set([
+      ...(priorDraft?.askedQuestions ?? []),
+      ...(priorDraft?.questions ?? [])
+    ].map((question) => question.trim()).filter(Boolean)))
+    setGoalAssessing(true)
+    goalAssessingRef.current = true
+    let launched = false
+    try {
+      const result = await window.gllm.assessGoal({
+        provider,
+        settings,
+        messages: nextConversation.messages,
+        latestInput: userText,
+        round,
+        alreadyAsked: askedQuestions,
+        language: settings.language
+      })
+      if (token !== goalFlowTokenRef.current) { completeConversationRun(nextConversation.id, 'completed'); return }
+      const assumptions = [...(result.assumptions ?? [])]
+      if (result.error) assumptions.push(t('goalMode.assessmentFallback'))
+      if (result.sufficient || result.error) {
+        launched = true
+        await launchGoalFromAssessment(nextConversation, workspace, provider, result, assumptions)
+        return
+      }
+      const choices = result.choices ?? []
+      const questions = result.questions.length > 0 ? result.questions : (choices.length > 0 ? [] : [t('goalMode.clarifyGeneric')])
+      const lines = [
+        t('goalMode.clarifyIntro'),
+        ...questions.map((question, index) => `${index + 1}. ${question}`),
+        ...choices.map((choice) => `• ${choice.text}${choice.options.length ? `（${choice.options.join(' / ')}）` : ''}`)
+      ]
+      const clarificationText = lines.filter(Boolean).join('\n')
+      const assistantMessage = createMessage('assistant', clarificationText)
+      const draft: GoalDraft = {
+        status: 'clarifying',
+        latestInput: userText,
+        goal: result.goal || userText,
+        acceptanceCriteria: result.acceptanceCriteria,
+        scope: result.scope,
+        constraints: result.constraints,
+        questions,
+        choices,
+        askedQuestions: Array.from(new Set([...askedQuestions, ...questions, ...choices.map((choice) => choice.text)])),
+        round,
+        assumptions: result.assumptions,
+        changed: result.changed,
+        updatedAt: Date.now()
+      }
+      const updated = withConversationTokens({
+        ...nextConversation,
+        goalDraft: draft,
+        messages: [...nextConversation.messages, assistantMessage],
+        updatedAt: Date.now()
+      })
+      streamingConversationDraftsRef.current[updated.id] = updated
+      setConversations((current) => [updated, ...current.filter((item) => item.id !== updated.id)])
+      void window.gllm.saveConversation(updated)
+      showToolNotice(t('goalMode.clarifyingNotice'))
+    } catch (error) {
+      if (token !== goalFlowTokenRef.current) return
+      launched = true
+      const fallback: GoalAssessResult = {
+        sufficient: true,
+        goal: userText,
+        acceptanceCriteria: '',
+        questions: [],
+        assumptions: [],
+        changed: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+      await launchGoalFromAssessment(nextConversation, workspace, provider, fallback, [t('goalMode.assessmentFallback')])
+    } finally {
+      setGoalAssessing(false)
+      goalAssessingRef.current = false
+      if (!launched && token === goalFlowTokenRef.current) completeConversationRun(nextConversation.id, 'completed')
+    }
+  }
+
+  function cancelGoalMode() {
+    if (goalAssessingRef.current && activeConversation) {
+      completeConversationRun(activeConversation.id, 'completed')
+    }
+    goalFlowTokenRef.current += 1
+    setGoalModeArmed(false)
+    setGoalAssessing(false)
+    goalAssessingRef.current = false
+    if (activeConversation?.goalDraft) {
+      const updated = withConversationTokens({ ...activeConversation, goalDraft: undefined, updatedAt: Date.now() })
+      saveConversationUpdate(updated)
+    }
+    showToolNotice(t('goalMode.modeCancelled'))
+  }
+
+  function answerGoalChoice(choice: GoalChoice, selection: string[]) {
+    if (selection.length === 0) return
+    const answer = selection.length === 1
+      ? t('goalMode.choiceAnswer', { question: choice.text, option: selection[0] })
+      : t('goalMode.choiceAnswerMulti', { question: choice.text, options: selection.join('、') })
+    void sendMessage(answer)
+  }
+
+  function focusComposerInput() {
+    const textarea = composerRef.current?.querySelector('textarea')
+    textarea?.focus()
+  }
+
   async function sendMessage(content = draft) {
     if (!settings || isPickingAttachment || preparingWorkspaceRef.current || isConversationRunning(conversationRunStatesRef.current, activeConversation?.id)) return
+    flushComposerDraftPersist(getComposerDraftStorageKey(composerSessionKey))
     if (getSkillInstallIntent(content)) {
       await installConversationSkill(content.trim())
       return
@@ -3115,6 +3523,7 @@ export default function App() {
       assistantId: activeAssistant.id,
       title: baseConversation.messages.length === 0 ? messageText.slice(0, 28) : baseConversation.title,
       messages: [...baseConversation.messages, userMessage],
+      pendingChoice: undefined,
       updatedAt: Date.now()
     })
 
@@ -3128,13 +3537,15 @@ export default function App() {
     selectConversation(nextConversation.id)
     setConversations((current) => [nextConversation, ...current.filter((item) => item.id !== nextConversation.id)])
     void window.gllm.saveConversation(nextConversation)
+    const goalProvider = activeConversation?.assistantId === activeAssistant.id ? conversationProvider : assistantDefaultProvider
+    if (goalModeArmed || nextConversation.goalDraft?.status === 'clarifying') {
+      if (!activeConversation) setDraftWorkspace(undefined)
+      await runGoalFlow(nextConversation, requestWorkspace, goalProvider, messageText)
+      return
+    }
     if (usesWorkspaceAgent(nextConversation)) {
       if (!activeConversation) setDraftWorkspace(undefined)
-      await executeWorkspaceConversation(
-        nextConversation,
-        nextConversation.workspace,
-        activeConversation?.assistantId === activeAssistant.id ? conversationProvider : assistantDefaultProvider
-      )
+      await executeWorkspaceConversation(nextConversation, nextConversation.workspace, goalProvider)
       return
     }
     streamingConversationDraftsRef.current[nextConversation.id] = nextConversation
@@ -3597,6 +4008,7 @@ export default function App() {
           {filesOpen && <WorkspaceFilesPanel workspace={currentWorkspace} busy={isPickingAttachment || isStreaming}
             refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
             onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
+          <div className={`message-viewport${showActivityPanel ? ' has-activity-panel' : ''}`}>
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
             {isManagedGllmProvider(conversationProvider) && <GllmAccountPanel provider={conversationProvider} onManualConfiguration={() => setSettingsOpen(true)} />}
             {needsApiKey && !isManagedGllmProvider(conversationProvider) && (
@@ -3909,6 +4321,41 @@ export default function App() {
               </>
             )}
           </div>
+          {showActivityPanel && (
+            <AgentActivityPanel
+              activities={panelActivities}
+              changedFiles={panelChangedFiles}
+              plan={outlinePlan}
+              running={Boolean(isStreaming)}
+              startedAt={activeRunStartedAt}
+              goal={panelGoal}
+              pendingApproval={workspaceApprovalPrompt
+                ? { id: workspaceApprovalPrompt.id, purpose: workspaceApprovalPrompt.purpose, tool: workspaceApprovalPrompt.tool }
+                : null}
+              pendingQuestion={activeInteraction
+                ? { id: activeInteraction.id, title: activeInteraction.title, kind: activeInteraction.kind }
+                : null}
+              entries={outlineEntries}
+              activeId={outlineActiveId}
+              onJump={jumpToMessage}
+              onCollapse={() => setOutlineOpen(false)}
+              onOpenFile={(relativePath) => {
+                if (currentWorkspace) void openWorkspaceArtifact(currentWorkspace.rootPath, relativePath)
+              }}
+            />
+          )}
+          {!outlineOpen && hasPanelContent && (
+            <button
+              type="button"
+              className={`conversation-outline-expand${isStreaming ? ' is-running' : ''}`}
+              title={t('activityPanel.expand')}
+              onClick={() => setOutlineOpen(true)}
+            >
+              <span className="coe-dot" />
+              <span className="coe-label">{t('activityPanel.title')}</span>
+              <span className="coe-chevron" aria-hidden>‹</span>
+            </button>
+          )}
           {selectionMenu && (
             <div
               className="selection-context-menu"
@@ -3979,13 +4426,13 @@ export default function App() {
           {showScrollToLatest && (
             <button
               className="scroll-latest-button"
-              style={{ bottom: `${Math.max(104, composerHeight + 18)}px` }}
               type="button"
               onClick={() => scrollToLatest('smooth')}
             >
               {isStreaming ? `${t('app.aiResponding')} · ↓` : `↓ ${t('app.scrollLatest')}`}
             </button>
           )}
+          </div>
 
           <form
             className="composer"
@@ -3995,6 +4442,43 @@ export default function App() {
               sendMessage()
             }}
           >
+            {(goalModeArmed || goalAssessing || activeConversation?.goalDraft?.status === 'clarifying') && (
+              <section className="goal-intake-status" aria-live="polite" role="status">
+                <Target size={14} />
+                <span className="goal-intake-text">
+                  {goalAssessing
+                    ? t('goalMode.assessing')
+                    : activeConversation?.goalDraft?.status === 'clarifying'
+                      ? t('goalMode.clarifyingRound', { round: activeConversation.goalDraft.round + 1 })
+                      : t('goalMode.armedHint')}
+                </span>
+                <button className="goal-intake-advanced" type="button" onClick={() => setGoalSetupOpen(true)} title={t('goalMode.advancedSetup')}>{t('goalMode.advancedSetup')}</button>
+                <button className="goal-intake-cancel" type="button" onClick={cancelGoalMode} title={t('goalMode.cancelMode')}><X size={14} /></button>
+              </section>
+            )}
+            {activeConversation?.goalDraft?.status === 'clarifying' && (activeConversation.goalDraft.choices?.length ?? 0) > 0 && (
+              <GoalChoiceCards
+                choices={activeConversation.goalDraft.choices ?? []}
+                disabled={goalAssessing || isStreaming}
+                onAnswer={answerGoalChoice}
+                onCustom={focusComposerInput}
+              />
+            )}
+            {activeConversation?.pendingChoice && activeConversation.goalDraft?.status !== 'clarifying' && !isStreaming && activeConversation.messages.at(-1)?.role === 'assistant' && (
+              <GoalChoiceCards
+                choices={[{
+                  text: activeConversation.pendingChoice.prompt,
+                  options: activeConversation.pendingChoice.options,
+                  allowsCustom: true
+                }]}
+                disabled={isStreaming || goalAssessing}
+                onAnswer={(choice, selection) => {
+                  if (selection.length === 0) return
+                  void sendMessage(t('goalMode.choiceAnswer', { question: choice.text, option: selection.join('、') }))
+                }}
+                onCustom={focusComposerInput}
+              />
+            )}
             {isStreaming && (
               <section className="composer-run-status" aria-live="polite" role="status">
                 <RefreshCw className="spin" size={14} />
@@ -4010,7 +4494,7 @@ export default function App() {
               <GoalTaskPanel
                 task={activeConversation.goalTask}
                 running={isStreaming}
-                onNewGoal={() => setGoalSetupOpen(true)}
+                onNewGoal={() => setGoalModeArmed(true)}
                 onPause={() => setGoalTaskStatus('paused')}
                 onResume={() => void resumeGoalTask()}
                 onClear={clearGoalTask}
@@ -4022,7 +4506,6 @@ export default function App() {
                 workspace={currentWorkspace}
                 conversationId={activeConversationId}
                 onOpen={() => void openWorkspaceDirectory(currentWorkspace.rootPath)}
-                onApprovalModeChange={(mode) => void changeConversationWorkspaceApproval(mode)}
                 onAgentSettingsChange={(settings) => changeConversationWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings)}
                 running={isStreaming}
                 onUnbind={() => void unbindConversationWorkspace()}
@@ -4130,9 +4613,8 @@ export default function App() {
                 ref={composerTextareaRef}
                 value={draft}
                 onChange={(event) => {
-                  const value = event.target.value
-                  setDraft(value)
-                  persistComposerDraft(getComposerDraftStorageKey(composerSessionKey), value)
+                  // Persisting happens in the draft effect, batched to one write per burst.
+                  setDraft(event.target.value)
                 }}
                 onPaste={(event) => void handleComposerPaste(event)}
                 onKeyDown={(event) => {
@@ -4175,11 +4657,14 @@ export default function App() {
                 </button>
                 <button aria-label={t('workspace.desktopAccess')} title={t('workspace.desktopAccess')} disabled={isStreaming} className={currentWorkspace?.computerAccess || currentWorkspace?.browserAccess || currentWorkspace?.computerWindowAccess || currentWorkspace?.browserWindowAccess ? 'active' : ''} type="button" onClick={() => setDesktopSetupOpen(true)}><MonitorCog size={16} /></button>
                 <button
-                  className={goalSetupOpen || Boolean(activeConversation?.goalTask) ? 'active' : ''}
+                  className={goalModeArmed || goalSetupOpen || Boolean(activeConversation?.goalDraft) || Boolean(activeConversation?.goalTask) ? 'active' : ''}
                   disabled={isStreaming}
                   title={t('goalMode.title')}
                   type="button"
-                  onClick={() => setGoalSetupOpen(true)}
+                  onClick={() => {
+                    if (goalModeArmed || activeConversation?.goalDraft?.status === 'clarifying') cancelGoalMode()
+                    else setGoalModeArmed(true)
+                  }}
                 >
                   <Target size={16} />
                 </button>
@@ -4195,6 +4680,12 @@ export default function App() {
                   disabled={isStreaming}
                   mode={webSearchMode}
                   onChange={changeActiveConversationWebSearchMode}
+                />
+                <AgentPermissionPicker
+                  acknowledged={fullAccessAcknowledged}
+                  mode={agentPermissionMode}
+                  onChange={(mode) => void changeAgentPermissionMode(mode)}
+                  onAcknowledge={() => void acknowledgeFullAccess()}
                 />
               </div>
               <div className="composer-input-actions">
@@ -4363,6 +4854,19 @@ export default function App() {
           onRespond={(approved) => {
             window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved)
             setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.id !== workspaceApprovalPrompt.id))
+          }}
+        />
+      )}
+      {activeInteraction && (
+        <WorkspaceInteractionDialog
+          request={activeInteraction}
+          onRespond={(response: WorkspaceInteractionResponse) => {
+            window.gllm.respondWorkspaceInteraction(response)
+            setWorkspaceInteractions((current) => current.filter((item) => item.id !== response.id))
+          }}
+          onCancel={() => {
+            window.gllm.cancelWorkspaceInteraction(activeInteraction.id)
+            setWorkspaceInteractions((current) => current.filter((item) => item.id !== activeInteraction.id))
           }}
         />
       )}
@@ -4560,7 +5064,7 @@ function HiddenAssistantsDialog({
 }
 
 function formatConversationSearchDate(timestamp: number, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
+  return cachedDateTimeFormat(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -7623,6 +8127,43 @@ function SettingsPanel({
                   </span>
                 </label>
               </div>
+            </section>
+
+            <section className="preference-section agent-permission-section">
+              <div className="data-location-head">
+                <div>
+                  <strong>{t('agentPermission.defaultTitle')}</strong>
+                  <small>{t('agentPermission.defaultDescription')}</small>
+                </div>
+              </div>
+              <div className="shortcut-option-list">
+                {AGENT_PERMISSION_MODES.map((mode) => (
+                  <label className={`shortcut-option agent-permission-choice mode-${mode} ${settingsDraft.agentPermissionMode === mode ? 'active' : ''}`} key={mode}>
+                    <input
+                      checked={settingsDraft.agentPermissionMode === mode}
+                      name="agent-permission-mode"
+                      type="radio"
+                      value={mode}
+                      onChange={() => setSettingsDraft({ ...settingsDraft, agentPermissionMode: mode })}
+                    />
+                    <span>
+                      <strong>{t(`agentPermission.${mode}`)}</strong>
+                      <small>{t(`agentPermission.${mode}Description`)}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <label className="switch-row agent-permission-remember">
+                <span>
+                  <strong>{t('agentPermission.rememberTitle')}</strong>
+                  <small>{t('agentPermission.rememberDescription')}</small>
+                </span>
+                <input
+                  checked={settingsDraft.rememberAgentPermission}
+                  type="checkbox"
+                  onChange={(event) => setSettingsDraft({ ...settingsDraft, rememberAgentPermission: event.target.checked })}
+                />
+              </label>
             </section>
 
             <div className="form-actions settings-panel-actions">

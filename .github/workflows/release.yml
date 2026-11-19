@@ -137,6 +137,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare DeepSeek Harness runtime
+        run: node scripts/prepare-harness-runtime.mjs
+
       - name: Install Linux sandbox dependency
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap

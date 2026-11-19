@@ -84,6 +84,14 @@ export class WorkspaceToolCallLedger {
   wasClaimed(callId: string): boolean {
     return this.claimed.has(callId)
   }
+
+  /**
+   * Pre-claim calls that already ran in an earlier attempt of the same task.
+   * Used after a checkpoint resume so the same call id cannot be re-executed.
+   */
+  seed(callIds: Iterable<string>): void {
+    for (const callId of callIds) if (callId) this.claimed.add(callId)
+  }
 }
 
 export interface WorkspaceModelAttempt<T> {

@@ -9,6 +9,9 @@ dist/
 release/
 *.tsbuildinfo
 
+# DeepSeek Harness runtime (~600MB, rebuilt by scripts/prepare-harness-runtime.mjs)
+resources/harness-runtime/
+
 # Electron / bundler cache
 .vite/
 .electron-vite/

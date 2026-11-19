@@ -9,7 +9,24 @@ import test from 'node:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets } from './workspaceAgentPolicy.ts'
+import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets, retryableModelStatuses, isTransientModelHttpStatus } from './workspaceAgentPolicy.ts'
+
+test('transient upstream 5xx faults retry in place instead of failing the run', () => {
+  // A gateway "Database error" surfaces as 500/503; these must be replayed.
+  for (const status of [429, 500, 502, 503, 504]) {
+    assert.equal(retryableModelStatuses.has(status), true, `${status} should be retryable`)
+  }
+  // Client errors are deterministic and must not be blindly replayed.
+  for (const status of [200, 400, 401, 403, 404, 422]) {
+    assert.equal(retryableModelStatuses.has(status), false, `${status} should not be retryable`)
+  }
+  for (const status of [500, 502, 503, 504]) {
+    assert.equal(isTransientModelHttpStatus(status), true, `${status} should allow continuation`)
+  }
+  assert.equal(isTransientModelHttpStatus(429), false)
+  assert.equal(isTransientModelHttpStatus(400), false)
+  assert.equal(isTransientModelHttpStatus(undefined), false)
+})
 
 test('three approval modes cover file writes, restricted scripts, sandbox/host jobs and external tools', () => {
   const cases = [
@@ -78,4 +95,15 @@ test('credential paths and runtime-control variables are protected', () => {
     assert.throws(() => selectWorkspaceEnvironment({ [name]: 'unsafe' }, [name]), /runtime/)
   }
   assert.throws(() => selectWorkspaceEnvironment({}, ['MISSING']), /missing/)
+})
+
+test('git metadata error redirects to git_read while credentials stay hard-blocked', () => {
+  assert.throws(() => assertWorkspacePathAllowed('.git/config'), /git_read/)
+  assert.throws(() => assertWorkspacePathAllowed('nested/.git/HEAD'), /仓库元数据/)
+  for (const path of ['.env', '.ssh/key', 'nested\\.aws\\credentials', '.gnupg/key']) {
+    assert.throws(() => assertWorkspacePathAllowed(path), /Protected credentials/)
+    let message = ''
+    try { assertWorkspacePathAllowed(path) } catch (error) { message = (error as Error).message }
+    assert.doesNotMatch(message, /git_read/)
+  }
 })

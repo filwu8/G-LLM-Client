@@ -26,7 +26,8 @@ import {
   systemPreferences,
   Tray,
   type Point,
-  type Rectangle
+  type Rectangle,
+  type WebContents
 } from 'electron'
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
@@ -42,6 +43,8 @@ import { isWindowControlTool } from './windowControlPolicy'
 import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
 
 import type {
+  AgentPermissionMode,
+  AgentPermissionModeChange,
   ApiProvider,
   AppSettings,
   AppUpdateInfo,
@@ -58,8 +61,11 @@ import type {
   LegalDocument,
   MainConversationOpenRequest,
   PreparedAttachment,
+  ConversationWorkspace,
+  WorkspaceAgentProgress,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt,
+  WorkspaceInteractionResponse,
   WorkspaceRunSnapshot
 } from '../shared/types'
 import {
@@ -77,6 +83,7 @@ import {
 import { ActiveResponseRegistry } from './activeResponse'
 import { AgentRunLedger } from './agentRunLedger'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
+import { WorkspaceInteractionStore } from './workspaceInteractions'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
@@ -92,6 +99,7 @@ import { exchangeGllmHandoff, resolveGllmHandoffExchangeUrl } from './deepLinkHa
 import { mainT } from './i18n'
 import { redactMainLogText } from './logRedaction'
 import {
+  assessGoal,
   checkProviderConnection,
   fetchProviderModels,
   generateAssistantSuggestion,
@@ -113,6 +121,7 @@ import {
   exportDataArchive,
   getActiveProjectId,
   getAssistants,
+  getConversationById,
   getConversationSearchSources,
   getConversations,
   getWorkspaceRunConversation,
@@ -147,6 +156,7 @@ import {
   setActiveProjectId,
   setSettings
 } from './storage'
+import { configureGitWriteGrantStorage } from './workspaceGitApproval'
 import {
   getChatTelemetryProperties,
   getErrorCategory,
@@ -184,6 +194,27 @@ const activeResponses = new ActiveResponseRegistry()
 const activeWorkspaceRuns = new Map<string, WorkspaceRunSnapshot>()
 const storageTasks = new StorageTasks()
 
+/**
+ * Live permission mode per conversation. The composer can change it while a
+ * task is still running, so the runtime reads this map on every tool call
+ * instead of trusting the snapshot captured when the run started.
+ */
+const conversationPermissionModes = new Map<string, AgentPermissionMode>()
+
+function resolveAgentPermissionMode(conversationId: string, workspace?: Pick<ConversationWorkspace, 'approvalMode'>): AgentPermissionMode {
+  const live = conversationPermissionModes.get(conversationId)
+  if (live) return live
+  const stored = (workspace ?? getConversationById(conversationId)?.workspace)?.approvalMode
+  if (stored) return stored
+  return getSettings().agentPermissionMode
+}
+
+function broadcastAgentPermissionMode(change: AgentPermissionModeChange): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('workspace-agent:permission-mode', change)
+  }
+}
+
 function assertDataLocationIdle(): void {
   const count = activeResponses.activeConversationIds.length + storageTasks.count + conversationMemoryUpdates.size
   if (count) throw new Error(mainT('main.storage.tasksRunning', getSettings().language, { count }))
@@ -195,6 +226,19 @@ function publishDataLocationChange(previousRoot: string): void {
 }
 let agentRunLedger: AgentRunLedger | null = null
 const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
+const pendingWorkspaceInteractions = new Map<string, { senderId: number; resolve: (response: WorkspaceInteractionResponse) => void }>()
+
+function workspaceInteractionStore(): WorkspaceInteractionStore {
+  return new WorkspaceInteractionStore(getDataLocationInfo().activePath)
+}
+
+/** Collect the windows that can render an interaction, newest first. */
+function interactionTargets(preferred?: WebContents): WebContents[] {
+  const targets = [preferred, mainWindow?.webContents, quickWindow?.webContents]
+  return [...new Set(targets.filter(
+    (sender): sender is WebContents => Boolean(sender && !sender.isDestroyed() && !sender.isCrashed() && !sender.isLoadingMainFrame())
+  ))]
+}
 const providerModelCatalogRefreshes = new Map<string, Promise<ApiProvider>>()
 
 async function refreshOfficialProviderCatalog(provider: ApiProvider, force = false): Promise<ApiProvider> {
@@ -1693,6 +1737,16 @@ process.on('unhandledRejection', (reason) => {
 })
 
 app.whenReady().then(() => {
+  // Remember approved git operations per conversation, across restarts.
+  configureGitWriteGrantStorage(() => getDataLocationInfo().activePath)
+  // Expire questions that were left unanswered beyond their TTL before the UI
+  // asks for the pending list.
+  try {
+    const store = workspaceInteractionStore()
+    store.settleExpired(store.list())
+  } catch {
+    // A corrupt queue must not block app start.
+  }
   setApplicationSettingsListener((saved, previous) => {
     broadcastSettingsChange(saved)
     broadcastFloatingMascotSkin(saved)
@@ -2019,6 +2073,7 @@ app.whenReady().then(() => {
     return getAppStateSnapshot()
   })
   ipcMain.handle('assistant:suggest', (_, request) => generateAssistantSuggestion(request))
+  ipcMain.handle('goal:assess', (_, request: import('../shared/types').GoalAssessRequest) => assessGoal(request))
   ipcMain.handle('assistant:export-template', async (event, id: string) => {
     const assistant = getAssistants().find((item) => item.id === id)
     if (!assistant) throw new Error('找不到要导出的助手')
@@ -2056,6 +2111,12 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('conversation:save', (_, conversation) => {
     const saved = saveConversation(conversation)
+    // Keep the live policy map aligned when the mode is changed through the
+    // workspace bar dialog instead of the composer selector.
+    const savedMode = saved.workspace?.approvalMode
+    if (savedMode && savedMode !== conversationPermissionModes.get(saved.id)) {
+      conversationPermissionModes.set(saved.id, savedMode)
+    }
     if (!saved.workspace?.browserAccess) closeAgentBrowser(saved.id)
     broadcastConversationChange(saved.id, 'saved', saved)
     void maybeUpdateProjectMemory(saved)
@@ -2200,6 +2261,82 @@ app.whenReady().then(() => {
     if (!pending || pending.senderId !== event.sender.id) return
     pending.resolve(Boolean(approved))
   })
+  ipcMain.on('workspace-agent:interaction-response', (event, response: WorkspaceInteractionResponse) => {
+    if (!response || typeof response.id !== 'string') return
+    const pending = pendingWorkspaceInteractions.get(response.id)
+    if (pending) {
+      if (pending.senderId !== event.sender.id) return
+      pending.resolve(response)
+      return
+    }
+    // No live waiter: the answer was given after the run ended or the app
+    // restarted. Persist it so the resumed task consumes it instead of asking again.
+    const store = workspaceInteractionStore()
+    const record = store.get(response.id)
+    if (!record || record.status !== 'pending') return
+    if (!store.resolve(response.id, response)) return
+    for (const sender of interactionTargets()) sender.send('workspace-agent:interaction-resolved', { id: response.id, response })
+  })
+  ipcMain.on('workspace-agent:cancel-interaction', (event, id: string) => {
+    if (typeof id !== 'string' || !id) return
+    const response: WorkspaceInteractionResponse = { id, selectedIds: [], cancelled: true, answeredAt: Date.now() }
+    const pending = pendingWorkspaceInteractions.get(id)
+    if (pending) {
+      if (pending.senderId !== event.sender.id) return
+      pending.resolve(response)
+      return
+    }
+    workspaceInteractionStore().cancel(id)
+    for (const sender of interactionTargets()) sender.send('workspace-agent:interaction-resolved', { id, response })
+  })
+  ipcMain.handle('workspace-agent:permission-mode:get', (_event, conversationId: string) => (
+    resolveAgentPermissionMode(String(conversationId ?? ''))
+  ))
+  ipcMain.handle('workspace-agent:permission-mode:set', (_event, payload: { conversationId?: string; mode?: string }) => {
+    const conversationId = String(payload?.conversationId ?? '')
+    if (!conversationId) throw new Error('conversationId is required')
+    const mode: AgentPermissionMode = payload?.mode === 'auto' || payload?.mode === 'full' ? payload.mode : 'ask'
+    // 1. Runtime first: a running task picks this up on its next tool call.
+    conversationPermissionModes.set(conversationId, mode)
+    // 2. Persist on the conversation so a restart or resume keeps the policy.
+    const conversation = getConversationById(conversationId)
+    let persisted = false
+    if (conversation?.workspace) {
+      const saved = saveConversation({
+        ...conversation,
+        workspace: { ...conversation.workspace, approvalMode: mode, lastVerifiedAt: Date.now() },
+        updatedAt: Date.now()
+      }, conversation.projectId)
+      persisted = true
+      broadcastConversationChange(saved.id, 'saved', saved)
+    }
+    // 3. Mirror as the default for new tasks when the user asked to remember it.
+    const settings = getSettings()
+    if (settings.rememberAgentPermission && settings.agentPermissionMode !== mode) {
+      const next = setSettings({
+        ...settings,
+        agentPermissionMode: mode,
+        fullAccessAcknowledged: settings.fullAccessAcknowledged || mode === 'full'
+      })
+      broadcastSettingsChange(next)
+    }
+    const change: AgentPermissionModeChange = { conversationId, mode, persisted }
+    broadcastAgentPermissionMode(change)
+    writeMainLog(`Agent permission mode set: conversation=${conversationId}, mode=${mode}, persisted=${persisted}.`)
+    return change
+  })
+  ipcMain.handle('workspace-agent:permission-mode:acknowledge', () => {
+    const settings = getSettings()
+    if (settings.fullAccessAcknowledged) return settings
+    const next = setSettings({ ...settings, fullAccessAcknowledged: true })
+    broadcastSettingsChange(next)
+    return next
+  })
+  ipcMain.handle('workspace-agent:pending-interactions', (_event, conversationId?: string) => {
+    return conversationId
+      ? workspaceInteractionStore().pending(conversationId)
+      : workspaceInteractionStore().pending()
+  })
   ipcMain.handle('workspace-agent:run', async (event, request: WorkspaceAgentRequest) => {
     if (!request.workspace?.rootPath?.trim()) throw new Error('Authorize a workspace folder before using local Agent tools')
     request = { ...request, workspace: { ...request.workspace, rootPath: resolveCurrentDataPath(request.workspace.rootPath) } }
@@ -2208,7 +2345,9 @@ app.whenReady().then(() => {
     }
     const storedWorkspace = getWorkspaceRunConversation(request)?.workspace
     if (!storedWorkspace) throw new Error(mainT('main.workspace.conversationChanged', request.settings.language))
-    request = { ...request, workspace: storedWorkspace }
+    // The global permission mode is the authoritative entry point; the stored
+    // workspace mode only seeds it for conversations that never changed it.
+    request = { ...request, workspace: { ...storedWorkspace, approvalMode: resolveAgentPermissionMode(request.conversationId, storedWorkspace) } }
     const requestStartedAt = Date.now()
     const runLedger = getAgentRunLedger()
     const run = runLedger.start({
@@ -2225,6 +2364,31 @@ app.whenReady().then(() => {
     const active = registerActiveResponse('workspace', request.conversationId)
     const snapshot: WorkspaceRunSnapshot = { conversationId: request.conversationId, startedAt: requestStartedAt, activities: [], changedFiles: [] }
     activeWorkspaceRuns.set(request.conversationId, snapshot)
+    // Stamp every activity with wall-clock timing plus the files it touched so the
+    // renderer's floating activity panel can render an attributable timeline.
+    const activityStamps = new Map<string, { startedAt: number; endedAt?: number; files?: string[] }>()
+    let knownChangedFiles = new Set<string>()
+    const stampProgress = (progress: WorkspaceAgentProgress): WorkspaceAgentProgress => {
+      const now = Date.now()
+      const previous = activityStamps.get(progress.activity.id)
+      const currentFiles = progress.changedFiles ?? snapshot.changedFiles
+      const addedFiles = currentFiles.filter(file => !knownChangedFiles.has(file))
+      if (addedFiles.length > 0) knownChangedFiles = new Set([...knownChangedFiles, ...addedFiles])
+      const finished = progress.activity.status !== 'running'
+      const stamp = {
+        startedAt: previous?.startedAt ?? now,
+        ...(finished ? { endedAt: previous?.endedAt ?? now } : {}),
+        ...(addedFiles.length > 0
+          ? { files: [...new Set([...(previous?.files ?? []), ...addedFiles])] }
+          : previous?.files ? { files: previous.files } : {})
+      }
+      activityStamps.set(progress.activity.id, stamp)
+      return { ...progress, activity: { ...progress.activity, ...stamp } }
+    }
+    const stampResultActivities = <T extends { activities: import('../shared/types').WorkspaceToolActivity[] }>(result: T): T => ({
+      ...result,
+      activities: result.activities.map(activity => ({ ...activity, ...(activityStamps.get(activity.id) ?? {}) }))
+    })
     const endActivity = (error?: string) => {
       activeWorkspaceRuns.delete(request.conversationId)
       if (isCurrentActiveResponse(active.key, active.controller)) {
@@ -2238,11 +2402,64 @@ app.whenReady().then(() => {
     broadcastChatActivity({ conversationId: request.conversationId, kind: 'workspace', active: true, startedAt: requestStartedAt })
     try {
       if (!request.executionLimits) powerBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+      let result: import('../shared/types').WorkspaceAgentResult
+      if (request.workspace.harness?.enabled && request.workspace.harness?.delegateAll) {
+        const { runHarnessWorkspace, toWorkspaceAgentResult } = await import('./harnessWorkspace')
+        const harness = await runHarnessWorkspace({
+          request,
+          signal: active.controller.signal,
+          onProgress: (incoming) => {
+            const progress = stampProgress(incoming)
+            const index = snapshot.activities.findIndex(activity => activity.id === progress.activity.id)
+            if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
+            else snapshot.activities[index] = progress.activity
+            for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
+              if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:progress', progress)
+            }
+          },
+          onApproval: async (prompt, approvalSignal = active.controller.signal) => {
+            const sender = [event.sender, mainWindow?.webContents, quickWindow?.webContents].find(
+              candidate => candidate && !candidate.isDestroyed() && !candidate.isCrashed() && !candidate.isLoadingMainFrame()
+            )
+            if (!sender) return request.workspace.approvalMode === 'full'
+            const id = randomUUID()
+            const approvalPrompt: import('../shared/types').WorkspaceApprovalPrompt = {
+              id, conversationId: request.conversationId, purpose: prompt.purpose,
+              tool: prompt.tool, preview: prompt.preview, workspaceName: request.workspace.displayName,
+              canWrite: prompt.canWrite, isScript: false
+            }
+            return await new Promise<boolean>((resolvePromise) => {
+              const finish = (approved: boolean) => {
+                pendingWorkspaceApprovals.delete(id)
+                approvalSignal.removeEventListener('abort', handleAbort)
+                resolvePromise(approved)
+              }
+              const handleAbort = () => finish(false)
+              if (approvalSignal.aborted) { finish(false); return }
+              pendingWorkspaceApprovals.set(id, { senderId: sender.id, resolve: finish })
+              approvalSignal.addEventListener('abort', handleAbort, { once: true })
+              sender.send('workspace-agent:approval-requested', approvalPrompt)
+            })
+          },
+          onRuntimeEvent: (runtimeEvent) => {
+            const status = runtimeEvent.status === 'failed' ? 'failed'
+              : runtimeEvent.status === 'completed' ? 'succeeded' : 'running_tool'
+            runLedger.record(run.id, 'tool_started', status, {
+              ...runtimeEvent.details,
+              harnessEvent: runtimeEvent.type
+            })
+          },
+          runId: run.id
+        })
+        result = toWorkspaceAgentResult(request, harness.finalResponse, requestStartedAt)
+        active.controller.signal.throwIfAborted()
+      } else {
       const { runWorkspaceAgent } = await import('./workspaceAgent')
       const prepared = await prepareProviderRequestModel(request)
-      const result = await runWorkspaceAgent(
+      result = await runWorkspaceAgent(
         prepared.request,
-        (progress) => {
+        (incoming) => {
+          const progress = stampProgress(incoming)
           const index = snapshot.activities.findIndex(activity => activity.id === progress.activity.id)
           const previous = snapshot.activities[index]
           if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
@@ -2308,9 +2525,58 @@ app.whenReady().then(() => {
           runtimeEvent.status,
           runtimeEvent.details
         ),
-        run.id
+        run.id,
+        async (interaction, interactionSignal = active.controller.signal) => {
+          const store = workspaceInteractionStore()
+          const existing = store.get(interaction.id)
+          // A restart may have happened while the question was pending: an answer
+          // already stored is authoritative, so never ask the same thing twice.
+          if (existing?.status === 'answered' && existing.response) return existing.response
+          if (existing?.status === 'cancelled' || existing?.status === 'expired') {
+            return { id: interaction.id, selectedIds: [], cancelled: true, answeredAt: Date.now() }
+          }
+          store.create(interaction)
+          const targets = interactionTargets(event.sender)
+          if (targets.length === 0) return undefined
+          runLedger.record(run.id, 'approval_waiting', 'waiting_approval', {
+            interactionId: interaction.id,
+            kind: interaction.kind
+          })
+          for (const sender of targets) sender.send('workspace-agent:interaction-requested', interaction)
+          return await new Promise<WorkspaceInteractionResponse | undefined>((resolvePromise) => {
+            let timer: NodeJS.Timeout | undefined
+            const finish = (response: WorkspaceInteractionResponse) => {
+              if (!pendingWorkspaceInteractions.has(interaction.id)) return
+              pendingWorkspaceInteractions.delete(interaction.id)
+              if (timer) clearTimeout(timer)
+              interactionSignal.removeEventListener('abort', handleAbort)
+              resolvePromise(response)
+            }
+            const handleAbort = () => {
+              store.cancel(interaction.id)
+              finish({ id: interaction.id, selectedIds: [], cancelled: true, answeredAt: Date.now() })
+            }
+            const ttl = Math.max(1_000, (interaction.expiresAt ?? Date.now() + 60_000) - Date.now())
+            timer = setTimeout(() => {
+              store.cancel(interaction.id)
+              finish({ id: interaction.id, selectedIds: [], cancelled: true, answeredAt: Date.now() })
+            }, ttl)
+            timer.unref?.()
+            if (interactionSignal.aborted) {
+              handleAbort()
+              return
+            }
+            pendingWorkspaceInteractions.set(interaction.id, { senderId: targets[0].id, resolve: finish })
+            interactionSignal.addEventListener('abort', handleAbort, { once: true })
+          })
+        },
+        // Read the live mode so a switch in the composer applies to the very
+        // next tool call of this running task.
+        () => resolveAgentPermissionMode(request.conversationId)
       )
       active.controller.signal.throwIfAborted()
+      } // end harness else-branch
+      result = stampResultActivities(result)
       const saved = saveWorkspaceAgentResult(request, result, requestStartedAt, run.id)
       if (!saved) {
         active.controller.abort()
@@ -2386,8 +2652,16 @@ app.whenReady().then(() => {
     const { workspaceVault } = await import('./workspaceSecrets')
     const { sandboxStatus } = await import('./workspaceSandbox')
     const { loadWorkspaceEnvExampleNames } = await import('./workspaceAgentPolicy')
+    const { inspectHarnessRuntime, probeNodeVersion, nodeMajorFromVersion } = await import('./workspaceHarness')
     const [vault, sandbox, suggestedNames] = await Promise.all([workspaceVault().status(rootPath), sandboxStatus(), loadWorkspaceEnvExampleNames(rootPath).catch(() => [])])
-    return { ...vault, sandbox, suggestedNames }
+    const harnessInfo = inspectHarnessRuntime()
+    const harnessNodeVersion = harnessInfo.nodePath ? probeNodeVersion(harnessInfo.nodePath) : undefined
+    const harness: import('../shared/types').HarnessRuntimeStatus = {
+      installed: harnessInfo.available && nodeMajorFromVersion(harnessNodeVersion || '') >= 24,
+      ...(harnessNodeVersion ? { nodeVersion: harnessNodeVersion } : {}),
+      ...(harnessInfo.reason ? { reason: harnessInfo.reason } : {})
+    }
+    return { ...vault, sandbox, suggestedNames, harness }
   })
   ipcMain.handle('workspace:save-variables', (_, rootPath: string, updates: unknown) => storageTasks.run(async () => {
     rootPath = resolveCurrentDataPath(rootPath)

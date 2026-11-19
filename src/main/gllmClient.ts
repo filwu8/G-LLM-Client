@@ -10,6 +10,8 @@ import type {
   AssistantMemory,
   AssistantSuggestion,
   AssistantSuggestionRequest,
+  GoalAssessRequest,
+  GoalAssessResult,
   ChatMessage,
   ChatRequest,
   ContextSavings,
@@ -28,11 +30,17 @@ import type {
   WebSearchResult
 } from '../shared/types'
 import { applyWorkspaceSearchScope, buildWorkspaceSearchQuery, getGoalSearchResultDomain, normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
+import {
+  fallbackGoalAssessment,
+  sanitizeGoalAssessment,
+  GOAL_CLARIFY_LIMIT
+} from '../shared/goalAssessment'
 import type { AppLanguage } from '../shared/i18n'
 import { buildAssistantSkillContext } from '../shared/assistantCapabilities'
 import { buildHostEnvironmentContext } from './hostEnvironment'
 import {
   getExplicitResponseStyleInstruction,
+  goalAssessmentSystemPrompt,
   sanitizeAssistantSystemPrompt,
   universalAssistantPolicy,
   universalFallbackPrompt
@@ -1847,6 +1855,94 @@ Return this JSON structure:
   const content = payload.choices?.[0]?.message?.content ?? ''
   const parsed = extractJsonObject(content)
   return sanitizeAssistantSuggestion(keyword, parsed ?? fallbackAssistantSuggestion(keyword, language), language)
+}
+
+/**
+ * One-shot structured judgment of whether a goal-mode request is specific
+ * enough to start. Mirrors the resilient search-planner pattern: a single
+ * non-streaming JSON call with a language-agnostic system prompt and a bounded
+ * retry, degrading to "start with what we have" on any failure so the user is
+ * never blocked by the judge itself.
+ */
+export async function assessGoal(request: GoalAssessRequest): Promise<GoalAssessResult> {
+  const source = request.latestInput.trim()
+  if (!source || isProviderApiKeyMissing(request.provider)) return fallbackGoalAssessment(request)
+
+  const prepared = prepareConversationContext(request.messages)
+  const history = prepared.messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content.trim().slice(0, 900)}`)
+    .filter((line) => !line.endsWith(': '))
+    .slice(-24)
+    .join('\n')
+
+  const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
+  const systemContent = `${goalAssessmentSystemPrompt}\n\nRespond in ${mainT('main.assistant.outputLanguage', request.language)}.`
+  const alreadyAsked = (request.alreadyAsked ?? []).map((question) => question.trim()).filter(Boolean)
+  const alreadyAskedBlock = alreadyAsked.length > 0
+    ? [
+        '',
+        'Questions you ALREADY asked in earlier rounds (you MUST NOT ask any of these again, not even rephrased):',
+        ...alreadyAsked.map((question) => `- ${question}`),
+        'If the latest user message answers any of them, treat it as answered.'
+      ].join('\n')
+    : ''
+  const userContent = [
+    `Clarification round: ${request.round} / ${GOAL_CLARIFY_LIMIT} (at or above the limit you MUST set sufficient=true).`,
+    '',
+    'Conversation so far (oldest first):',
+    history || '(no prior context)',
+    '',
+    `Latest goal-mode request from the user:\n${source}`,
+    alreadyAskedBlock,
+    '',
+    'The workspace folder is already authorized and file/git operations are approved automatically at execution time. NEVER ask the user about permissions, authorization, or choosing a workspace folder.',
+    'Prefer "choices" (2-5 concrete options) over free-text questions whenever the answer is a decision among alternatives.',
+    'Return only the JSON object.'
+  ].join('\n')
+
+  let lastError: unknown = new Error('goal judge returned no valid result')
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: getProviderHeaders(request.provider),
+        body: JSON.stringify({
+          model: request.provider.defaultModel,
+          messages: normalizeOpenAiSystemMessages(attempt === 0
+            ? [
+                { role: 'system' as const, content: systemContent },
+                { role: 'user' as const, content: userContent }
+              ]
+            : [
+                { role: 'system' as const, content: systemContent },
+                { role: 'user' as const, content: `${userContent}\n\nThe previous response was not valid JSON. Return only a single complete JSON object.` }
+              ]),
+          temperature: 0.1,
+          max_tokens: 700,
+          stream: false,
+          ...(attempt === 0 ? { response_format: { type: 'json_object' } } : {})
+        }),
+        signal: requestSignal(undefined, 12_000)
+      })
+      if (!response.ok) {
+        lastError = new Error(`goal judge HTTP ${response.status}`)
+        if (attempt === 0 && (response.status === 400 || response.status === 422)) continue
+        break
+      }
+      const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown }; text?: unknown }> }
+      const content = extractTextContent(payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.text)
+      const parsed = extractJsonObject<Record<string, unknown>>(content)
+      if (parsed) return sanitizeGoalAssessment(parsed, request)
+      lastError = new Error('goal judge returned non-JSON content')
+      break
+    } catch (error) {
+      lastError = error
+      break
+    }
+  }
+  const message = lastError instanceof Error ? lastError.message : String(lastError)
+  return fallbackGoalAssessment(request, message.replace(/\s+/g, ' ').trim().slice(0, 180))
 }
 
 export async function searchConversations(

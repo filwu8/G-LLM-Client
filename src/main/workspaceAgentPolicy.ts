@@ -14,7 +14,23 @@ export function isProtectedWorkspacePath(path: string): boolean {
 }
 
 export function assertWorkspacePathAllowed(path: string): void {
-  if (isProtectedWorkspacePath(path)) throw new Error('Protected credentials or repository metadata cannot be accessed by workspace file tools')
+  if (!isProtectedWorkspacePath(path)) return
+  if (path.split(/[\\/]/).some((part) => part.toLowerCase() === '.git')) {
+    throw new Error('这是 Git 仓库元数据，普通文件工具不能读取 .git 目录。请改用 git_read 工具（operation: status / log / diff / branch / remote / show）查看仓库状态、提交历史和文件差异。凭据文件（.env / .ssh 等）在任何情况下都不可读取。')
+  }
+  throw new Error('Protected credentials or repository metadata cannot be accessed by workspace file tools')
+}
+
+// HTTP statuses safe to replay a model request on. 429 plus transient upstream
+// failures (5xx): a gateway may return 500/503 for a momentary backend fault
+// (e.g. its own database hiccup). Failing the whole run on the first such
+// response would discard completed tool work, so retry these in place.
+export const retryableModelStatuses: ReadonlySet<number> = new Set([429, 500, 502, 503, 504])
+
+// Statuses treated as transient for turn-level continuation after HTTP-level
+// retries are exhausted. 429 is handled entirely by in-place retries.
+export function isTransientModelHttpStatus(status: number | undefined): boolean {
+  return status !== undefined && [500, 502, 503, 504].includes(status)
 }
 
 // Only explicit, small regular files at the selected root. Never source .env as code.
@@ -76,6 +92,20 @@ export function redactWorkspaceSecrets(text: string, values: Record<string, stri
   return result
 }
 
+/**
+ * Stable identity for "this operation" used by the rejection ledger. It is
+ * deliberately coarse (tool + primary target) so a renamed script cannot slip
+ * past a rejection the user already made.
+ */
+export function approvalSignature(tool: string, target: string): string {
+  return `${String(tool ?? '').trim()}:${String(target ?? '').trim()}`
+}
+
+/** A previously rejected operation stays blocked in every permission mode. */
+export function isRejectedOperation(denied: ReadonlySet<string>, tool: string, target: string): boolean {
+  return denied.has(approvalSignature(tool, target))
+}
+
 export function needsWorkspaceApproval(
   mode: string | undefined,
   isScript: boolean,
@@ -91,13 +121,12 @@ export function needsWorkspaceApproval(
   return isScript || canWrite || isNative || boundary.external === true
 }
 
-export function workspaceApprovalInstructions(mode: string | undefined): string {
-  const policy = mode === 'full'
+export function workspaceApprovalInstructions(mode: string | undefined): string {  const policy = mode === 'full'
     ? 'Full authorization: enabled tools execute without per-operation approval, including explicitly enabled host execution and HTTP extensions.'
     : mode === 'auto'
       ? 'Approve for me: workspace tools, restricted JavaScript and configured sandbox Python/Shell (including background jobs) execute automatically. Host commands and HTTP extensions require approval.'
       : 'Ask for approval: file writes, scripts and HTTP extensions require per-operation approval; read-only workspace tools execute directly.'
-  return `${policy} Dedicated computer and browser tools always require per-call approval, including in full mode. Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode.`
+  return `${policy} Dedicated computer and browser tools always require per-call approval, including in full mode. Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode. Permission approval is not a business decision: in every mode, when several reasonable options exist and user intent is ambiguous, ask the user instead of choosing silently. The user can change the mode at any time; the client always applies the mode that is active when each tool call starts, and an operation the user rejected stays blocked.`
 }
 
 export async function loadWorkspaceEnvExampleNames(root: string): Promise<string[]> {

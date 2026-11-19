@@ -272,6 +272,13 @@ export interface Conversation {
   webSearchMode?: WebSearchMode
   workspace?: ConversationWorkspace
   goalTask?: GoalTask
+  /** Lightweight conversational goal-draft state, used before a GoalTask is created. */
+  goalDraft?: GoalDraft
+  /**
+   * A decision the assistant is waiting on, rendered as option cards above the
+   * composer. Cleared as soon as the user answers.
+   */
+  pendingChoice?: PendingChoice
   projectMemory?: ConversationProjectMemory
   pinnedAt?: number
   totalTokens?: number
@@ -374,6 +381,102 @@ export type GoalWebSearchScope = 'all' | 'official' | 'specified'
 export type GoalContextMode = 'auto' | 'continue' | 'relevant' | 'isolated'
 export type ResolvedGoalContextMode = Exclude<GoalContextMode, 'auto'>
 
+/**
+ * A conversational goal draft. Created when the user sends a message in goal
+ * mode; lives on the conversation so clarification Q&A survives restarts and
+ * conversation switches. Once the LLM judges the requirement sufficient (or
+ * the clarification round limit is reached), it is converted to a GoalTask and
+ * removed.
+ */
+export interface GoalDraft {
+  /** Which phase the draft is in. `ready` is a transient pre-launch state. */
+  status: 'clarifying' | 'ready'
+  /** The user's latest message that triggered or advanced this draft. */
+  latestInput: string
+  /** LLM-refined goal statement. */
+  goal: string
+  /** LLM-refined, verifiable acceptance criteria. */
+  acceptanceCriteria: string
+  /** Optional scope and constraints inferred from the conversation. */
+  scope?: string
+  constraints?: string
+  /** The clarifying questions last shown to the user (already answered or pending). */
+  questions: string[]
+  /** Every question asked across all rounds, used to guarantee we never repeat one. */
+  askedQuestions?: string[]
+  /** Choice-style questions rendered as selectable options above the composer. */
+  choices?: GoalChoice[]
+  /** Number of clarification rounds already asked. */
+  round: number
+  /** Assumptions used when launching despite insufficient information. */
+  assumptions?: string[]
+  /** Set when the LLM detects the user replaced the previous goal. */
+  changed?: boolean
+  updatedAt: number
+}
+
+/**
+ * A "pick one" decision the assistant surfaced at the end of a reply, shown as
+ * tappable options above the composer.
+ */
+export interface PendingChoice {
+  /** The question, or a concise restatement of it. */
+  prompt: string
+  /** Short option labels, in the order the assistant listed them. */
+  options: string[]
+  /** Assistant message the options were taken from. */
+  messageId: string
+  createdAt: number
+}
+
+/**
+ * A clarifying question whose answer is one of a few concrete options. When the
+ * judge can enumerate the plausible answers it emits a choice instead of a
+ * free-text question, so the UI can render tappable options above the composer.
+ */
+export interface GoalChoice {
+  /** The question text shown to the user. */
+  text: string
+  /** Concrete, mutually exclusive answers. */
+  options: string[]
+  /** When true the user may also type a custom answer. */
+  allowsCustom?: boolean
+  /** When true several options may be selected together. */
+  multiple?: boolean
+}
+
+/** Request for the one-shot, structured goal-sufficiency judgment. */
+export interface GoalAssessRequest {
+  provider: ApiProvider
+  settings: AppSettings
+  /** Full conversation context (user + assistant messages, including clarification Q&A). */
+  messages: ChatMessage[]
+  /** The message that triggered this assessment (raw user text). */
+  latestInput: string
+  /** Round index, used to enforce the clarification limit. */
+  round: number
+  /** Every question already asked in earlier rounds; the judge MUST NOT repeat these. */
+  alreadyAsked?: string[]
+  language: import('./i18n').AppLanguage
+}
+
+/** Structured result of a goal-sufficiency judgment. */
+export interface GoalAssessResult {
+  sufficient: boolean
+  goal: string
+  acceptanceCriteria: string
+  scope?: string
+  constraints?: string
+  questions: string[]
+  /** Choice-style questions, rendered as selectable options when present. */
+  choices?: GoalChoice[]
+  assumptions: string[]
+  /** True when the user replaced the previous goal instead of answering a question. */
+  changed: boolean
+  /** Present when judgment failed and the caller should fall back to launching. */
+  error?: string
+}
+
 export interface GoalTask {
   id: string
   goal: string
@@ -392,6 +495,8 @@ export interface GoalTask {
   completedAt?: number
   lastPlan?: AgentExecutionPlan
   lastError?: string
+  /** Assumptions recorded when the goal was launched from an under-specified draft. */
+  assumptions?: string[]
 }
 
 export type SkillStatus = 'draft' | 'active' | 'paused'
@@ -567,13 +672,38 @@ export interface ConversationProjectMemory {
   sourceMessageCount: number
 }
 
+/** DeepSeek Harness executor configuration, scoped to one workspace. */
+export interface WorkspaceHarnessConfig {
+  /** Enable the Harness execution engine for this workspace. */
+  enabled?: boolean
+  /** Fully delegated mode: the whole workspace run is handled by Harness. */
+  delegateAll?: boolean
+  /** Provider route passed to the Harness runtime (defaults to the active provider's template). Any OpenAI-compatible provider is supported. */
+  provider?: string
+  /** Model id passed to the Harness runtime (defaults to the provider's default model). */
+  model?: string
+  /** Named Harness profile (default sdk-minimal). */
+  profile?: string
+  /** Optional absolute path to an externally prepared runtime directory. */
+  runtimePath?: string
+}
+
+/**
+ * Global execution policy for the agent. This decides how much the agent may do
+ * on its own; it never widens the workspace permission, enabled tools, sandbox
+ * boundary or any operating-system guard.
+ */
+export type AgentPermissionMode = 'ask' | 'auto' | 'full'
+
+export const AGENT_PERMISSION_MODES: AgentPermissionMode[] = ['ask', 'auto', 'full']
+
 export interface ConversationWorkspace {
   projectId?: string
   kind?: 'managed' | 'external'
   rootPath: string
   displayName: string
   permission: 'read' | 'read-write'
-  approvalMode?: 'ask' | 'auto' | 'full'
+  approvalMode?: AgentPermissionMode
   executionMode?: 'sandbox' | 'host'
   sandboxNetwork?: boolean
   nativeExecution?: boolean
@@ -583,8 +713,17 @@ export interface ConversationWorkspace {
   browserWindowAccess?: boolean
   loadAgentsMd?: boolean
   envNames?: string[]
+  harness?: WorkspaceHarnessConfig
   grantedAt: number
   lastVerifiedAt: number
+}
+
+/** Status of the embedded DeepSeek Harness runtime, surfaced to the UI. */
+export interface HarnessRuntimeStatus {
+  installed: boolean
+  nodeVersion?: string
+  reason?: string
+  bridgeVersion?: string
 }
 
 export interface WorkspaceToolActivity {
@@ -593,6 +732,12 @@ export interface WorkspaceToolActivity {
   label: string
   status: 'running' | 'completed' | 'failed'
   detail?: string
+  /** Wall-clock start time, stamped by the main process when the activity appears. */
+  startedAt?: number
+  /** Wall-clock finish time, stamped when the activity leaves the running state. */
+  endedAt?: number
+  /** Files touched by this activity, used by the activity panel timeline. */
+  files?: string[]
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
@@ -613,7 +758,67 @@ export interface AgentExecutionPlan {
   completedAt?: number
 }
 
+/** How a pending agent interaction collects its answer. */
+export type WorkspaceInteractionSelection = 'single' | 'multiple' | 'text' | 'confirm'
+
+export type WorkspaceInteractionStatus = 'pending' | 'answered' | 'cancelled' | 'expired'
+
+export interface WorkspaceInteractionOption {
+  id: string
+  label: string
+  description?: string
+  recommended?: boolean
+}
+
+/**
+ * A structured request from the agent runtime that blocks the run until the
+ * user answers. `kind: 'question'` covers plan/parameter choices, `kind: 'auth'`
+ * asks the user to complete authentication outside the model context.
+ */
+export interface WorkspaceInteractionRequest {
+  id: string
+  conversationId: string
+  taskId?: string
+  runId?: string
+  kind: 'question' | 'auth'
+  title: string
+  description?: string
+  selection: WorkspaceInteractionSelection
+  options: WorkspaceInteractionOption[]
+  allowCustom: boolean
+  allowSkip: boolean
+  context?: string
+  createdAt: number
+  expiresAt?: number
+}
+
+export interface WorkspaceInteractionResponse {
+  id: string
+  selectedIds: string[]
+  customText?: string
+  cancelled: boolean
+  answeredAt: number
+}
+
+export interface WorkspaceInteractionRecord {
+  request: WorkspaceInteractionRequest
+  status: WorkspaceInteractionStatus
+  response?: WorkspaceInteractionResponse
+  resolvedAt?: number
+}
+
+export interface WorkspaceApprovalRisk {
+  level: 'low' | 'medium' | 'high'
+  /** Whether the underlying change can be rolled back (backup, git, checkpoint). */
+  reversible?: boolean
+  /** Human-readable blast radius, e.g. "12 files under Docs/". */
+  impact?: string
+  /** High-risk operations require an explicit second acknowledgement. */
+  requiresAcknowledgement?: boolean
+}
+
 export interface WorkspaceApprovalPrompt {
+  risk?: WorkspaceApprovalRisk
   tool?: string
   capability?: 'computer' | 'browser'
   preview?: string
@@ -630,6 +835,14 @@ export interface WorkspaceApprovalPrompt {
   workspaceName: string
   canWrite: boolean
   isScript: boolean
+}
+
+/** Change notification for the global permission mode, pushed to every window. */
+export interface AgentPermissionModeChange {
+  conversationId: string
+  mode: AgentPermissionMode
+  /** False when the conversation state was not persisted (draft or read-only workspace). */
+  persisted: boolean
 }
 
 export interface WorkspaceAgentRequest {
@@ -786,6 +999,12 @@ export interface AppSettings {
   timeZone: string
   theme: AppTheme
   webSearchMode: WebSearchMode
+  /** Default global permission mode applied to new agent tasks. */
+  agentPermissionMode: AgentPermissionMode
+  /** When true the permission choice follows the user across sessions. */
+  rememberAgentPermission: boolean
+  /** Set once the user accepted the full-access warning. */
+  fullAccessAcknowledged: boolean
   temperature: number
   enableTemperature: boolean
   maxTokens: number

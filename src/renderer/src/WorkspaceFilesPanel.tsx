@@ -9,7 +9,7 @@ export function WorkspaceFilesPanel({ workspace, refreshKey, busy, onPick, onAtt
   onPick: () => void; onAttach: (path: string) => void; onManage: () => void
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const [path, setPath] = useState('.')
   const [entries, setEntries] = useState<WorkspaceFileEntry[]>([])
   const [error, setError] = useState('')
@@ -28,16 +28,18 @@ export function WorkspaceFilesPanel({ workspace, refreshKey, busy, onPick, onAtt
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [workspace?.rootPath, path, expanded, refresh, refreshKey])
-  return <section className="workspace-files-panel" aria-label={t('workspaceFiles.title')}>
+  return <section className={`workspace-files-panel${expanded ? ' is-expanded' : ''}`} aria-label={t('workspaceFiles.title')}>
     <div className="workspace-files-heading">
       <button className="workspace-files-title" type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} title={workspace?.rootPath}>
-        {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<FolderOpen size={16} />
+        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<FolderOpen size={14} />
         <strong>{workspace?.displayName ?? t('workspaceFiles.title')}</strong>
         <span>{workspace?.projectId ? t('workspaceFiles.projectFolder') : t('workspaceFiles.sessionFolder')}</span>
       </button>
-      <button type="button" onClick={onPick} disabled={busy} title={t('workspaceFiles.add')}><Upload size={15} /><span>{t('workspaceFiles.add')}</span></button>
-      <button type="button" onClick={() => setRefresh(value => value + 1)} disabled={!workspace || loading} aria-label={t('workspaceFiles.refresh')}><RefreshCw size={15} /></button>
-      <button type="button" onClick={onManage} title={t('workspaceFiles.manage')} aria-label={t('workspaceFiles.manage')}><Settings size={15} /></button>
+      {expanded && <>
+        <button type="button" onClick={onPick} disabled={busy} title={t('workspaceFiles.add')}><Upload size={13} /><span>{t('workspaceFiles.add')}</span></button>
+        <button type="button" onClick={() => setRefresh(value => value + 1)} disabled={!workspace || loading} aria-label={t('workspaceFiles.refresh')}><RefreshCw size={13} /></button>
+        <button type="button" onClick={onManage} title={t('workspaceFiles.manage')} aria-label={t('workspaceFiles.manage')}><Settings size={13} /></button>
+      </>}
     </div>
     {expanded && <>
       {!workspace ? <p className="workspace-files-empty">{t('workspaceFiles.startHint')}</p> : <>
@@ -47,8 +49,8 @@ export function WorkspaceFilesPanel({ workspace, refreshKey, busy, onPick, onAtt
         <div className="workspace-files-list" aria-busy={loading}>
           {entries.map(entry => <div className="workspace-files-entry" key={entry.relativePath} title={entry.relativePath}>
             <button type="button" disabled={busy && !entry.directory} onClick={() => entry.directory ? setPath(entry.relativePath) : onAttach(entry.relativePath)}>
-              {entry.directory ? <FolderOpen size={15} /> : <FileText size={15} />}<span>{entry.name}</span>
-              {!entry.directory && <Paperclip size={13} />}
+              {entry.directory ? <FolderOpen size={13} /> : <FileText size={13} />}<span>{entry.name}</span>
+              {!entry.directory && <Paperclip size={11} />}
             </button>
           </div>)}
           {!loading && !error && entries.length === 0 && <p className="workspace-files-empty">{t('workspaceFiles.empty')}</p>}

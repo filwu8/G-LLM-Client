@@ -27,6 +27,7 @@ import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import { estimateTokenCount } from '../shared/tokenEstimate'
 import type {
   AgentExecutionPlan,
+  AgentPermissionMode,
   ApiProvider,
   AppSettings,
   AppTheme,
@@ -341,14 +342,18 @@ export function ensureConversationWorkspace(conversationId: string, projectId = 
 }
 
 function createDefaultConversationWorkspace(conversationId: string, projectId = getActiveProjectId()) {
+  // New tasks start from the user's configured default mode. When the user
+  // disabled cross-session memory the safe default is always "ask".
+  const settings = getSettings()
+  const approvalMode: AgentPermissionMode = settings.rememberAgentPermission ? settings.agentPermissionMode : 'ask'
   const project = getProjects().find(item => item.id === projectId)
   if (project?.workspacePath) {
     return { rootPath: project.workspacePath, displayName: project.name, projectId: project.id,
       kind: isPathInside(project.workspacePath, join(activeDataRoot, 'agent-workspaces')) ? 'managed' as const : 'external' as const,
-      permission: 'read-write' as const, approvalMode: 'ask' as const, nativeExecution: false, computerAccess: false, browserAccess: false,
+      permission: 'read-write' as const, approvalMode, nativeExecution: false, computerAccess: false, browserAccess: false,
       grantedAt: Date.now(), lastVerifiedAt: Date.now() }
   }
-  return createManagedWorkspace(activeDataRoot, conversationId, storageT('workspace.managedDirectory'))
+  return { ...createManagedWorkspace(activeDataRoot, conversationId, storageT('workspace.managedDirectory')), approvalMode }
 }
 
 function switchDataRoot(targetPath: string, customRoot?: string): void {
@@ -679,6 +684,9 @@ export const defaultSettings: AppSettings = {
   timeZone: 'system',
   theme: 'auto',
   webSearchMode: 'off',
+  agentPermissionMode: 'ask',
+  rememberAgentPermission: true,
+  fullAccessAcknowledged: false,
   temperature: 1,
   enableTemperature: false,
   maxTokens: 4096,
@@ -1066,6 +1074,10 @@ function sanitizeWebSearchActivity(activity?: WebSearchActivity): WebSearchActiv
 
 function sanitizeMessageSendShortcut(value: unknown): MessageSendShortcut {
   return value === 'ctrl-enter' ? 'ctrl-enter' : 'enter'
+}
+
+export function sanitizeAgentPermissionMode(value: unknown): AgentPermissionMode {
+  return value === 'auto' || value === 'full' ? value : 'ask'
 }
 
 function sanitizeAppTheme(value: unknown): AppTheme {
@@ -1521,6 +1533,12 @@ export function getSettings(): AppSettings {
       saved.webSearchMode === 'auto' || saved.webSearchMode === 'on' || saved.webSearchMode === 'off'
         ? saved.webSearchMode
         : defaultSettings.webSearchMode,
+    agentPermissionMode: sanitizeAgentPermissionMode(saved.agentPermissionMode),
+    rememberAgentPermission:
+      saved.rememberAgentPermission === undefined
+        ? defaultSettings.rememberAgentPermission
+        : Boolean(saved.rememberAgentPermission),
+    fullAccessAcknowledged: Boolean(saved.fullAccessAcknowledged),
     temperature: Number.isFinite(saved.temperature)
       ? Math.min(2, Math.max(0, Number(saved.temperature)))
       : defaultSettings.temperature,
@@ -1561,6 +1579,12 @@ export function setSettings(settings: AppSettings): AppSettings {
       settings.webSearchMode === 'auto' || settings.webSearchMode === 'on' || settings.webSearchMode === 'off'
         ? settings.webSearchMode
         : defaultSettings.webSearchMode,
+    agentPermissionMode: sanitizeAgentPermissionMode(settings.agentPermissionMode),
+    rememberAgentPermission:
+      settings.rememberAgentPermission === undefined
+        ? defaultSettings.rememberAgentPermission
+        : Boolean(settings.rememberAgentPermission),
+    fullAccessAcknowledged: Boolean(settings.fullAccessAcknowledged),
     temperature: Number.isFinite(settings.temperature)
       ? Math.min(2, Math.max(0, Number(settings.temperature)))
       : defaultSettings.temperature,
@@ -1760,6 +1784,12 @@ export function deleteAssistant(id: string, projectId = getActiveProjectId()): v
 
 function getAllConversations(): Conversation[] {
   return store.get('conversations', []).map((conversation) => sanitizeConversation(conversation, defaultProjectId))
+}
+
+/** Look a conversation up across every project, used by runtime policy callbacks. */
+export function getConversationById(conversationId: string): Conversation | undefined {
+  if (!conversationId) return undefined
+  return getAllConversations().find((conversation) => conversation.id === conversationId)
 }
 
 export function getConversationSearchSources(): ConversationSearchSource[] {

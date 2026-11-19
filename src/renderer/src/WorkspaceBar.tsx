@@ -106,6 +106,10 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   onRespond: (approved: boolean) => void
 }) {
   const { t } = useTranslation()
+  const [acknowledged, setAcknowledged] = useState(false)
+  const risk = prompt.risk
+  const riskLabel = risk ? t(`workspace.risk${risk.level === 'high' ? 'High' : risk.level === 'medium' ? 'Medium' : 'Low'}`) : ''
+  const blockedByRisk = Boolean(risk?.requiresAcknowledgement) && !acknowledged
   const configuration = prompt.tool === 'update_application_settings' || prompt.tool === 'configure_assistant_skill'
   const windowControl = prompt.tool === 'computer_window' || prompt.tool === 'browser_window'
   const desktopDescription = prompt.tool === 'computer_window' ? 'workspace.computerWindowAccessDescription'
@@ -133,27 +137,41 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
         {prompt.backgroundTimeoutMs && <p>{t('workspace.agentBackgroundLimit', { seconds: prompt.backgroundTimeoutMs / 1000 })}</p>}
         {prompt.preview && <pre className="workspace-code-preview"><code>{prompt.preview}</code></pre>}
         {prompt.code && <pre className="workspace-code-preview"><code>{prompt.code}</code></pre>}
+        {risk && (
+          <div className={`workspace-risk risk-${risk.level}`}>
+            <span>{t('workspace.riskLevel')}<strong>{riskLabel}</strong></span>
+            {risk.impact && <p>{risk.impact}</p>}
+            {risk.reversible === false && <small>{t('workspace.riskIrreversible')}</small>}
+          </div>
+        )}
+        {blockedByRisk && (
+          <label className="workspace-risk-ack">
+            <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
+            <span>{t('workspace.riskAcknowledge')}</span>
+          </label>
+        )}
         <footer>
           <button className="secondary-action" onClick={() => onRespond(false)} type="button">{t('workspace.operationDeny')}</button>
-          <button className="primary-action" onClick={() => onRespond(true)} type="button">{t('workspace.operationAllow')}</button>
+          <button className="primary-action" disabled={blockedByRisk} onClick={() => onRespond(true)} type="button">{t('workspace.operationAllow')}</button>
         </footer>
       </section>
     </div>
   )
 }
 
-export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onApprovalModeChange, onAgentSettingsChange, running = false }: {
+export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAgentSettingsChange, running = false }: {
   workspace: ConversationWorkspace
   conversationId?: string | null
   running?: boolean
   onAgentSettingsChange?: (settings: WorkspaceAgentSettings) => Promise<void>
   onOpen?: () => void
   onUnbind: () => void
-  onApprovalModeChange?: (mode: WorkspaceApprovalMode) => void
 }) {
   const { t } = useTranslation()
+  // Collapsed by default: the bar is only a quiet reminder of the bound folder.
+  // The approval mode lives in the composer permission picker, not here.
+  const [collapsed, setCollapsed] = useState(true)
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
-  const [approvalPickerOpen, setApprovalPickerOpen] = useState(false)
   const [browserConversationId, setBrowserConversationId] = useState<string | null>(null)
   const [browserError, setBrowserError] = useState(false)
   useEffect(() => {
@@ -172,63 +190,53 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAp
     }).catch(() => { /* The browser control is optional until a window is available. */ })
     return () => { active = false; unsubscribe() }
   }, [conversationId, workspace.browserAccess])
-  const approvalLabel = workspace.approvalMode === 'full'
-    ? t('workspace.approvalFull')
-    : workspace.approvalMode === 'auto'
-      ? t('workspace.approvalAuto')
-      : t('workspace.approvalAsk')
   return (
     <>
-      <section className="workspace-bar">
+      <section className={`workspace-bar${collapsed ? ' is-collapsed' : ''}`}>
         <div className="workspace-bar-head">
           <div className="workspace-bar-location">
             <FolderOpen size={14} />
-            <button className="workspace-path-button" onClick={onOpen} title={`${t('workspace.openDirectory')}\n${workspace.rootPath}`} type="button">
+            <button
+              className="workspace-path-button"
+              onClick={collapsed ? () => setCollapsed(false) : onOpen}
+              title={collapsed ? `${t('workspace.barExpand')}\n${workspace.rootPath}` : `${t('workspace.openDirectory')}\n${workspace.rootPath}`}
+              type="button"
+            >
               <small>{workspace.projectId ? workspace.displayName : workspace.kind === 'managed' ? t('workspace.managedDirectory') : workspace.displayName}</small>
             </button>
+            {collapsed && running && <span className="workspace-bar-running" aria-hidden />}
           </div>
-          <div className="workspace-bar-controls">
-            {workspace.browserAccess && browserConversationId === conversationId && conversationId && <button className="workspace-approval-trigger" title={t('workspace.showBrowserDescription')} type="button" onClick={() => {
-              setBrowserError(false)
-              void window.gllm.showAgentBrowser(conversationId).then(open => {
-                if (!open) setBrowserConversationId(null)
-              }).catch(() => setBrowserError(true))
-            }}><Globe size={13} />{t('workspace.showBrowser')}</button>}
-            <button
-              aria-haspopup="dialog"
-              className={`workspace-approval-trigger mode-${workspace.approvalMode ?? 'ask'}`}
-              title={t('workspace.approvalChange')}
-              type="button"
-              onClick={() => setApprovalPickerOpen(true)}
-            >
-              <ShieldCheck size={13} />
-              <span>{approvalLabel}</span>
-              <ChevronDown size={12} />
-            </button>
-            {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
-            {(workspace.computerAccess || workspace.browserAccess || workspace.computerWindowAccess || workspace.browserWindowAccess) && <div className="workspace-capabilities">
-              {workspace.computerAccess && <small>{t('workspace.computerAccess')}</small>}
-              {workspace.browserAccess && <small>{t('workspace.browserAccess')}</small>}
-              {workspace.computerWindowAccess && <small>{t('workspace.computerWindowAccess')}</small>}
-              {workspace.browserWindowAccess && <small>{t('workspace.browserWindowAccess')}</small>}
-            </div>}
-            {!workspace.projectId && <button className="workspace-unbind-button" aria-label={t('workspace.unbind')} title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>}
-          </div>
+          {!collapsed && (
+            <div className="workspace-bar-controls">
+              {workspace.browserAccess && browserConversationId === conversationId && conversationId && <button className="workspace-approval-trigger" title={t('workspace.showBrowserDescription')} type="button" onClick={() => {
+                setBrowserError(false)
+                void window.gllm.showAgentBrowser(conversationId).then(open => {
+                  if (!open) setBrowserConversationId(null)
+                }).catch(() => setBrowserError(true))
+              }}><Globe size={13} />{t('workspace.showBrowser')}</button>}
+              {onAgentSettingsChange && <button type="button" className="workspace-approval-trigger" disabled={running} onClick={() => setAgentSettingsOpen(true)} title={t('workspace.agentSettings')}>{workspace.nativeExecution ? t(workspace.executionMode === 'host' ? 'workspace.agentNativeBadge' : 'workspace.agentSandbox') : t('workspace.agentDisabledBadge')}</button>}
+              {(workspace.computerAccess || workspace.browserAccess || workspace.computerWindowAccess || workspace.browserWindowAccess) && <div className="workspace-capabilities">
+                {workspace.computerAccess && <small>{t('workspace.computerAccess')}</small>}
+                {workspace.browserAccess && <small>{t('workspace.browserAccess')}</small>}
+                {workspace.computerWindowAccess && <small>{t('workspace.computerWindowAccess')}</small>}
+                {workspace.browserWindowAccess && <small>{t('workspace.browserWindowAccess')}</small>}
+              </div>}
+              {!workspace.projectId && <button className="workspace-unbind-button" aria-label={t('workspace.unbind')} title={t('workspace.unbind')} type="button" onClick={onUnbind}><Unplug size={14} /></button>}
+            </div>
+          )}
+          <button
+            aria-expanded={!collapsed}
+            className="workspace-bar-toggle"
+            title={t(collapsed ? 'workspace.barExpand' : 'workspace.barCollapse')}
+            type="button"
+            onClick={() => setCollapsed(value => !value)}
+          >
+            <ChevronDown size={13} className={collapsed ? '' : 'is-open'} />
+          </button>
         </div>
         {browserError && <small role="alert">{t('workspace.showBrowserFailed')}</small>}
       </section>
       {agentSettingsOpen && onAgentSettingsChange && <WorkspaceAgentSettingsDialog workspace={workspace} onSave={onAgentSettingsChange} onClose={() => setAgentSettingsOpen(false)} />}
-      {approvalPickerOpen && (
-        <WorkspaceApprovalDialog
-          currentMode={workspace.approvalMode ?? 'ask'}
-          rootPath={workspace.rootPath}
-          onCancel={() => setApprovalPickerOpen(false)}
-          onSelect={(mode) => {
-            onApprovalModeChange?.(mode)
-            setApprovalPickerOpen(false)
-          }}
-        />
-      )}
     </>
   )
 }
