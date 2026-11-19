@@ -11,22 +11,25 @@ This file is generated from the locked production dependency graph by
 
 | Component | License | Project |
 | --- | --- | --- |
-| @antfu/install-pkg@1.1.0 | MIT | [link](https://github.com/antfu/install-pkg#readme) |
-| @babel/runtime@7.29.7 | MIT | [link](https://babel.dev/docs/en/next/babel-runtime) |
+| @antfu/install-pkg@2.1.0 | MIT | [link](https://github.com/antfu-collective/install-pkg#readme) |
 | @braintree/sanitize-url@7.1.2 | MIT | [link](https://github.com/braintree/sanitize-url#readme) |
-| @chevrotain/types@11.1.2 | Apache-2.0 | [link](https://chevrotain.io/documentation/) |
+| @chevrotain/cst-dts-gen@13.2.0 | Apache-2.0 | [link](https://github.com/Chevrotain/chevrotain#readme) |
+| @chevrotain/gast@13.2.0 | Apache-2.0 | [link](https://github.com/Chevrotain/chevrotain#readme) |
+| @chevrotain/regexp-to-ast@13.2.0 | Apache-2.0 | [link](https://github.com/Chevrotain/chevrotain#readme) |
+| @chevrotain/types@13.2.0 | Apache-2.0 | [link](https://chevrotain.io/documentation/) |
+| @chevrotain/utils@13.2.0 | Apache-2.0 | [link](https://github.com/Chevrotain/chevrotain#readme) |
 | @electron-internal/extract-zip@1.0.3 | BSD-2-Clause | [link](https://github.com/electron/extract-zip#readme) |
 | @electron-toolkit/preload@3.0.2 | MIT | [link](https://github.com/alex8088/electron-toolkit/tree/master/packages/preload#readme) |
 | @electron-toolkit/utils@4.0.0 | MIT | [link](https://github.com/alex8088/electron-toolkit/tree/master/packages/utils#readme) |
 | @electron/get@5.1.0 | MIT | [link](https://github.com/electron/get#readme) |
 | @iconify/types@2.0.0 | MIT | [link](https://github.com/iconify/iconify) |
-| @iconify/utils@3.1.3 | MIT | [link](https://iconify.design/docs/libraries/utils/) |
-| @mermaid-js/parser@1.2.1 | MIT | [link](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) |
-| @napi-rs/canvas-darwin-arm64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
-| @napi-rs/canvas-darwin-x64@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
-| @napi-rs/canvas-linux-x64-gnu@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
-| @napi-rs/canvas-win32-x64-msvc@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
-| @napi-rs/canvas@0.1.80 | MIT | [link](https://github.com/Brooooooklyn/canvas#readme) |
+| @iconify/utils@3.1.7 | MIT | [link](https://iconify.design/docs/libraries/utils/) |
+| @mermaid-js/parser@2.0.1 | MIT | [link](https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme) |
+| @napi-rs/canvas-darwin-arm64@1.1.1 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas-darwin-x64@1.1.1 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas-linux-x64-gnu@1.1.1 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas-win32-x64-msvc@1.1.1 | MIT | [link](https://github.com/Brooooooklyn/canvas) |
+| @napi-rs/canvas@1.1.1 | MIT | [link](https://github.com/Brooooooklyn/canvas#readme) |
 | @pdf-lib/standard-fonts@1.0.0 | MIT | [link](https://github.com/Hopding/standard-fonts) |
 | @pdf-lib/upng@1.0.1 | MIT | [link](https://github.com/Hopding/upng#readme) |
 | @types/d3-array@3.2.2 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-array) |
@@ -43,22 +46,22 @@ This file is generated from the locked production dependency graph by
 | @types/d3-fetch@3.0.7 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-fetch) |
 | @types/d3-force@3.0.10 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-force) |
 | @types/d3-format@3.0.4 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-format) |
-| @types/d3-geo@3.1.0 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-geo) |
+| @types/d3-geo@3.1.1 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-geo) |
 | @types/d3-hierarchy@3.1.7 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-hierarchy) |
 | @types/d3-interpolate@3.0.4 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-interpolate) |
 | @types/d3-path@3.1.1 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-path) |
 | @types/d3-polygon@3.0.2 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-polygon) |
 | @types/d3-quadtree@3.0.6 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-quadtree) |
-| @types/d3-random@3.0.3 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random) |
+| @types/d3-random@3.0.4 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random) |
 | @types/d3-scale-chromatic@3.1.0 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale-chromatic) |
 | @types/d3-scale@4.0.9 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale) |
-| @types/d3-selection@3.0.11 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection) |
-| @types/d3-shape@3.1.8 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-shape) |
+| @types/d3-selection@3.0.12 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection) |
+| @types/d3-shape@3.2.0 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-shape) |
 | @types/d3-time-format@4.0.3 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time-format) |
 | @types/d3-time@3.0.4 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time) |
 | @types/d3-timer@3.0.2 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-timer) |
 | @types/d3-transition@3.0.9 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition) |
-| @types/d3-zoom@3.0.8 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom) |
+| @types/d3-zoom@3.0.9 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom) |
 | @types/d3@7.4.3 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3) |
 | @types/debug@4.1.13 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/debug) |
 | @types/estree-jsx@1.0.5 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree-jsx) |
@@ -68,7 +71,7 @@ This file is generated from the locked production dependency graph by
 | @types/mdast@4.0.4 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdast) |
 | @types/ms@2.1.0 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ms) |
 | @types/node@24.13.2 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) |
-| @types/react@19.2.17 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) |
+| @types/react@19.3.0 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) |
 | @types/trusted-types@2.0.7 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types) |
 | @types/unist@2.0.11 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist) |
 | @types/unist@3.0.3 | MIT | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist) |
@@ -81,13 +84,13 @@ This file is generated from the locked production dependency graph by
 | atomically@2.1.1 | MIT | [link](https://github.com/fabiospampinato/atomically#readme) |
 | bail@2.0.2 | MIT | [link](https://github.com/wooorm/bail#readme) |
 | base64-js@1.5.1 | MIT | [link](https://github.com/beatgammit/base64-js) |
-| bluebird@3.4.7 | MIT | [link](https://github.com/petkaantonov/bluebird) |
 | builder-util-runtime@9.7.0 | MIT | [link](https://github.com/electron-userland/electron-builder) |
 | ccount@2.0.1 | MIT | [link](https://github.com/wooorm/ccount#readme) |
 | character-entities-html4@2.1.0 | MIT | [link](https://github.com/wooorm/character-entities-html4#readme) |
 | character-entities-legacy@3.0.0 | MIT | [link](https://github.com/wooorm/character-entities-legacy#readme) |
 | character-entities@2.0.2 | MIT | [link](https://github.com/wooorm/character-entities#readme) |
 | character-reference-invalid@2.0.1 | MIT | [link](https://github.com/wooorm/character-reference-invalid#readme) |
+| chevrotain@13.2.0 | Apache-2.0 | [link](https://chevrotain.io/docs/) |
 | comma-separated-tokens@2.0.3 | MIT | [link](https://github.com/wooorm/comma-separated-tokens#readme) |
 | commander@7.2.0 | MIT | [link](https://github.com/tj/commander.js#readme) |
 | commander@8.3.0 | MIT | [link](https://github.com/tj/commander.js#readme) |
@@ -98,75 +101,76 @@ This file is generated from the locked production dependency graph by
 | csstype@3.2.3 | MIT | [link](https://github.com/frenic/csstype#readme) |
 | cytoscape-cose-bilkent@4.1.0 | MIT | [link](https://github.com/cytoscape/cytoscape.js-cose-bilkent) |
 | cytoscape-fcose@2.2.0 | MIT | [link](https://github.com/iVis-at-Bilkent/cytoscape.js-fcose) |
-| cytoscape@3.34.0 | MIT | [link](http://js.cytoscape.org) |
+| cytoscape@3.35.0 | MIT | [link](http://js.cytoscape.org) |
 | d3-array@2.12.1 | BSD-3-Clause | [link](https://d3js.org/d3-array/) |
-| d3-array@3.2.4 | ISC | [link](https://d3js.org/d3-array/) |
-| d3-axis@3.0.0 | ISC | [link](https://d3js.org/d3-axis/) |
-| d3-brush@3.0.0 | ISC | [link](https://d3js.org/d3-brush/) |
-| d3-chord@3.0.1 | ISC | [link](https://d3js.org/d3-chord/) |
-| d3-color@3.1.0 | ISC | [link](https://d3js.org/d3-color/) |
-| d3-contour@4.0.2 | ISC | [link](https://d3js.org/d3-contour/) |
-| d3-delaunay@6.0.4 | ISC | [link](https://github.com/d3/d3-delaunay) |
-| d3-dispatch@3.0.1 | ISC | [link](https://d3js.org/d3-dispatch/) |
-| d3-drag@3.0.0 | ISC | [link](https://d3js.org/d3-drag/) |
-| d3-dsv@3.0.1 | ISC | [link](https://d3js.org/d3-dsv/) |
-| d3-ease@3.0.1 | BSD-3-Clause | [link](https://d3js.org/d3-ease/) |
-| d3-fetch@3.0.1 | ISC | [link](https://d3js.org/d3-fetch/) |
-| d3-force@3.0.0 | ISC | [link](https://d3js.org/d3-force/) |
-| d3-format@3.1.2 | ISC | [link](https://d3js.org/d3-format/) |
-| d3-geo@3.1.1 | ISC | [link](https://d3js.org/d3-geo/) |
-| d3-hierarchy@3.1.2 | ISC | [link](https://d3js.org/d3-hierarchy/) |
-| d3-interpolate@3.0.1 | ISC | [link](https://d3js.org/d3-interpolate/) |
+| d3-array@3.2.5 | ISC | [link](https://d3js.org/d3-array/) |
+| d3-axis@3.0.1 | ISC | [link](https://d3js.org/d3-axis/) |
+| d3-brush@3.0.1 | ISC | [link](https://d3js.org/d3-brush/) |
+| d3-chord@3.0.2 | ISC | [link](https://d3js.org/d3-chord/) |
+| d3-color@3.1.1 | ISC | [link](https://d3js.org/d3-color/) |
+| d3-contour@4.0.3 | ISC | [link](https://d3js.org/d3-contour/) |
+| d3-delaunay@6.0.6 | ISC | [link](https://github.com/d3/d3-delaunay) |
+| d3-dispatch@3.0.2 | ISC | [link](https://d3js.org/d3-dispatch/) |
+| d3-drag@3.0.1 | ISC | [link](https://d3js.org/d3-drag/) |
+| d3-dsv@3.0.2 | ISC | [link](https://d3js.org/d3-dsv/) |
+| d3-ease@3.0.2 | BSD-3-Clause | [link](https://d3js.org/d3-ease/) |
+| d3-fetch@3.0.2 | ISC | [link](https://d3js.org/d3-fetch/) |
+| d3-force@3.0.1 | ISC | [link](https://d3js.org/d3-force/) |
+| d3-format@3.1.3 | ISC | [link](https://d3js.org/d3-format/) |
+| d3-geo@3.1.2 | ISC | [link](https://d3js.org/d3-geo/) |
+| d3-hierarchy@3.1.3 | ISC | [link](https://d3js.org/d3-hierarchy/) |
+| d3-interpolate@3.0.2 | ISC | [link](https://d3js.org/d3-interpolate/) |
 | d3-path@1.0.9 | BSD-3-Clause | [link](https://d3js.org/d3-path/) |
-| d3-path@3.1.0 | ISC | [link](https://d3js.org/d3-path/) |
-| d3-polygon@3.0.1 | ISC | [link](https://d3js.org/d3-polygon/) |
-| d3-quadtree@3.0.1 | ISC | [link](https://d3js.org/d3-quadtree/) |
-| d3-random@3.0.1 | ISC | [link](https://d3js.org/d3-random/) |
+| d3-path@3.1.1 | ISC | [link](https://d3js.org/d3-path/) |
+| d3-polygon@3.0.2 | ISC | [link](https://d3js.org/d3-polygon/) |
+| d3-quadtree@3.0.2 | ISC | [link](https://d3js.org/d3-quadtree/) |
+| d3-random@3.0.2 | ISC | [link](https://d3js.org/d3-random/) |
 | d3-sankey@0.12.3 | BSD-3-Clause | [link](https://github.com/d3/d3-sankey) |
-| d3-scale-chromatic@3.1.0 | ISC | [link](https://d3js.org/d3-scale-chromatic/) |
-| d3-scale@4.0.2 | ISC | [link](https://d3js.org/d3-scale/) |
-| d3-selection@3.0.0 | ISC | [link](https://d3js.org/d3-selection/) |
+| d3-scale-chromatic@3.1.1 | ISC | [link](https://d3js.org/d3-scale-chromatic/) |
+| d3-scale@4.0.3 | ISC | [link](https://d3js.org/d3-scale/) |
+| d3-selection@3.0.1 | ISC | [link](https://d3js.org/d3-selection/) |
 | d3-shape@1.3.7 | BSD-3-Clause | [link](https://d3js.org/d3-shape/) |
-| d3-shape@3.2.0 | ISC | [link](https://d3js.org/d3-shape/) |
-| d3-time-format@4.1.0 | ISC | [link](https://d3js.org/d3-time-format/) |
-| d3-time@3.1.0 | ISC | [link](https://d3js.org/d3-time/) |
-| d3-timer@3.0.1 | ISC | [link](https://d3js.org/d3-timer/) |
-| d3-transition@3.0.1 | ISC | [link](https://d3js.org/d3-transition/) |
-| d3-zoom@3.0.0 | ISC | [link](https://d3js.org/d3-zoom/) |
-| d3@7.9.0 | ISC | [link](https://d3js.org) |
+| d3-shape@3.2.1 | ISC | [link](https://d3js.org/d3-shape/) |
+| d3-time-format@4.1.1 | ISC | [link](https://d3js.org/d3-time-format/) |
+| d3-time@3.1.1 | ISC | [link](https://d3js.org/d3-time/) |
+| d3-timer@3.0.2 | ISC | [link](https://d3js.org/d3-timer/) |
+| d3-transition@3.0.2 | ISC | [link](https://d3js.org/d3-transition/) |
+| d3-zoom@3.0.1 | ISC | [link](https://d3js.org/d3-zoom/) |
+| d3@7.9.2 | ISC | [link](https://d3js.org) |
 | dagre-d3-es@7.0.14 | MIT | [link](https://github.com/tbo47/dagre-es#readme) |
-| dayjs@1.11.21 | MIT | [link](https://day.js.org) |
+| dayjs@1.11.23 | MIT | [link](https://day.js.org) |
 | debounce-fn@6.0.0 | MIT | [link](https://github.com/sindresorhus/debounce-fn#readme) |
 | debug@4.4.3 | MIT | [link](https://github.com/debug-js/debug#readme) |
 | decode-named-character-reference@1.3.0 | MIT | [link](https://github.com/wooorm/decode-named-character-reference#readme) |
 | delaunator@5.1.0 | ISC | [link](https://github.com/mapbox/delaunator#readme) |
 | dequal@2.0.3 | MIT | [link](https://github.com/lukeed/dequal#readme) |
 | devlop@1.1.0 | MIT | [link](https://github.com/wooorm/devlop#readme) |
-| dingbat-to-unicode@1.0.1 | BSD-2-Clause | [link](https://github.com/mwilliamson/dingbat-to-unicode#readme) |
+| dingbat-to-unicode@1.0.2 | BSD-2-Clause | [link](https://github.com/mwilliamson/dingbat-to-unicode#readme) |
 | dompurify@3.4.17 | (MPL-2.0 OR Apache-2.0) | [link](https://github.com/cure53/DOMPurify) |
 | dot-prop@9.0.0 | MIT | [link](https://github.com/sindresorhus/dot-prop#readme) |
 | duck@0.1.12 | BSD | [link](https://github.com/mwilliamson/duck.js#readme) |
 | electron-store@10.1.0 | MIT | [link](https://github.com/sindresorhus/electron-store#readme) |
-| electron-updater@6.8.9 | MIT | [link](https://github.com/electron-userland/electron-builder) |
+| electron-updater@6.8.11 | MIT | [link](https://github.com/electron-userland/electron-builder) |
 | electron@42.11.18 | MIT | [link](https://github.com/electron/electron#readme) |
+| elkjs@0.12.1 | EPL-2.0 OR GPL-3.0-or-later | [link](https://github.com/kieler/elkjs#readme) |
 | env-paths@3.0.0 | MIT | [link](https://github.com/sindresorhus/env-paths#readme) |
-| es-toolkit@1.49.0 | MIT | [link](https://es-toolkit.dev) |
+| es-toolkit@1.53.2 | MIT | [link](https://es-toolkit.dev) |
 | escape-string-regexp@5.0.0 | MIT | [link](https://github.com/sindresorhus/escape-string-regexp#readme) |
 | estree-util-is-identifier-name@3.0.0 | MIT | [link](https://github.com/syntax-tree/estree-util-is-identifier-name#readme) |
 | extend@3.0.2 | MIT | [link](https://github.com/justmoon/node-extend#readme) |
 | fast-deep-equal@3.1.3 | MIT | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
 | fast-uri@3.1.9 | BSD-3-Clause | [link](https://github.com/fastify/fast-uri) |
-| fastdom@1.0.12 | MIT | [link](https://github.com/wilsonpage/fastdom) |
 | fs-extra@10.1.0 | MIT | [link](https://github.com/jprichardson/node-fs-extra) |
 | graceful-fs@4.2.11 | ISC | [link](https://github.com/isaacs/node-graceful-fs#readme) |
+| graceful-fs@4.2.12 | BlueOak-1.0.0 | [link](https://github.com/isaacs/node-graceful-fs#readme) |
 | hachure-fill@0.5.2 | MIT | [link](https://github.com/pshihn/hachure-fill#readme) |
 | hast-util-to-jsx-runtime@2.3.6 | MIT | [link](https://github.com/syntax-tree/hast-util-to-jsx-runtime#readme) |
 | hast-util-whitespace@3.0.0 | MIT | [link](https://github.com/syntax-tree/hast-util-whitespace#readme) |
-| html-parse-stringify@3.0.1 | MIT | [link](https://github.com/henrikjoreteg/html-parse-stringify) |
+| html-parse-stringify@4.0.1 | MIT | [link](https://github.com/i18next/html-parse-stringify) |
 | html-url-attributes@3.0.1 | MIT | [link](https://github.com/rehypejs/rehype-minify/tree/main#readme) |
-| i18next@26.3.6 | MIT | [link](https://www.i18next.com) |
+| i18next@27.1.2 | MIT | [link](https://www.i18next.com) |
 | iconv-lite@0.6.3 | MIT | [link](https://github.com/ashtuchkin/iconv-lite) |
-| ignore@7.0.8 | MIT | [link](https://github.com/kaelzhang/node-ignore#readme) |
+| ignore@7.0.14 | MIT | [link](https://github.com/kaelzhang/node-ignore#readme) |
 | immediate@3.0.6 | MIT | [link](https://github.com/calvinmetcalf/immediate#readme) |
 | import-meta-resolve@4.2.0 | MIT | [link](https://github.com/wooorm/import-meta-resolve#readme) |
 | inherits@2.0.4 | ISC | [link](https://github.com/isaacs/inherits#readme) |
@@ -184,7 +188,7 @@ This file is generated from the locked production dependency graph by
 | json-schema-traverse@1.0.0 | MIT | [link](https://github.com/epoberezkin/json-schema-traverse#readme) |
 | json-schema-typed@8.0.2 | BSD-2-Clause | [link](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) |
 | jsonfile@6.2.1 | MIT | [link](https://github.com/jprichardson/node-jsonfile#readme) |
-| jszip@3.10.1 | (MIT OR GPL-3.0-or-later) | [link](https://github.com/Stuk/jszip#readme) |
+| jszip@3.10.2 | (MIT OR GPL-3.0-or-later) | [link](https://github.com/Stuk/jszip#readme) |
 | katex@0.18.2 | MIT | [link](https://katex.org) |
 | khroma@2.1.0 | MIT | [link](https://github.com/fabiospampinato/khroma#readme) |
 | layout-base@1.0.2 | MIT | [link](https://github.com/iVis-at-Bilkent/layout-base#readme) |
@@ -196,8 +200,8 @@ This file is generated from the locked production dependency graph by
 | lodash.isequal@4.5.0 | MIT | [link](https://lodash.com/) |
 | longest-streak@3.1.0 | MIT | [link](https://github.com/wooorm/longest-streak#readme) |
 | lop@0.4.2 | BSD-2-Clause | [link](https://github.com/mwilliamson/lop#readme) |
-| lucide-react@0.468.0 | ISC | [link](https://lucide.dev) |
-| mammoth@1.12.0 | BSD-2-Clause | [link](https://github.com/mwilliamson/mammoth.js#readme) |
+| lucide-react@1.73.0 | ISC | [link](https://lucide.dev) |
+| mammoth@1.13.0 | BSD-2-Clause | [link](https://github.com/mwilliamson/mammoth.js#readme) |
 | markdown-table@3.0.4 | MIT | [link](https://github.com/wooorm/markdown-table#readme) |
 | marked@16.4.2 | MIT | [link](https://marked.js.org) |
 | mdast-util-find-and-replace@3.0.2 | MIT | [link](https://github.com/syntax-tree/mdast-util-find-and-replace#readme) |
@@ -215,7 +219,7 @@ This file is generated from the locked production dependency graph by
 | mdast-util-to-hast@13.2.1 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-hast#readme) |
 | mdast-util-to-markdown@2.1.2 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-markdown#readme) |
 | mdast-util-to-string@4.0.0 | MIT | [link](https://github.com/syntax-tree/mdast-util-to-string#readme) |
-| mermaid@11.17.2 | MIT | [link](https://github.com/mermaid-js/mermaid#readme) |
+| mermaid@12.3.0 | MIT | [link](https://github.com/mermaid-js/mermaid#readme) |
 | micromark-core-commonmark@2.0.3 | MIT | [link](https://github.com/micromark/micromark/tree/main#readme) |
 | micromark-extension-gfm-autolink-literal@2.1.0 | MIT | [link](https://github.com/micromark/micromark-extension-gfm-autolink-literal#readme) |
 | micromark-extension-gfm-footnote@2.1.0 | MIT | [link](https://github.com/micromark/micromark-extension-gfm-footnote#readme) |
@@ -247,11 +251,10 @@ This file is generated from the locked production dependency graph by
 | mimic-function@5.0.1 | MIT | [link](https://github.com/sindresorhus/mimic-function#readme) |
 | ms@2.1.3 | MIT | [link](https://github.com/vercel/ms#readme) |
 | option@0.2.4 | BSD-2-Clause | [link](https://github.com/mwilliamson/node-options#readme) |
-| package-manager-detector@1.6.0 | MIT | [link](https://github.com/antfu-collective/package-manager-detector#readme) |
+| package-manager-detector@1.9.0 | MIT | [link](https://github.com/antfu-collective/package-manager-detector#readme) |
 | pako@1.0.11 | (MIT AND Zlib) | [link](https://github.com/nodeca/pako) |
 | parse-entities@4.0.2 | MIT | [link](https://github.com/wooorm/parse-entities#readme) |
 | path-data-parser@0.1.0 | MIT | [link](https://github.com/pshihn/path-data-parser#readme) |
-| path-is-absolute@1.0.1 | MIT | [link](https://github.com/sindresorhus/path-is-absolute#readme) |
 | pdf-lib@1.17.1 | MIT | [link](https://pdf-lib.js.org) |
 | pdf-parse@2.4.5 | Apache-2.0 | [link](https://mehmet-kozan.github.io/pdf-parse/) |
 | pdfjs-dist@5.4.296 | Apache-2.0 | [link](https://mozilla.github.io/pdf.js/) |
@@ -260,10 +263,10 @@ This file is generated from the locked production dependency graph by
 | process-nextick-args@2.0.1 | MIT | [link](https://github.com/calvinmetcalf/process-nextick-args) |
 | progress@2.0.3 | MIT | [link](https://github.com/visionmedia/node-progress#readme) |
 | property-information@7.2.0 | MIT | [link](https://github.com/wooorm/property-information#readme) |
-| react-dom@19.2.7 | MIT | [link](https://react.dev/) |
-| react-i18next@17.0.9 | MIT | [link](https://github.com/i18next/react-i18next) |
+| react-dom@19.3.1 | MIT | [link](https://react.dev/) |
+| react-i18next@18.0.1 | MIT | [link](https://github.com/i18next/react-i18next) |
 | react-markdown@10.1.0 | MIT | [link](https://github.com/remarkjs/react-markdown#readme) |
-| react@19.2.7 | MIT | [link](https://react.dev/) |
+| react@19.3.1 | MIT | [link](https://react.dev/) |
 | readable-stream@2.3.8 | MIT | [link](https://github.com/nodejs/readable-stream#readme) |
 | remark-gfm@4.0.1 | MIT | [link](https://github.com/remarkjs/remark-gfm#readme) |
 | remark-parse@11.0.0 | MIT | [link](https://remark.js.org) |
@@ -275,13 +278,12 @@ This file is generated from the locked production dependency graph by
 | rw@1.3.3 | BSD-3-Clause | [link](https://github.com/mbostock/rw) |
 | safe-buffer@5.1.2 | MIT | [link](https://github.com/feross/safe-buffer) |
 | safer-buffer@2.1.2 | MIT | [link](https://github.com/ChALkeR/safer-buffer#readme) |
-| sax@1.6.0 | BlueOak-1.0.0 | [link](https://github.com/isaacs/sax-js#readme) |
-| scheduler@0.27.0 | MIT | [link](https://react.dev/) |
+| sax@1.6.1 | BlueOak-1.0.0 | [link](https://github.com/isaacs/sax-js#readme) |
+| scheduler@0.28.0 | MIT | [link](https://react.dev/) |
 | semver@7.7.4 | ISC | [link](https://github.com/npm/node-semver#readme) |
-| semver@7.8.5 | ISC | [link](https://github.com/npm/node-semver#readme) |
+| semver@7.8.6 | ISC | [link](https://github.com/npm/node-semver#readme) |
 | setimmediate@1.0.5 | MIT | [link](https://github.com/YuzuJS/setImmediate#readme) |
 | space-separated-tokens@2.0.2 | MIT | [link](https://github.com/wooorm/space-separated-tokens#readme) |
-| strictdom@1.0.1 | MIT | [link](https://github.com/wilsonpage/strictdom) |
 | string_decoder@1.1.1 | MIT | [link](https://github.com/nodejs/string_decoder) |
 | stringify-entities@4.0.4 | MIT | [link](https://github.com/wooorm/stringify-entities#readme) |
 | stubborn-fs@2.0.0 | MIT | [link](https://github.com/fabiospampinato/stubborn-fs#readme) |
@@ -291,7 +293,7 @@ This file is generated from the locked production dependency graph by
 | stylis@4.4.0 | MIT | [link](https://github.com/thysultan/stylis.js) |
 | sumchecker@3.0.1 | Apache-2.0 | [link](https://github.com/malept/sumchecker#readme) |
 | tiny-typed-emitter@2.1.0 | MIT | [link](https://github.com/binier/tiny-typed-emitter#readme) |
-| tinyexec@1.2.4 | MIT | [link](https://github.com/tinylibs/tinyexec#readme) |
+| tinyexec@1.3.1 | MIT | [link](https://github.com/tinylibs/tinyexec#readme) |
 | trim-lines@3.0.1 | MIT | [link](https://github.com/wooorm/trim-lines#readme) |
 | trough@2.2.0 | MIT | [link](https://github.com/wooorm/trough#readme) |
 | ts-dedent@2.3.0 | MIT | [link](https://github.com/tamino-martinius/node-ts-dedent#readme) |
@@ -309,19 +311,16 @@ This file is generated from the locked production dependency graph by
 | unist-util-visit-parents@6.0.2 | MIT | [link](https://github.com/syntax-tree/unist-util-visit-parents#readme) |
 | unist-util-visit@5.1.0 | MIT | [link](https://github.com/syntax-tree/unist-util-visit#readme) |
 | universalify@2.0.1 | MIT | [link](https://github.com/RyanZim/universalify#readme) |
-| use-sync-external-store@1.6.0 | MIT | [link](https://github.com/facebook/react#readme) |
 | util-deprecate@1.0.2 | MIT | [link](https://github.com/TooTallNate/util-deprecate) |
-| uuid@14.0.1 | MIT | [link](https://github.com/uuidjs/uuid#readme) |
 | vfile-message@4.0.3 | MIT | [link](https://github.com/vfile/vfile-message#readme) |
 | vfile@6.0.3 | MIT | [link](https://github.com/vfile/vfile#readme) |
-| void-elements@3.1.0 | MIT | [link](https://github.com/jadejs/void-elements) |
 | when-exit@2.1.5 | MIT | [link](https://github.com/fabiospampinato/when-exit#readme) |
 | xmlbuilder@10.1.1 | MIT | [link](http://github.com/oozcitak/xmlbuilder-js) |
 | zwitch@2.0.4 | MIT | [link](https://github.com/wooorm/zwitch#readme) |
 
 ## License and Notice Texts
 
-### @antfu/install-pkg@1.1.0
+### @antfu/install-pkg@2.1.0
 
 ````text
 MIT License
@@ -345,33 +344,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-````
-
-### @babel/runtime@7.29.7
-
-````text
-MIT License
-
-Copyright (c) 2014-present Sebastian McKenzie and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
 ### @braintree/sanitize-url@7.1.2
@@ -400,7 +372,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @chevrotain/types@11.1.2, dompurify@3.4.17, pdf-parse@2.4.5, sumchecker@3.0.1
+### @chevrotain/cst-dts-gen@13.2.0, @chevrotain/gast@13.2.0, @chevrotain/regexp-to-ast@13.2.0, @chevrotain/types@13.2.0, @chevrotain/utils@13.2.0, chevrotain@13.2.0, dompurify@3.4.17, pdf-parse@2.4.5, sumchecker@3.0.1
 
 ````text
 Apache License
@@ -684,7 +656,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @iconify/utils@3.1.3
+### @iconify/utils@3.1.7
 
 ````text
 MIT License
@@ -710,7 +682,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @mermaid-js/parser@1.2.1
+### @mermaid-js/parser@2.0.1
 
 ````text
 The MIT License (MIT)
@@ -736,7 +708,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @napi-rs/canvas@0.1.80
+### @napi-rs/canvas@1.1.1
 
 ````text
 MIT License
@@ -760,6 +732,40 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+src/svg_doc/broken_image.png is Chromium's broken-image icon
+(third_party/blink/public/default_100_percent/blink/broken_image.png),
+used under the Chromium license:
+
+Copyright 2015 The Chromium Authors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
 ### @pdf-lib/standard-fonts@1.0.0
@@ -814,7 +820,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### @types/d3-array@3.2.2, @types/d3-axis@3.0.6, @types/d3-brush@3.0.6, @types/d3-chord@3.0.6, @types/d3-color@3.1.3, @types/d3-contour@3.0.6, @types/d3-delaunay@6.0.4, @types/d3-dispatch@3.0.7, @types/d3-drag@3.0.7, @types/d3-dsv@3.0.7, @types/d3-ease@3.0.2, @types/d3-fetch@3.0.7, @types/d3-force@3.0.10, @types/d3-format@3.0.4, @types/d3-geo@3.1.0, @types/d3-hierarchy@3.1.7, @types/d3-interpolate@3.0.4, @types/d3-path@3.1.1, @types/d3-polygon@3.0.2, @types/d3-quadtree@3.0.6, @types/d3-random@3.0.3, @types/d3-scale-chromatic@3.1.0, @types/d3-scale@4.0.9, @types/d3-selection@3.0.11, @types/d3-shape@3.1.8, @types/d3-time-format@4.0.3, @types/d3-time@3.0.4, @types/d3-timer@3.0.2, @types/d3-transition@3.0.9, @types/d3-zoom@3.0.8, @types/d3@7.4.3, @types/debug@4.1.13, @types/estree-jsx@1.0.5, @types/estree@1.0.9, @types/geojson@7946.0.16, @types/hast@3.0.4, @types/mdast@4.0.4, @types/ms@2.1.0, @types/node@24.13.2, @types/react@19.2.17, @types/trusted-types@2.0.7, @types/unist@2.0.11, @types/unist@3.0.3
+### @types/d3-array@3.2.2, @types/d3-axis@3.0.6, @types/d3-brush@3.0.6, @types/d3-chord@3.0.6, @types/d3-color@3.1.3, @types/d3-contour@3.0.6, @types/d3-delaunay@6.0.4, @types/d3-dispatch@3.0.7, @types/d3-drag@3.0.7, @types/d3-dsv@3.0.7, @types/d3-ease@3.0.2, @types/d3-fetch@3.0.7, @types/d3-force@3.0.10, @types/d3-format@3.0.4, @types/d3-geo@3.1.1, @types/d3-hierarchy@3.1.7, @types/d3-interpolate@3.0.4, @types/d3-path@3.1.1, @types/d3-polygon@3.0.2, @types/d3-quadtree@3.0.6, @types/d3-random@3.0.4, @types/d3-scale-chromatic@3.1.0, @types/d3-scale@4.0.9, @types/d3-selection@3.0.12, @types/d3-shape@3.2.0, @types/d3-time-format@4.0.3, @types/d3-time@3.0.4, @types/d3-timer@3.0.2, @types/d3-transition@3.0.9, @types/d3-zoom@3.0.9, @types/d3@7.4.3, @types/debug@4.1.13, @types/estree-jsx@1.0.5, @types/estree@1.0.9, @types/geojson@7946.0.16, @types/hast@3.0.4, @types/mdast@4.0.4, @types/ms@2.1.0, @types/node@24.13.2, @types/react@19.3.0, @types/trusted-types@2.0.7, @types/unist@2.0.11, @types/unist@3.0.3
 
 ````text
 MIT License
@@ -1290,33 +1296,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### bluebird@3.4.7
-
-````text
-The MIT License (MIT)
-
-Copyright (c) 2013-2015 Petka Antonov
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-````
-
-### builder-util-runtime@9.7.0, electron-updater@6.8.9
+### builder-util-runtime@9.7.0, electron-updater@6.8.11
 
 ````text
 The MIT License (MIT)
@@ -1532,7 +1512,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### cytoscape@3.34.0
+### cytoscape@3.35.0
 
 ````text
 Copyright (c) 2016-2026, The Cytoscape Consortium.
@@ -1556,7 +1536,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### cytoscape@3.34.0
+### cytoscape@3.35.0
 
 ````text
 import fs from 'fs';
@@ -1625,10 +1605,10 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### d3-array@3.2.4, d3@7.9.0
+### d3-array@3.2.5, d3-axis@3.0.1, d3-brush@3.0.1, d3-chord@3.0.2, d3-color@3.1.1, d3-dispatch@3.0.2, d3-drag@3.0.1, d3-force@3.0.1, d3-format@3.1.3, d3-hierarchy@3.1.3, d3-interpolate@3.0.2, d3-polygon@3.0.2, d3-quadtree@3.0.2, d3-random@3.0.2, d3-scale@4.0.3, d3-selection@3.0.1, d3-shape@3.2.1, d3-time-format@4.1.1, d3-time@3.1.1, d3-timer@3.0.2, d3-transition@3.0.2, d3-zoom@3.0.1, d3@7.9.2
 
 ````text
-Copyright 2010-2023 Mike Bostock
+Copyright 2010-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1643,10 +1623,10 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### d3-axis@3.0.0, d3-brush@3.0.0, d3-chord@3.0.1, d3-dispatch@3.0.1, d3-drag@3.0.0, d3-force@3.0.0, d3-hierarchy@3.1.2, d3-interpolate@3.0.1, d3-polygon@3.0.1, d3-quadtree@3.0.1, d3-random@3.0.1, d3-scale@4.0.2, d3-selection@3.0.0, d3-time-format@4.1.0, d3-timer@3.0.1, d3-transition@3.0.1, d3-zoom@3.0.0
+### d3-contour@4.0.3
 
 ````text
-Copyright 2010-2021 Mike Bostock
+Copyright 2012-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1661,46 +1641,10 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### d3-color@3.1.0, d3-shape@3.2.0, d3-time@3.1.0
+### d3-delaunay@6.0.6
 
 ````text
-Copyright 2010-2022 Mike Bostock
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
-````
-
-### d3-contour@4.0.2
-
-````text
-Copyright 2012-2023 Mike Bostock
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
-````
-
-### d3-delaunay@6.0.4
-
-````text
-Copyright 2018-2021 Observable, Inc.
+Copyright 2018-2026 Observable, Inc.
 Copyright 2021 Mapbox
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -1716,10 +1660,10 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### d3-dsv@3.0.1
+### d3-dsv@3.0.2
 
 ````text
-Copyright 2013-2021 Mike Bostock
+Copyright 2013-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1734,10 +1678,10 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### d3-ease@3.0.1
+### d3-ease@3.0.2
 
 ````text
-Copyright 2010-2021 Mike Bostock
+Copyright 2010-2026 Mike Bostock
 Copyright 2001 Robert Penner
 All rights reserved.
 
@@ -1767,10 +1711,10 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### d3-fetch@3.0.1
+### d3-fetch@3.0.2
 
 ````text
-Copyright 2016-2021 Mike Bostock
+Copyright 2016-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1785,28 +1729,10 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### d3-format@3.1.2
+### d3-geo@3.1.2
 
 ````text
 Copyright 2010-2026 Mike Bostock
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
-````
-
-### d3-geo@3.1.1
-
-````text
-Copyright 2010-2024 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1874,10 +1800,10 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### d3-path@3.1.0
+### d3-path@3.1.1
 
 ````text
-Copyright 2015-2022 Mike Bostock
+Copyright 2015-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -1924,10 +1850,10 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### d3-scale-chromatic@3.1.0
+### d3-scale-chromatic@3.1.1
 
 ````text
-Copyright 2010-2024 Mike Bostock
+Copyright 2010-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
@@ -2017,7 +1943,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### dayjs@1.11.21
+### dayjs@1.11.23
 
 ````text
 MIT License
@@ -2165,6 +2091,33 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+````
+
+### dingbat-to-unicode@1.0.2
+
+````text
+Copyright (c) 2021, Michael Williamson
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
 ### dompurify@3.4.17
@@ -2545,7 +2498,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ````
 
-### duck@0.1.12, lop@0.4.2, mammoth@1.12.0, option@0.2.4
+### duck@0.1.12, lop@0.4.2, mammoth@1.13.0, option@0.2.4
 
 ````text
 Copyright (c) 2013, Michael Williamson
@@ -2598,7 +2551,275 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### es-toolkit@1.49.0
+### elkjs@0.12.1
+
+````text
+# Eclipse Public License - v 2.0
+
+THE ACCOMPANYING PROGRAM IS PROVIDED UNDER THE TERMS OF THIS ECLIPSE
+PUBLIC LICENSE (“AGREEMENT”). ANY USE, REPRODUCTION OR DISTRIBUTION OF
+THE PROGRAM CONSTITUTES RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT.
+
+## 1. DEFINITIONS
+
+“Contribution” means:
+
+-   a\) in the case of the initial Contributor, the initial content
+    Distributed under this Agreement, and
+-   b\) in the case of each subsequent Contributor:
+    -   i\) changes to the Program, and
+    -   ii\) additions to the Program;
+
+    where such changes and/or additions to the Program originate from
+    and are Distributed by that particular Contributor. A Contribution
+    “originates” from a Contributor if it was added to the Program by
+    such Contributor itself or anyone acting on such Contributor's
+    behalf. Contributions do not include changes or additions to the
+    Program that are not Modified Works.
+
+“Contributor” means any person or entity that Distributes the Program.
+
+“Licensed Patents” mean patent claims licensable by a Contributor which
+are necessarily infringed by the use or sale of its Contribution alone
+or when combined with the Program.
+
+“Program” means the Contributions Distributed in accordance with this
+Agreement.
+
+“Recipient” means anyone who receives the Program under this Agreement
+or any Secondary License (as applicable), including Contributors.
+
+“Derivative Works” shall mean any work, whether in Source Code or other
+form, that is based on (or derived from) the Program and for which the
+editorial revisions, annotations, elaborations, or other modifications
+represent, as a whole, an original work of authorship.
+
+“Modified Works” shall mean any work in Source Code or other form that
+results from an addition to, deletion from, or modification of the
+contents of the Program, including, for purposes of clarity any new file
+in Source Code form that contains any contents of the Program. Modified
+Works shall not include works that contain only declarations,
+interfaces, types, classes, structures, or files of the Program solely
+in each case in order to link to, bind by name, or subclass the Program
+or Modified Works thereof.
+
+“Distribute” means the acts of a) distributing or b) making available in
+any manner that enables the transfer of a copy.
+
+“Source Code” means the form of a Program preferred for making
+modifications, including but not limited to software source code,
+documentation source, and configuration files.
+
+“Secondary License” means either the GNU General Public License, Version
+2.0, or any later versions of that license, including any exceptions or
+additional permissions as identified by the initial Contributor.
+
+## 2. GRANT OF RIGHTS
+
+-   a\) Subject to the terms of this Agreement, each Contributor hereby
+    grants Recipient a non-exclusive, worldwide, royalty-free copyright
+    license to reproduce, prepare Derivative Works of, publicly display,
+    publicly perform, Distribute and sublicense the Contribution of such
+    Contributor, if any, and such Derivative Works.
+-   b\) Subject to the terms of this Agreement, each Contributor hereby
+    grants Recipient a non-exclusive, worldwide, royalty-free patent license
+    under Licensed Patents to make, use, sell, offer to sell, import and
+    otherwise transfer the Contribution of such Contributor, if any, in
+    Source Code or other form. This patent license shall apply to the
+    combination of the Contribution and the Program if, at the time the
+    Contribution is added by the Contributor, such addition of the
+    Contribution causes such combination to be covered by the
+    Licensed Patents. The patent license shall not apply to any other
+    combinations which include the Contribution. No hardware per se is
+    licensed hereunder.
+-   c\) Recipient understands that although each Contributor grants the
+    licenses to its Contributions set forth herein, no assurances are
+    provided by any Contributor that the Program does not infringe the
+    patent or other intellectual property rights of any other entity. Each
+    Contributor disclaims any liability to Recipient for claims brought by
+    any other entity based on infringement of intellectual property rights
+    or otherwise. As a condition to exercising the rights and licenses
+    granted hereunder, each Recipient hereby assumes sole responsibility to
+    secure any other intellectual property rights needed, if any. For
+    example, if a third party patent license is required to allow Recipient
+    to Distribute the Program, it is Recipient's responsibility to acquire
+    that license before distributing the Program.
+-   d\) Each Contributor represents that to its knowledge it has sufficient
+    copyright rights in its Contribution, if any, to grant the copyright
+    license set forth in this Agreement.
+-   e\) Notwithstanding the terms of any Secondary License, no Contributor
+    makes additional grants to any Recipient (other than those set forth in
+    this Agreement) as a result of such Recipient's receipt of the Program
+    under the terms of a Secondary License (if permitted under the terms of
+    Section 3).
+
+## 3. REQUIREMENTS
+
+3.1 If a Contributor Distributes the Program in any form, then:
+
+-   a\) the Program must also be made available as Source Code, in accordance
+    with section 3.2, and the Contributor must accompany the Program with a
+    statement that the Source Code for the Program is available under this
+    Agreement, and informs Recipients how to obtain it in a reasonable
+    manner on or through a medium customarily used for software exchange;
+    and
+-   b\) the Contributor may Distribute the Program under a license different
+    than this Agreement, provided that such license:
+    -   i\) effectively disclaims on behalf of all other Contributors all
+        warranties and conditions, express and implied, including warranties or
+        conditions of title and non-infringement, and implied warranties or
+        conditions of merchantability and fitness for a particular purpose;
+    -   ii\) effectively excludes on behalf of all other Contributors all
+        liability for damages, including direct, indirect, special, incidental
+        and consequential damages, such as lost profits;
+    -   iii\) does not attempt to limit or alter the recipients' rights in the
+        Source Code under section 3.2; and
+    -   iv\) requires any subsequent distribution of the Program by any party to
+        be under a license that satisfies the requirements of this section 3.
+
+3.2 When the Program is Distributed as Source Code:
+
+-   a\) it must be made available under this Agreement, or if the Program (i)
+    is combined with other material in a separate file or files made
+    available under a Secondary License, and (ii) the initial Contributor
+    attached to the Source Code the notice described in Exhibit A of this
+    Agreement, then the Program may be made available under the terms of
+    such Secondary Licenses, and
+-   b\) a copy of this Agreement must be included with each copy of
+    the Program.
+
+3.3 Contributors may not remove or alter any copyright, patent,
+trademark, attribution notices, disclaimers of warranty, or limitations
+of liability (‘notices’) contained within the Program from any copy of
+the Program which they Distribute, provided that Contributors may add
+their own appropriate notices.
+
+## 4. COMMERCIAL DISTRIBUTION
+
+Commercial distributors of software may accept certain responsibilities
+with respect to end users, business partners and the like. While this
+license is intended to facilitate the commercial use of the Program, the
+Contributor who includes the Program in a commercial product offering
+should do so in a manner which does not create potential liability for
+other Contributors. Therefore, if a Contributor includes the Program in
+a commercial product offering, such Contributor (“Commercial
+Contributor”) hereby agrees to defend and indemnify every other
+Contributor (“Indemnified Contributor”) against any losses, damages and
+costs (collectively “Losses”) arising from claims, lawsuits and other
+legal actions brought by a third party against the Indemnified
+Contributor to the extent caused by the acts or omissions of such
+Commercial Contributor in connection with its distribution of the
+Program in a commercial product offering. The obligations in this
+section do not apply to any claims or Losses relating to any actual or
+alleged intellectual property infringement. In order to qualify, an
+Indemnified Contributor must: a) promptly notify the Commercial
+Contributor in writing of such claim, and b) allow the Commercial
+Contributor to control, and cooperate with the Commercial Contributor
+in, the defense and any related settlement negotiations. The Indemnified
+Contributor may participate in any such claim at its own expense.
+
+For example, a Contributor might include the Program in a commercial
+product offering, Product X. That Contributor is then a Commercial
+Contributor. If that Commercial Contributor then makes performance
+claims, or offers warranties related to Product X, those performance
+claims and warranties are such Commercial Contributor's responsibility
+alone. Under this section, the Commercial Contributor would have to
+defend claims against the other Contributors related to those
+performance claims and warranties, and if a court requires any other
+Contributor to pay any damages as a result, the Commercial Contributor
+must pay those damages.
+
+## 5. NO WARRANTY {#warranty}
+
+EXCEPT AS EXPRESSLY SET FORTH IN THIS AGREEMENT, AND TO THE EXTENT
+PERMITTED BY APPLICABLE LAW, THE PROGRAM IS PROVIDED ON AN “AS IS”
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR
+IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF
+TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR
+PURPOSE. Each Recipient is solely responsible for determining the
+appropriateness of using and distributing the Program and assumes all
+risks associated with its exercise of rights under this Agreement,
+including but not limited to the risks and costs of program errors,
+compliance with applicable laws, damage to or loss of data, programs or
+equipment, and unavailability or interruption of operations.
+
+## 6. DISCLAIMER OF LIABILITY {#disclaimer}
+
+EXCEPT AS EXPRESSLY SET FORTH IN THIS AGREEMENT, AND TO THE EXTENT
+PERMITTED BY APPLICABLE LAW, NEITHER RECIPIENT NOR ANY CONTRIBUTORS
+SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST
+PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OR DISTRIBUTION OF THE PROGRAM OR THE
+EXERCISE OF ANY RIGHTS GRANTED HEREUNDER, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+## 7. GENERAL
+
+If any provision of this Agreement is invalid or unenforceable under
+applicable law, it shall not affect the validity or enforceability of
+the remainder of the terms of this Agreement, and without further action
+by the parties hereto, such provision shall be reformed to the minimum
+extent necessary to make such provision valid and enforceable.
+
+If Recipient institutes patent litigation against any entity (including
+a cross-claim or counterclaim in a lawsuit) alleging that the Program
+itself (excluding combinations of the Program with other software or
+hardware) infringes such Recipient's patent(s), then such Recipient's
+rights granted under Section 2(b) shall terminate as of the date such
+litigation is filed.
+
+All Recipient's rights under this Agreement shall terminate if it fails
+to comply with any of the material terms or conditions of this Agreement
+and does not cure such failure in a reasonable period of time after
+becoming aware of such noncompliance. If all Recipient's rights under
+this Agreement terminate, Recipient agrees to cease use and distribution
+of the Program as soon as reasonably practicable. However, Recipient's
+obligations under this Agreement and any licenses granted by Recipient
+relating to the Program shall continue and survive.
+
+Everyone is permitted to copy and distribute copies of this Agreement,
+but in order to avoid inconsistency the Agreement is copyrighted and may
+only be modified in the following manner. The Agreement Steward reserves
+the right to publish new versions (including revisions) of this
+Agreement from time to time. No one other than the Agreement Steward has
+the right to modify this Agreement. The Eclipse Foundation is the
+initial Agreement Steward. The Eclipse Foundation may assign the
+responsibility to serve as the Agreement Steward to a suitable separate
+entity. Each new version of the Agreement will be given a distinguishing
+version number. The Program (including Contributions) may always be
+Distributed subject to the version of the Agreement under which it was
+received. In addition, after a new version of the Agreement is
+published, Contributor may elect to Distribute the Program (including
+its Contributions) under the new version.
+
+Except as expressly stated in Sections 2(a) and 2(b) above, Recipient
+receives no rights or licenses to the intellectual property of any
+Contributor under this Agreement, whether expressly, by implication,
+estoppel or otherwise. All rights in the Program not expressly granted
+under this Agreement are reserved. Nothing in this Agreement is intended
+to be enforceable by any entity that is not a Contributor or Recipient.
+No third-party beneficiary rights are created under this Agreement.
+
+## Exhibit A – Form of Secondary Licenses Notice {#exhibit-a}
+
+“This Source Code may also be made available under the following
+Secondary Licenses when the conditions for such availability set forth
+in the Eclipse Public License, v. 2.0 are satisfied: GNU General Public License v3.0 or later”
+
+> Simply including a copy of this Agreement, including this Exhibit A is
+> not sufficient to license the Source Code under Secondary Licenses.
+>
+> If it is not possible or desirable to put the notice in a particular
+> file, then You may include the notice in a location (such as a LICENSE
+> file in a relevant directory) where a recipient would be likely to
+> look for such a notice.
+>
+> You may add additional accurate notices of copyright ownership.
+````
+
+### es-toolkit@1.53.2
 
 ````text
 MIT License
@@ -2622,6 +2843,50 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+````
+
+### es-toolkit@1.53.2
+
+````text
+es-toolkit
+
+Parts of the test suite and compatibility layer in es-toolkit/compat are
+derived from Lodash (https://github.com/lodash/lodash).
+
+Lodash copyright notice and MIT permission notice:
+
+Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
+
+Based on Underscore.js, copyright Jeremy Ashkenas,
+DocumentCloud and Investigative Reporters & Editors <http://underscorejs.org/>
+
+This software consists of voluntary contributions made by many
+individuals. For exact contribution history, see the revision history
+available at https://github.com/lodash/lodash
+
+The following license applies to all parts of this software except as
+documented below:
+
+====
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
 ### estree-util-is-identifier-name@3.0.0, mdast-util-gfm-autolink-literal@2.0.1, mdast-util-gfm-strikethrough@2.0.0, mdast-util-gfm-table@2.0.0, mdast-util-gfm-task-list-item@2.0.0, mdast-util-mdx-expression@2.0.1, mdast-util-mdx-jsx@3.2.0, mdast-util-mdxjs-esm@2.0.1, micromark-extension-gfm-autolink-literal@2.1.0, micromark-extension-gfm-strikethrough@2.1.0, micromark-extension-gfm-tagfilter@2.0.0, micromark-extension-gfm-task-list-item@2.1.0, micromark-extension-gfm@3.0.0
@@ -2779,12 +3044,99 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ````
 
+### graceful-fs@4.2.12, sax@1.6.1
+
+````text
+# Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor's
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+<https://blueoakcouncil.org/license/1.0.0>.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+***As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.***
+````
+
 ### hachure-fill@0.5.2
 
 ````text
 MIT License
 
 Copyright (c) 2023 Preet Shihn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### html-parse-stringify@4.0.1
+
+````text
+MIT License
+
+Copyright (c) 2025 Henrik Joreteg <henrik@joreteg.com>
+Copyright (c) 2026-present i18next (https://github.com/i18next)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -2831,7 +3183,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### i18next@26.3.6
+### i18next@27.1.2
 
 ````text
 The MIT License (MIT)
@@ -2882,7 +3234,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### ignore@7.0.8
+### ignore@7.0.14
 
 ````text
 Copyright (c) 2013 Kael Zhang <i@kael.me>, contributors
@@ -3172,7 +3524,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### jszip@3.10.1
+### jszip@3.10.2
 
 ````text
 JSZip is dual licensed. At your choice you may use it under the MIT license *or* the GPLv3
@@ -4101,12 +4453,12 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### lucide-react@0.468.0
+### lucide-react@1.73.0
 
 ````text
 ISC License
 
-Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+Copyright (c) 2026 Lucide Icons and Contributors
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -4119,6 +4471,34 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ````
 
 ### marked@16.4.2
@@ -4198,7 +4578,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### mermaid@11.17.2
+### mermaid@12.3.0
 
 ````text
 The MIT License (MIT)
@@ -4277,7 +4657,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### package-manager-detector@1.6.0
+### package-manager-detector@1.9.0
 
 ````text
 MIT License
@@ -4380,32 +4760,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-````
-
-### path-is-absolute@1.0.1
-
-````text
-The MIT License (MIT)
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ````
 
 ### pdf-lib@1.17.1
@@ -4692,7 +5046,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### react-dom@19.2.7, react@19.2.7, scheduler@0.27.0, use-sync-external-store@1.6.0
+### react-dom@19.3.1, react@19.3.1, scheduler@0.28.0
 
 ````text
 MIT License
@@ -4718,7 +5072,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### react-i18next@17.0.9
+### react-i18next@18.0.1
 
 ````text
 The MIT License (MIT)
@@ -5012,67 +5366,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### sax@1.6.0
-
-````text
-# Blue Oak Model License
-
-Version 1.0.0
-
-## Purpose
-
-This license gives everyone as much permission to work with
-this software as possible, while protecting contributors
-from liability.
-
-## Acceptance
-
-In order to receive this license, you must agree to its
-rules.  The rules of this license are both obligations
-under that agreement and conditions to your license.
-You must not do anything with this software that triggers
-a rule that you cannot or will not follow.
-
-## Copyright
-
-Each contributor licenses you to do everything with this
-software that would otherwise infringe that contributor's
-copyright in it.
-
-## Notices
-
-You must ensure that everyone who gets a copy of
-any part of this software from you, with or without
-changes, also gets the text of this license or a link to
-<https://blueoakcouncil.org/license/1.0.0>.
-
-## Excuse
-
-If anyone notifies you in writing that you have not
-complied with [Notices](#notices), you can keep your
-license by taking all practical steps to comply within 30
-days after the notice.  If you do not do so, your license
-ends immediately.
-
-## Patent
-
-Each contributor licenses you to do everything with this
-software that would otherwise infringe any patent claims
-they can license or become able to license.
-
-## Reliability
-
-No contributor can revoke this license.
-
-## No Liability
-
-***As far as the law allows, this software comes as is,
-without any warranty or condition, and no contributor
-will be liable to anyone for any damages related to this
-software or this license, under any kind of legal claim.***
-````
-
-### semver@7.7.4, semver@7.8.5
+### semver@7.7.4, semver@7.8.6
 
 ````text
 The ISC License
@@ -5275,7 +5569,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### tinyexec@1.2.4
+### tinyexec@1.3.1
 
 ````text
 MIT License
@@ -5716,47 +6010,6 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### uuid@14.0.1
-
-````text
-The MIT License (MIT)
-
-Copyright (c) 2010-2020 Robert Kieffer and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-````
-
-### void-elements@3.1.0
-
-````text
-(The MIT License)
-
-Copyright (c) 2014 hemanth
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-'Software'), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-````
-
 ### xmlbuilder@10.1.1
 
 ````text
@@ -5789,14 +6042,10 @@ The following packages declare a license in package metadata but do not
 ship a root-level license or notice file in the installed package:
 
 - @electron-internal/extract-zip@1.0.3: BSD-2-Clause
-- @napi-rs/canvas-darwin-arm64@0.1.80: MIT
-- @napi-rs/canvas-darwin-x64@0.1.80: MIT
-- @napi-rs/canvas-linux-x64-gnu@0.1.80: MIT
-- @napi-rs/canvas-win32-x64-msvc@0.1.80: MIT
-- dingbat-to-unicode@1.0.1: BSD-2-Clause
-- fastdom@1.0.12: MIT
-- html-parse-stringify@3.0.1: MIT
+- @napi-rs/canvas-darwin-arm64@1.1.1: MIT
+- @napi-rs/canvas-darwin-x64@1.1.1: MIT
+- @napi-rs/canvas-linux-x64-gnu@1.1.1: MIT
+- @napi-rs/canvas-win32-x64-msvc@1.1.1: MIT
 - isarray@1.0.0: MIT
 - js-tiktoken@1.0.21: MIT
 - lazy-val@1.0.5: MIT
-- strictdom@1.0.1: MIT
