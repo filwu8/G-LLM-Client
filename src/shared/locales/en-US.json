@@ -229,6 +229,9 @@
     "configVersion": "Configuration version",
     "configSource": "Configuration source",
     "configSourcePlaceholder": "Optional: config path, repository URL, or import source",
+    "workspaceRoot": "Workspace directory",
+    "workspaceRootPlaceholder": "Optional: this assistant's own directory. Leave blank to follow the conversation workspace.",
+    "workspaceRootHint": "When set, this assistant runs inside its own directory and reads AGENTS.md and MEMORY.md from there.",
     "skills": "Assigned skills",
     "tools": "Assigned workspace tools",
     "noSkills": "This workspace has no skills yet. Create or upload one in the Extensions center.",
@@ -269,7 +272,13 @@
     "adding": "Adding “{{assistant}}”...",
     "generating": "Generating a “{{keyword}}” assistant...",
     "added": "Added “{{assistant}}”",
-    "empty": "No preset matched. You can generate a new assistant with AI."
+    "empty": "No preset matched. You can generate a new assistant with AI.",
+    "importDirectory": "Import seats from folder",
+    "importDialogTitle": "Choose the folder that contains the seat directories",
+    "importDialogButton": "Import",
+    "imported": "Imported {{orchestrator}} with {{count}} seats",
+    "importNothing": "No seats found",
+    "importFailed": "Import failed: {{message}}"
   },
   "conversationModel": {
     "title": "Conversation model",
@@ -379,6 +388,23 @@
     "fileTooLarge": "The skill document must be no larger than 1 MB",
     "emptyFile": "The skill document has no usable content",
     "fileReadFailed": "Could not read the skill document"
+  },
+  "meeting": {
+    "title": "Meeting room",
+    "aria": "Meeting room",
+    "postCount": "{{count}} posts",
+    "notLoaded": "Not loaded yet",
+    "refresh": "Refresh meeting room",
+    "pickWorkspace": "Choose a workspace for this conversation first",
+    "tailBroken": "The meeting room tail is incomplete, so the script refuses to append: check the last post manually",
+    "skipped": "{{count}} empty blocks were skipped",
+    "empty": "No posts in the meeting room yet",
+    "placeholder": "Post as “{{seat}}”; write the body only",
+    "signature": "Signed: {{seat}}",
+    "currentAssistant": "Current assistant",
+    "posted": "Posted · {{at}} · {{bytes}} bytes",
+    "sending": "Sending",
+    "send": "Post"
   },
   "notices": {
     "inactiveAssistant": "This assistant is disabled. Enable it or choose another assistant.",

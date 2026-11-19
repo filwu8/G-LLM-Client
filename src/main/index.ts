@@ -87,6 +87,8 @@ import { WorkspaceInteractionStore } from './workspaceInteractions'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
+import { postMeetingMessage, readMeetingRoom, resolveMeetingRoomFile, resolveMeetingScript } from './meetingRoom'
+import { importAssistantsFromDirectory } from './assistantImport'
 import { AutoUpdateManager } from './autoUpdateManager'
 import {
   GLLM_DEEP_LINK_SCHEME,
@@ -1800,6 +1802,46 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
+  ipcMain.handle('meeting:read', (_event, input: { workspaceRoot?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    if (!root) throw new Error('meeting:read 需要 workspaceRoot')
+    const script = resolveMeetingScript(root)
+    if (!script) throw new Error(`当前工作区没有 data/append_room.ps1，会议室不可用（${root}）`)
+    const roomPath = resolveMeetingRoomFile(script)
+    return { ...readMeetingRoom(roomPath), scriptPath: script }
+  })
+  ipcMain.handle('meeting:post', async (_event, input: { workspaceRoot?: string; seat?: string; content?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    if (!root) throw new Error('meeting:post 需要 workspaceRoot')
+    const script = resolveMeetingScript(root)
+    if (!script) throw new Error(`当前工作区没有 data/append_room.ps1，会议室不可用（${root}）`)
+    return postMeetingMessage({ scriptPath: script, roomPath: resolveMeetingRoomFile(script), seat: String(input.seat ?? ''), body: String(input.content ?? '') })
+  })
+  ipcMain.handle('assistants:import-directory', async (event, input: { directory?: string; parentName?: string } = {}) => {
+    let directory = String(input?.directory ?? '').trim()
+    if (!directory) {
+      const owner = BrowserWindow.fromWebContents(event.sender)
+      const language = getSettings().language
+      const options = {
+        title: mainT('native.chooseDirectory', language),
+        buttonLabel: mainT('native.useDirectory', language),
+        properties: ['openDirectory' as const]
+      }
+      const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+      if (picked.canceled || !picked.filePaths[0]) return null
+      directory = picked.filePaths[0]
+    }
+    const result = importAssistantsFromDirectory(directory, { parentName: input?.parentName })
+    const projectId = getActiveProjectId()
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      browserWindow.webContents.send('assistant:capabilities-changed', {
+        projectId,
+        assistants: getAssistants(projectId),
+        skills: getSkills(projectId)
+      })
+    }
+    return result
+  })
   ipcMain.handle('gllm:connection-state', () => gllmConnection.getState())
   ipcMain.handle('gllm:connect', () => gllmConnection.begin())
   ipcMain.handle('gllm:connect-retry', () => gllmConnection.retry())

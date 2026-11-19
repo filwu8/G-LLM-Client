@@ -55,6 +55,7 @@ import {
   AtSign,
   Trash2,
   Upload,
+  FolderInput,
   Wrench,
   X,
   type LucideIcon
@@ -136,6 +137,7 @@ import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
 import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
+import { MeetingRoom } from './MeetingRoom'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
@@ -1255,6 +1257,33 @@ export default function App() {
       return searchable.includes(keyword)
     })
   }, [assistantSearchQuery, visibleAssistants, i18n.resolvedLanguage])
+  const layeredAssistants = useMemo(() => {
+    const known = new Set(assistants.map((item) => item.id))
+    const children = new Map<string, Assistant[]>()
+    for (const item of assistants) {
+      const parentId = item.parentAssistantId
+      if (!parentId || !known.has(parentId)) continue
+      const bucket = children.get(parentId) ?? []
+      bucket.push(item)
+      children.set(parentId, bucket)
+    }
+    const rows: { assistant: Assistant; depth: number }[] = []
+    const placed = new Set<string>()
+    for (const item of filteredAssistants) {
+      if (item.parentAssistantId && known.has(item.parentAssistantId)) continue
+      rows.push({ assistant: item, depth: 0 })
+      placed.add(item.id)
+      for (const child of children.get(item.id) ?? []) {
+        if (!filteredAssistants.some((entry) => entry.id === child.id)) continue
+        rows.push({ assistant: child, depth: 1 })
+        placed.add(child.id)
+      }
+    }
+    for (const item of filteredAssistants) {
+      if (!placed.has(item.id)) rows.push({ assistant: item, depth: 0 })
+    }
+    return rows
+  }, [assistants, filteredAssistants])
 
   useEffect(() => window.gllm.onStorageLocationChanged?.((state, previousRoot) => {
     applyAppState(state)
@@ -3849,7 +3878,7 @@ export default function App() {
           </label>
 
           <div className="assistant-list">
-            {filteredAssistants.map((assistant) => {
+            {layeredAssistants.map(({ assistant, depth }) => {
               const active = assistant.id === activeAssistantId
               const displayAssistant = localizeAssistant(assistant)
               const assistantRunStatuses = conversations
@@ -3869,7 +3898,7 @@ export default function App() {
               return (
                 <button
                   key={assistant.id}
-                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}`}
+                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}${depth > 0 ? ' assistant-card-child' : ''}`}
                   onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
                   title={`${displayAssistant.name}\n${t(`assistantSettings.statuses.${assistant.status ?? 'active'}`)} · ${assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local')} · v${assistant.configSource?.version ?? '1.0.0'}`}
@@ -4017,6 +4046,24 @@ export default function App() {
                 <Brain size={16} />
               </button>
             )}
+            <button
+              className="icon-button compact"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const result = await window.gllm.importAssistantsFromDirectory({ directory: '' })
+                    if (!result) return
+                    showToolNotice(t('addAssistant.imported', { orchestrator: result.orchestrator.name, count: result.seats.length }), 8000)
+                  } catch (error) {
+                    showToolNotice(error instanceof Error ? error.message : String(error), 8000)
+                  }
+                })()
+              }}
+              title={t('addAssistant.importDirectory')}
+              type="button"
+            >
+              <FolderInput size={16} />
+            </button>
             <button className="icon-button compact" onClick={() => setAssistantSettingsOpen(true)} title={t('app.assistantSettings')} type="button">
               <Pencil size={16} />
             </button>
@@ -4040,6 +4087,8 @@ export default function App() {
           {filesOpen && <WorkspaceFilesPanel workspace={currentWorkspace} busy={isPickingAttachment || isStreaming}
             refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
             onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
+          {filesOpen && <MeetingRoom workspace={currentWorkspace} assistantName={activeAssistantDisplay.name}
+            refreshKey={`${activeConversation?.updatedAt ?? 0}:${workspaceChangedFiles.length}`} />}
           <div className={`message-viewport${showActivityPanel ? ' has-activity-panel' : ''}`}>
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
             {isManagedGllmProvider(conversationProvider) && <GllmAccountPanel provider={conversationProvider} onManualConfiguration={() => setSettingsOpen(true)} />}
@@ -5799,6 +5848,7 @@ function AssistantSettingsDialog({
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>(assistant.skillIds ?? [])
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>(assistant.toolIds ?? [])
   const [delegateAssistantIds, setDelegateAssistantIds] = useState<string[]>(assistant.delegateAssistantIds ?? [])
+  const [workspaceRoot, setWorkspaceRoot] = useState(assistant.workspaceRoot ?? '')
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -5820,7 +5870,8 @@ function AssistantSettingsDialog({
     configVersion.trim() !== (assistant.configSource?.version ?? '1.0.0') ||
     selectedSkillIds.join('|') !== (assistant.skillIds ?? []).join('|') ||
     selectedToolIds.join('|') !== (assistant.toolIds ?? []).join('|') ||
-    delegateAssistantIds.join('|') !== (assistant.delegateAssistantIds ?? []).join('|')
+    delegateAssistantIds.join('|') !== (assistant.delegateAssistantIds ?? []).join('|') ||
+    workspaceRoot.trim() !== (assistant.workspaceRoot ?? '')
 
   useEffect(() => {
     if (!avatarSourceDataUrl) return
@@ -5900,6 +5951,7 @@ function AssistantSettingsDialog({
         skillIds: selectedSkillIds,
         toolIds: selectedToolIds,
         delegateAssistantIds,
+        workspaceRoot: workspaceRoot.trim() || undefined,
         updatedAt: Date.now()
       })
       setStatus(t('assistantSettings.saved'))
@@ -6031,6 +6083,16 @@ function AssistantSettingsDialog({
             selectedIds={delegateAssistantIds}
             onChange={setDelegateAssistantIds}
           />
+
+          <label>
+            <span>{t('assistantSettings.workspaceRoot')}</span>
+            <input
+              placeholder={t('assistantSettings.workspaceRootPlaceholder')}
+              value={workspaceRoot}
+              onChange={(event) => setWorkspaceRoot(event.target.value)}
+            />
+            <small className="assistant-settings-hint">{t('assistantSettings.workspaceRootHint')}</small>
+          </label>
 
           <label>
             <span>{t('assistantSettings.systemPrompt')}</span>

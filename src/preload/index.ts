@@ -97,6 +97,12 @@ ipcRenderer.on('composer:open-in-main', (_event, target: ComposerSessionTarget) 
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
+  readMeetingRoom: (workspaceRoot: string): Promise<{ path: string; bytes: number; tailComplete: boolean; skipped: number; scriptPath: string; posts: { seat: string; at: string; body: string }[] }> =>
+    ipcRenderer.invoke('meeting:read', { workspaceRoot }),
+  postMeetingMessage: (input: { workspaceRoot: string; seat: string; content: string }): Promise<{ at: string; seat: string; bytes: number; appendBytes: number }> =>
+    ipcRenderer.invoke('meeting:post', input),
+  importAssistantsFromDirectory: (input: { directory: string; parentName?: string }): Promise<import('../shared/types').AssistantImportResult | null> =>
+    ipcRenderer.invoke('assistants:import-directory', input),
   getGllmConnectionState: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connection-state'),
   connectGllm: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect'),
   retryGllmConnection: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect-retry'),

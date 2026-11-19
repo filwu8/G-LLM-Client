@@ -1510,6 +1510,10 @@ function sanitizeAssistant(assistant: Assistant, fallbackProjectId = getActivePr
       .map(String)
       .map((id) => id.trim())
       .filter((id) => id && id !== assistant.id))).slice(0, 50),
+    parentAssistantId: assistant.parentAssistantId?.trim() && assistant.parentAssistantId.trim() !== assistant.id
+      ? assistant.parentAssistantId.trim()
+      : undefined,
+    workspaceRoot: assistant.workspaceRoot?.trim() || undefined,
     createdAt: assistant.createdAt ?? now,
     updatedAt: now
   }

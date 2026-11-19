@@ -14,7 +14,8 @@ import { readRepositoryFiles, searchRepository, repositoryText } from './workspa
 import { createOutputTokenBudget } from './workspaceTokenBudget'
 import { WorkspaceJobs } from './workspaceJobs'
 import { WorkspaceCheckpointStore, WORKSPACE_EVIDENCE_HISTORY, workspaceTaskId } from './workspaceCheckpoint'
-import { getDataLocationInfo, resolveCurrentDataPath } from './storage'
+import { getDataLocationInfo, getConversationById, getProviders, resolveCurrentDataPath, saveConversation } from './storage'
+import { estimateTokenCount } from '../shared/tokenEstimate'
 import { redactMainLogText } from './logRedaction'
 import { WorkspaceReplacements } from './workspaceReplacements'
 import { formatInteractionAnswer, normalizeInteractionRequest } from './workspaceInteractions'
@@ -33,11 +34,12 @@ import { WindowControlSession } from './windowControl'
 import { isWindowControlTool } from './windowControlPolicy'
 import { createWorkspaceEnvTemplate, inspectWorkspaceEnvFile, isPrivateEnvFile, resolveWorkspaceEnvFile } from './workspaceEnvFiles'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import mammoth from 'mammoth'
 
 import type {
   ChatMessage,
+  ConversationChangeEvent,
   ContextSavings,
   WorkspaceAgentProgress,
   WorkspaceGoalProposal,
@@ -53,6 +55,7 @@ import { canGenerateImages, getModelCapabilities } from '../shared/modelCapabili
 import { createWorkspacePlan, finishPlan, modelPlanSteps, removeModelStep, restoreModelSteps, setModelSteps, unfinishedModelSteps, updateModelStep, updatePlanStep } from '../shared/agentPlanning'
 import { GOAL_EXECUTION_TIME_LIMIT, normalizeGoalExecutionLimits, WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_TURN_CHECKPOINT } from '../shared/goalMode'
 import { authorizeAssistantDelegation, createDelegationContext } from '../shared/assistantDelegation'
+import { formatMeetingPosts, postMeetingMessage, readMeetingRoom, resolveMeetingRoomFile, resolveMeetingScript } from './meetingRoom'
 import { compressImageToTarget, renderPdfToTarget } from './localFileTasks'
 import { addDocxHeaderImage, createDocxDocument, inspectDocxBuffer } from './docxDocument'
 import {
@@ -311,6 +314,8 @@ function getWorkspaceToolDefinitions(request: WorkspaceAgentRequest, pythonAvail
     { type: 'function', function: { name: 'goal', description: '向用户提议一个长期目标。仅当三个条件同时成立时提议：① 本次无法完成；② 有可逐条核对的完成标准；③ 用户表达了持续意图（「做完整个 X」「把所有 Y 改一遍」）。提议只是展示一张卡片，是否开启由用户决定，本轮必须继续推进手头任务，不要等待回复。不要在用户只想做单次改动、提问或查看时提议。acceptanceCriteria 必须是可验证的结果，不能写「做好了」这类无法核对的说法。', parameters: { type: 'object', required: ['action'], properties: { action: { type: 'string', enum: ['propose'] }, goal: { type: 'string', description: '一句话说明要达成的长期结果' }, acceptanceCriteria: { type: 'string', description: '可逐条核对的完成标准' }, reason: { type: 'string', description: '为什么需要开目标，用户一眼能看出是否合理' } }, additionalProperties: false } } },
     { type: 'function', function: { name: 'codemode', description: '在沙箱里跑一段 JavaScript，直接调用只读工具完成批量操作。适合一次读多个文件、跨文件搜索汇总、把多个结果拼成一份报告。上下文里有 tools 和 console：await tools.read_file({path})、tools.search_text({query})、tools.list_directory({path})、tools.inspect_file({path})、tools.read_files({files})、tools.read_document({path})、tools.git_read({operation})，都返回工具输出的字符串。用 Promise.all 并发。没有 require、process、fs、网络，也没有写操作；写文件必须用普通工具。用 return 返回结果。', parameters: { type: 'object', required: ['purpose', 'code'], properties: { purpose: { type: 'string', description: '这段脚本要达成的结果' }, code: { type: 'string', description: '脚本本体，可写 async/await；用 return 返回最终结果' } }, additionalProperties: false } } },
     { type: 'function', function: { name: 'search_tools', description: '按关键词查找当前未加载的工具，命中后在下一轮自动可用。已直接可用：文件读写、搜索、目录、文档创建、图片生成以外的常用工具。可发现：Git 写操作（fetch/pull/reset/checkout/stash）、脚本执行、项目检查（test/build/typecheck/lint）、后台任务（启动/日志/列表/停止）、环境变量声明、Word 页眉 Logo、图片与 PDF 压缩。', parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string', description: '按用途描述要做什么，如「跑测试」「压缩图片」' }, limit: { type: 'integer', minimum: 1, maximum: 10, description: '默认 5' } }, additionalProperties: false } } },
+    { type: 'function', function: { name: 'meeting_read', description: '读取席位会议室的帖子（所有席位共用的追加式文本文件）。返回最近的帖子，每条带署名与写入时间。会议室是讨论记录，不是任务清单；要回看更早的争论就调大 limit。', parameters: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 40, description: '返回最近多少帖，默认 6' } }, additionalProperties: false } } },
+    { type: 'function', function: { name: 'meeting_post', description: '向席位会议室发一条帖。正文自己写，不要添加署名或时间行——运行时用当前助手名字署名并写入时间。只能追加，不能改写或删除历史；会议室尾部不完整时写入会被拒绝。', parameters: { type: 'object', required: ['content'], properties: { content: { type: 'string', description: '帖子正文。可以点名回应其他席位，不要写署名和时间' } }, additionalProperties: false } } },
     ...applicationToolDefinitions,
     ...desktopToolDefinitions(request.workspace, getModelCapabilities(request.provider).imageInput),
     { type: 'function', function: { name: 'request_environment_variables', description: 'Declare required business environment variable NAMES and their purpose in Agent settings. Never request or supply values here. The user enters values locally; this tool cannot enable variables or execution permissions.', parameters: { type: 'object', required: ['variables'], properties: { variables: { type: 'array', maxItems: 32, items: { type: 'object', required: ['name', 'description'], properties: { name: { type: 'string' }, description: { type: 'string' } }, additionalProperties: false } } }, additionalProperties: false } } },
@@ -428,46 +433,214 @@ async function readModelMessage(response: Response, signal: AbortSignal | undefi
   return await readWorkspaceModelEventStream(response.body, readChunk)
 }
 
+/** Read a seat's own instruction, memory and latest daily log so a delegated run starts with its context. */
+async function readSeatContextFiles(workspaceRoot: string): Promise<string> {
+  const read = async (relativePath: string, limit: number): Promise<string> => {
+    try {
+      const content = (await readFile(join(workspaceRoot, relativePath), 'utf8')).trim()
+      if (!content) return ''
+      return content.length > limit ? `${content.slice(0, limit)}\n…（内容过长，已截断）` : content
+    } catch {
+      return ''
+    }
+  }
+  const blocks: string[] = []
+  const agentsMd = await read('AGENTS.md', 20_000)
+  if (agentsMd) blocks.push(`## 席位工作规则（AGENTS.md）\n${agentsMd}`)
+  // Seats built on the WorkBuddy layout keep state under .workbuddy/memory; plain
+  // workspaces keep MEMORY.md at the root. Read whichever one exists.
+  const memory = await read('.workbuddy/memory/MEMORY.md', 40_000) || await read('MEMORY.md', 40_000)
+  if (memory) blocks.push(`## 席位长期记忆（MEMORY.md）\n${memory}`)
+  const dailyLog = await readLatestSeatDailyLog(workspaceRoot)
+  if (dailyLog) blocks.push(dailyLog)
+  return blocks.join('\n\n')
+}
+
+async function readLatestSeatDailyLog(workspaceRoot: string): Promise<string> {
+  try {
+    const memoryDir = join(workspaceRoot, '.workbuddy', 'memory')
+    const dates = (await readdir(memoryDir))
+      .filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))
+      .sort()
+    const latest = dates[dates.length - 1]
+    if (!latest) return ''
+    const content = (await readFile(join(memoryDir, latest), 'utf8')).trim()
+    if (!content) return ''
+    const clipped = content.length > 20_000 ? `${content.slice(0, 20_000)}\n…（内容过长，已截断）` : content
+    return `## 席位最近一日工作日志（${latest}）\n${clipped}`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * A seat may pin its own provider and model. The agent loop reads only
+ * provider.defaultModel, so the seat model has to be applied here rather than
+ * inherited from the orchestrator that dispatched the task.
+ */
+function resolveSeatProvider(seat: WorkspaceAgentRequest['assistant'], fallback: WorkspaceAgentRequest['provider']): WorkspaceAgentRequest['provider'] {
+  const pinned = seat.modelProviderId ? getProviders().find((item) => item.id === seat.modelProviderId) : undefined
+  const base = pinned ?? fallback
+  return seat.modelId ? { ...base, defaultModel: seat.modelId } : base
+}
+
+function meetingScript(request: WorkspaceAgentRequest): string {
+  const script = resolveMeetingScript(request.workspace.rootPath)
+  if (!script) throw new Error(`当前工作区没有 data/append_room.ps1，会议室不可用（${request.workspace.rootPath}）`)
+  return script
+}
+
+async function runMeetingRead(request: WorkspaceAgentRequest, args: Record<string, unknown>): Promise<string> {
+  const roomPath = resolveMeetingRoomFile(meetingScript(request))
+  const exists = await stat(roomPath).then(() => true).catch(() => false)
+  if (!exists) throw new Error(`会议室文件不存在：${roomPath}`)
+  const snapshot = readMeetingRoom(roomPath)
+  const limit = Math.max(1, Math.min(40, Number(args.limit) || 6))
+  const warning = snapshot.tailComplete ? '' : ' · 警告：尾部不完整，发帖会被拒绝'
+  return `[会议室 ${snapshot.path} · ${snapshot.posts.length} 帖 · ${snapshot.bytes} 字节${warning}]\n\n${formatMeetingPosts(snapshot, limit)}`
+}
+
+async function runMeetingPost(request: WorkspaceAgentRequest, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  const script = meetingScript(request)
+  const result = await postMeetingMessage({
+    scriptPath: script,
+    roomPath: resolveMeetingRoomFile(script),
+    seat: request.assistant.name,
+    body: String(args.content ?? ''),
+    signal
+  })
+  return `已发帖，署名 ${result.seat}，写入时间 ${result.at}。会议室现有 ${result.bytes} 字节（本次追加 ${result.appendBytes} 字节）。`
+}
+
+/**
+ * Each delegated run becomes a real conversation under the seat assistant, so the
+ * sidebar shows what a seat did without opening the orchestrator's transcript.
+ * Recording is a convenience: a storage failure must not fail the delegated run.
+ */
+function recordSeatRun(input: {
+  parentConversationId: string
+  seat: WorkspaceAgentRequest['assistant']
+  workspace: WorkspaceAgentRequest['workspace']
+  task: string
+  result: WorkspaceAgentResult
+  runId: string
+  startedAt: number
+}): void {
+  try {
+    const conversationId = `${input.parentConversationId}::${input.seat.id}`
+    const existing = getConversationById(conversationId)
+    const now = Date.now()
+    const outputTokens = estimateTokenCount(input.result.content)
+    const task: ChatMessage = {
+      id: `seat_task_${input.runId}`,
+      role: 'user',
+      content: input.task,
+      createdAt: input.startedAt
+    }
+    const reply: ChatMessage = {
+      id: `seat_run_${input.runId}`,
+      role: 'assistant',
+      content: input.result.content,
+      createdAt: now,
+      outputTokens,
+      tokenCount: outputTokens,
+      responseStartedAt: input.startedAt,
+      responseCompletedAt: now,
+      workspaceActivities: input.result.activities,
+      workspaceChangedFiles: input.result.changedFiles,
+      workspaceArtifactRoot: input.workspace.rootPath,
+      agentPlan: input.result.plan,
+      contextSavings: input.result.contextSavings
+    }
+    saveConversation({
+      id: conversationId,
+      assistantId: input.seat.id,
+      title: `${input.seat.name} · ${input.task.replace(/\s+/g, ' ').slice(0, 22)}`,
+      messages: [...(existing?.messages ?? []), task, reply],
+      modelProviderId: input.seat.modelProviderId,
+      modelId: input.seat.modelId,
+      workspace: input.workspace,
+      totalTokens: (existing?.totalTokens ?? 0) + outputTokens,
+      totalOutputTokens: (existing?.totalOutputTokens ?? 0) + outputTokens,
+      createdAt: existing?.createdAt ?? input.startedAt,
+      updatedAt: now
+    })
+    const saved = getConversationById(conversationId)
+    if (saved) {
+      const change: ConversationChangeEvent = { action: 'saved', conversationId, conversation: saved }
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isCrashed()) {
+          window.webContents.send('conversation:changed', change)
+        }
+      }
+    }
+  } catch {
+    // Sidebar visibility is not worth failing a run that already produced output.
+  }
+}
+
 async function executeAssistantDelegation(
   request: WorkspaceAgentRequest,
   args: Record<string, unknown>,
   context: NonNullable<WorkspaceAgentRequest['delegationContext']>,
   runId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  hooks?: {
+    onProgress?: (progress: WorkspaceAgentProgress) => void
+    onToolApproval?: WorkspaceToolApprovalHandler
+  }
 ): Promise<{ output: string; context: NonNullable<WorkspaceAgentRequest['delegationContext']> }> {
   const targetId = String(args.assistantId ?? '').trim()
   const task = String(args.task ?? '').trim().slice(0, 8000)
   if (!targetId || !task) throw new Error('调用其他助手需要 assistantId 和 task')
   const decision = authorizeAssistantDelegation(request.assistant, targetId, request.availableAssistants ?? [], context)
-  const identity = { runId, requestId: randomUUID(), attemptId: randomUUID() }
-  const delegated = await withWorkspaceModelTotalTimeout(identity, signal, async (requestSignal) => {
-    const response = await fetchModelResponse(request, {
-      model: request.provider.defaultModel,
-      messages: [
-        {
-          role: 'system',
-          content: `${decision.target.systemPrompt}\n\n你正在作为“${request.assistant.name}”调用的子助手工作。只处理给定子任务，返回可供父助手直接使用的事实、判断、建议或产物内容。不要声称调用未提供的工具。`
-        },
-        { role: 'user', content: task }
-      ],
-      stream: false,
-      temperature: request.settings.enableTemperature ? Math.min(request.settings.temperature, 0.4) : 0.2,
-      ...getWorkspaceMaxTokenOption(request.settings)
-    }, identity, requestSignal)
+  const target = decision.target
+  const targetRoot = target.workspaceRoot?.trim()
+  // A delegated seat runs its own agent loop instead of one throwaway completion, so it
+  // keeps its own tools, memory file and workspace directory. Serial by construction:
+  // the parent awaits here, so both runs never write the same directory at once.
+  const seatWorkspace = targetRoot
+    ? { ...request.workspace, rootPath: targetRoot, displayName: target.name }
+    : request.workspace
+  const seatContext = targetRoot ? await readSeatContextFiles(targetRoot) : ''
+  const seatRequest: WorkspaceAgentRequest = {
+    ...request,
+    conversationId: `${request.conversationId}::${target.id}`,
+    assistant: target,
+    delegationContext: decision.nextContext,
+    workspace: seatWorkspace,
+    provider: resolveSeatProvider(target, request.provider),
+    messages: [{
+      id: `seat-${randomUUID()}`,
+      role: 'user',
+      content: seatContext ? `${seatContext}\n\n---\n\n## 本次任务\n${task}` : task,
+      createdAt: Date.now()
+    }]
+  }
+  const seatJobs = new WorkspaceJobs()
+  const startedAt = Date.now()
+  try {
+    const result = await runWorkspaceAgentUnlocked(
+      seatRequest,
+      seatJobs,
+      hooks?.onProgress,
+      hooks?.onToolApproval,
+      signal,
+      undefined,
+      `${runId}::${target.id}`
+    )
+    recordSeatRun({ parentConversationId: request.conversationId, seat: target, workspace: seatWorkspace, task, result, runId, startedAt })
+    const summary = result.content.trim() || '子助手未给出文字结论'
+    const changed = result.changedFiles.slice(0, 40)
+    const changedBlock = changed.length > 0
+      ? `\n\n[该席位本轮改动的文件]\n${changed.map((file) => `- ${file}`).join('\n')}`
+      : ''
     return {
-      response,
-      message: response.ok ? await readModelMessage(response, requestSignal, identity) : undefined,
-      errorMessage: response.ok ? undefined : await safeResponseError(response, request)
+      output: `[子助手 ${target.name} 的结果]\n${summary.slice(0, 50_000)}${changedBlock}`,
+      context: decision.nextContext
     }
-  })
-  const { response } = delegated
-  if (!response.ok) throw new Error(`子助手请求失败：${delegated.errorMessage ?? friendlyModelStatus(response.status, request)}`)
-  const message = delegated.message
-  const output = typeof message?.content === 'string' ? message.content.trim() : ''
-  if (!output) throw new Error('子助手没有返回可用结果')
-  return {
-    output: `[子助手 ${decision.target.name} 的结果]\n${output.slice(0, 50_000)}`,
-    context: decision.nextContext
+  } finally {
+    await seatJobs.dispose()
   }
 }
 
@@ -2169,7 +2342,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         if (nativeCommand) selectWorkspaceEnvironment(environmentValues, nativeCommand.envNames)
         const extensionTool = getExtensionTool(request, call.function.name)
         const applicationChange = isApplicationChange(call.function.name) ? prepareApplicationChange(request, call.function.name, args) : undefined
-        const writeTools = new Set(['create_docx', 'create_pdf', 'set_docx_header_image', 'write_file', 'replace_text', 'commit_text_replacements', 'create_directory', 'move_file', 'compress_image', 'compress_pdf', 'generate_image', 'git_write'])
+        const writeTools = new Set(['create_docx', 'create_pdf', 'set_docx_header_image', 'write_file', 'replace_text', 'commit_text_replacements', 'create_directory', 'move_file', 'compress_image', 'compress_pdf', 'generate_image', 'git_write', 'meeting_post'])
         const canWrite = Boolean(applicationChange) || Boolean(capability) || Boolean(extensionTool) || (
           request.workspace.permission === 'read-write' && (
             writeTools.has(call.function.name) ||
@@ -2279,7 +2452,9 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           pendingTool = activity.label
           saveCheckpoint()
         }
-        const result: { output: string; exitCode?: number; imageDataUrl?: string } & WorkspaceFileMutation = call.function.name === 'todo' ? { output: applyTodoTool(args) }
+        const result: { output: string; exitCode?: number; imageDataUrl?: string } & WorkspaceFileMutation = call.function.name === 'meeting_read' ? { output: await runMeetingRead(request, args) }
+          : call.function.name === 'meeting_post' ? { output: await runMeetingPost(request, args, signal) }
+          : call.function.name === 'todo' ? { output: applyTodoTool(args) }
           : call.function.name === 'goal' ? { output: applyGoalTool(args) }
           : call.function.name === 'codemode' ? { output: await runCodemode(String(args.code ?? '')) }
           : call.function.name === 'search_tools' ? { output: applySearchTools(args) }
@@ -2314,7 +2489,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           : call.function.name === 'read_tool_output'
           ? { output: outputStore.read(args, charAllowance, tokenAllowance) }
         : call.function.name === 'delegate_assistant'
-          ? await executeAssistantDelegation(request, args, delegationContext, runId, signal).then((delegation) => {
+          ? await executeAssistantDelegation(request, args, delegationContext, runId, signal, { onProgress, onToolApproval }).then((delegation) => {
               delegationContext = delegation.context
               return { output: delegation.output }
             })

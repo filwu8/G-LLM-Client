@@ -24,7 +24,7 @@ test('delegation requires an explicit edge and returns a bounded child context',
   const result = authorizeAssistantDelegation(source, 'target', [source, assistant('target')])
   assert.equal(result.target.id, 'target')
   assert.deepEqual(result.nextContext.path, ['source', 'target'])
-  assert.equal(result.nextContext.remainingCalls, 3)
+  assert.equal(result.nextContext.remainingCalls, 11)
 })
 
 test('delegation rejects unapproved, cyclic, exhausted, and too-deep calls', () => {

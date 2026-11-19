@@ -251,6 +251,10 @@ export interface Assistant {
   skillIds?: string[]
   toolIds?: string[]
   delegateAssistantIds?: string[]
+  /** Parent orchestrator seat when assistants are nested; empty for a top-level seat. */
+  parentAssistantId?: string
+  /** Absolute directory this seat owns. Falls back to the conversation workspace when unset. */
+  workspaceRoot?: string
   modelProviderId?: string
   modelId?: string
   builtIn?: boolean
@@ -258,6 +262,17 @@ export interface Assistant {
   pinnedAt?: number
   createdAt?: number
   updatedAt?: number
+}
+
+export interface AssistantImportSkipped {
+  name: string
+  reason: string
+}
+
+export interface AssistantImportResult {
+  orchestrator: Assistant
+  seats: Assistant[]
+  skipped: AssistantImportSkipped[]
 }
 
 export interface Conversation {

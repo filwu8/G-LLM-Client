@@ -85,7 +85,7 @@ pi 没有这些东西。所以执行侧不动。
 |---|---|---|---|---|
 | L1 计划骨架 | `AgentExecutionPlan` 5 阶段 | 单次 run | 运行时 | ❌ 保留不动 |
 | L2 步骤清单 | 新增 `todo` steps，挂在 `executionPlan` | 单次 run，存 checkpoint | **模型自动** | ✅ 完全可改 |
-| L3 目标 | `GoalTask` | 跨会话 | 用户启动 **或模型提议** | ✅ 只能收紧验收标准 |
+| L3 目标 | `GoalTask` | 跨会话 | 用户启动 **或模型提议** | ❌ 只能提议，不能改已开启的目标 |
 
 三者关系：**L3 是 why，L2 是 how，L1 是 when**。有 goal 时 todo 从 `acceptanceCriteria` 拆解；没有 goal 时 todo 独立存在。
 

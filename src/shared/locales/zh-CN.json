@@ -229,6 +229,9 @@
     "configVersion": "配置版本",
     "configSource": "配置来源",
     "configSourcePlaceholder": "可选：配置文件路径、仓库地址或导入来源",
+    "workspaceRoot": "工作区目录",
+    "workspaceRootPlaceholder": "可选：这个助手自己的目录，留空则跟随当前会话工作区",
+    "workspaceRootHint": "填写后，被调用时该助手会在自己目录里运行，并读取目录下的 AGENTS.md 和 MEMORY.md。",
     "skills": "绑定的 Skill",
     "tools": "绑定的工作区工具",
     "noSkills": "当前工作区还没有 Skill，可前往扩展工具中心创建或上传。",
@@ -269,7 +272,13 @@
     "adding": "正在添加「{{assistant}}」...",
     "generating": "正在生成「{{keyword}}」助手...",
     "added": "已添加「{{assistant}}」",
-    "empty": "没有命中预置，可以用 AI 生成一个新的助手。"
+    "empty": "没有命中预置，可以用 AI 生成一个新的助手。",
+    "importDirectory": "从目录导入席位",
+    "importDialogTitle": "选择包含席位目录的文件夹",
+    "importDialogButton": "导入",
+    "imported": "已导入总台「{{orchestrator}}」和 {{count}} 个席位",
+    "importNothing": "没有找到可导入的席位目录",
+    "importFailed": "导入失败：{{message}}"
   },
   "conversationModel": {
     "title": "会话模型",
@@ -379,6 +388,23 @@
     "fileTooLarge": "Skill 文档不能超过 1 MB",
     "emptyFile": "Skill 文档没有可用内容",
     "fileReadFailed": "无法读取 Skill 文档"
+  },
+  "meeting": {
+    "title": "会议室",
+    "aria": "会议室",
+    "postCount": "{{count}} 帖",
+    "notLoaded": "尚未读取",
+    "refresh": "刷新会议室",
+    "pickWorkspace": "先给当前会话选一个工作区",
+    "tailBroken": "会议室尾部不完整，脚本会拒绝追加：先人工核查最后一帖",
+    "skipped": "{{count}} 个空块被跳过",
+    "empty": "会议室里还没有帖子",
+    "placeholder": "以「{{seat}}」的身份发帖，只写正文",
+    "signature": "署名：{{seat}}",
+    "currentAssistant": "当前助手",
+    "posted": "已发帖 · {{at}} · {{bytes}} 字节",
+    "sending": "发送中",
+    "send": "发帖"
   },
   "notices": {
     "inactiveAssistant": "当前助手已停用，请先启用或切换助手。",
