@@ -2681,6 +2681,9 @@ app.whenReady().then(() => {
     const error = await shell.openPath(directoryPath)
     if (error) throw new Error(error)
   })
+  ipcMain.handle('workspace:remove-checkpoint', (_, conversationId: string) => {
+    removeWorkspaceCheckpoint(conversationId)
+  })
   ipcMain.handle('attachment:screenshot', (event) => captureScreenshotForWindow(BrowserWindow.fromWebContents(event.sender)))
   ipcMain.handle('clipboard:copy-image', (_, dataUrl: string) => copyImageDataUrlToClipboard(dataUrl))
   ipcMain.handle('clipboard:copy-mermaid-png', (_, svg: unknown) => copyMermaidSvgAsPng(svg))

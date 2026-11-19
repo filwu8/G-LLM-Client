@@ -149,6 +149,8 @@ const api = {
   saveWorkspaceVariables: (rootPath: string, updates: Array<{ name: string; description: string; value?: string; remove?: boolean }>): Promise<void> => ipcRenderer.invoke('workspace:save-variables', rootPath, updates),
   openWorkspaceDirectory: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:open-directory', rootPath),
+  removeWorkspaceCheckpoint: (conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('workspace:remove-checkpoint', conversationId),
   respondWorkspaceApproval: (id: string, approved: boolean): void =>
     ipcRenderer.send('workspace-agent:approval-response', id, approved),
   respondWorkspaceInteraction: (response: import('../shared/types').WorkspaceInteractionResponse): void =>

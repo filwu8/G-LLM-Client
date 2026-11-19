@@ -2718,6 +2718,17 @@ img.space-logo {
   color: hsl(var(--warning));
 }
 
+.composer-notice-actions > button.danger {
+  border: 1px solid hsl(var(--destructive) / 0.38);
+  background: transparent;
+  color: hsl(var(--destructive));
+}
+
+.composer-notice-actions > button.danger:hover {
+  background: hsl(var(--destructive) / 0.1);
+  filter: none;
+}
+
 .composer-notice-actions > button:hover {
   filter: brightness(0.94);
 }
