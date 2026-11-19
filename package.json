@@ -45,7 +45,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@napi-rs/canvas": "0.1.80",
+    "@napi-rs/canvas": "1.1.1",
     "electron-store": "^10.1.0",
     "electron-updater": "^6.8.11",
     "i18next": "^27.1.2",
