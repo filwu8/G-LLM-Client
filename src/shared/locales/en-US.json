@@ -1317,6 +1317,10 @@
   },
   "main": {
     "locale": "en-US",
+    "meeting": {
+      "workspaceRequired": "{{operation}} requires a workspace",
+      "scriptMissing": "This workspace has no data/append_room.ps1; the meeting room is unavailable ({{root}})"
+    },
     "storage": {
       "pathOverlap": "The data folder cannot be a parent or child of the current data folder. Choose a separate folder.",
       "insideApp": "The data folder cannot be inside the application folder. Choose a separate writable folder.",

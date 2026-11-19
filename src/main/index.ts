@@ -1804,17 +1804,19 @@ app.whenReady().then(() => {
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
   ipcMain.handle('meeting:read', (_event, input: { workspaceRoot?: string } = {}) => {
     const root = String(input?.workspaceRoot ?? '').trim()
-    if (!root) throw new Error('meeting:read 需要 workspaceRoot')
+    const language = getSettings().language
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', language, { operation: 'meeting:read' }))
     const script = resolveMeetingScript(root)
-    if (!script) throw new Error(`当前工作区没有 data/append_room.ps1，会议室不可用（${root}）`)
+    if (!script) throw new Error(mainT('main.meeting.scriptMissing', language, { root }))
     const roomPath = resolveMeetingRoomFile(script)
     return { ...readMeetingRoom(roomPath), scriptPath: script }
   })
   ipcMain.handle('meeting:post', async (_event, input: { workspaceRoot?: string; seat?: string; content?: string } = {}) => {
     const root = String(input?.workspaceRoot ?? '').trim()
-    if (!root) throw new Error('meeting:post 需要 workspaceRoot')
+    const language = getSettings().language
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', language, { operation: 'meeting:post' }))
     const script = resolveMeetingScript(root)
-    if (!script) throw new Error(`当前工作区没有 data/append_room.ps1，会议室不可用（${root}）`)
+    if (!script) throw new Error(mainT('main.meeting.scriptMissing', language, { root }))
     return postMeetingMessage({ scriptPath: script, roomPath: resolveMeetingRoomFile(script), seat: String(input.seat ?? ''), body: String(input.content ?? '') })
   })
   ipcMain.handle('assistants:import-directory', async (event, input: { directory?: string; parentName?: string } = {}) => {

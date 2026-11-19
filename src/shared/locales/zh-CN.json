@@ -1317,6 +1317,10 @@
   },
   "main": {
     "locale": "zh-CN",
+    "meeting": {
+      "workspaceRequired": "{{operation}} 需要指定工作区",
+      "scriptMissing": "当前工作区没有 data/append_room.ps1，会议室不可用（{{root}}）"
+    },
     "storage": {
       "pathOverlap": "数据目录不能选择当前数据目录的上级或子级，请选择一个独立文件夹。",
       "insideApp": "数据目录不能放在程序安装目录内，请选择一个独立且可写的文件夹。",
