@@ -114,7 +114,13 @@ export function needsWorkspaceApproval(
   boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean; desktop?: boolean } = {}
 ): boolean {
   if (boundary.desktop === true) return true
-  if (mode === 'full') return false
+  // Host (unsandboxed) execution can read and write files outside the authorized
+  // workspace and cannot be path-confined by the client. Full mode removes
+  // per-operation approval for in-workspace tools, but the write boundary is a
+  // hard limit that no permission mode relaxes: host jobs still ask every time.
+  // Sandboxed jobs stay confined to a workspace copy and remain auto-approved.
+  const hostJob = isNative && boundary.executionMode === 'host'
+  if (mode === 'full') return hostJob
   // Decide by enforced execution boundaries, never by guessing what script text does.
   // Unknown native boundaries ask; the caller must explicitly supply sandbox mode.
   if (mode === 'auto') return boundary.external === true || (isNative && boundary.executionMode !== 'sandbox')
@@ -122,7 +128,7 @@ export function needsWorkspaceApproval(
 }
 
 export function workspaceApprovalInstructions(mode: string | undefined): string {  const policy = mode === 'full'
-    ? 'Full authorization: enabled tools execute without per-operation approval, including explicitly enabled host execution and HTTP extensions.'
+    ? 'Full authorization: enabled in-workspace tools, sandbox execution and HTTP extensions run without per-operation approval. Host (unsandboxed) commands still require per-call approval because they can read and write files outside the authorized workspace; this write boundary cannot be waived by any mode. Dedicated computer/browser tools also require per-call approval.'
     : mode === 'auto'
       ? 'Approve for me: workspace tools, restricted JavaScript and configured sandbox Python/Shell (including background jobs) execute automatically. Host commands and HTTP extensions require approval.'
       : 'Ask for approval: file writes, scripts and HTTP extensions require per-operation approval; read-only workspace tools execute directly.'
@@ -132,4 +138,86 @@ export function workspaceApprovalInstructions(mode: string | undefined): string 
 export async function loadWorkspaceEnvExampleNames(root: string): Promise<string[]> {
   const content = await readRootConfig(root, '.env.example', 65536)
   return normalizeEnvNames(Object.keys(parseEnv(content ?? '')))
+}
+
+/**
+ * Stable identity of a tool operation, used only for repeated-failure loop
+ * detection. Free-text fields such as `purpose` or a stash `message` are
+ * deliberately excluded: a model retrying the same stash with a different
+ * message must still count as the same failing operation.
+ */
+export function repeatedFailureSignature(tool: string, argumentsJson: string | undefined): string {
+  let args: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(argumentsJson || '{}') as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>
+  } catch {
+    // Malformed arguments still get a stable signature from the tool name.
+  }
+  const stableKeys = ['operation', 'repo', 'path', 'file', 'command', 'cmd', 'mode', 'name', 'id', 'url', 'document', 'output']
+  const stable: Record<string, unknown> = {}
+  for (const key of stableKeys) {
+    if (typeof args[key] === 'string' || typeof args[key] === 'number') stable[key] = args[key]
+  }
+  return `${String(tool ?? '').trim()}:${JSON.stringify(stable)}`
+}
+
+/**
+ * Failure counter keyed by operation signature. A success for the same
+ * operation clears its streak; unrelated successful reads never do, so a model
+ * cannot keep a failing write alive by sprinkling successful reads between
+ * retries. Returns the current consecutive failure count (0 after a success).
+ */
+export function trackOperationOutcome(counts: Map<string, number>, signature: string, succeeded: boolean): number {
+  if (succeeded) {
+    counts.delete(signature)
+    return 0
+  }
+  const next = (counts.get(signature) ?? 0) + 1
+  counts.set(signature, next)
+  return next
+}
+
+export type WorkspaceFailureHint = 'lock' | 'timeout' | 'permission' | 'generic'
+
+export function workspaceFailureHint(text: string): WorkspaceFailureHint {
+  const value = String(text ?? '')
+  if (/index\.lock|file exists|another git process/i.test(value)) return 'lock'
+  if (/timed?\s*out|timeout|zeitüberschreitung/i.test(value)) return 'timeout'
+  if (/permission denied|access denied|ep erm|administrator|unauthori[sz]ed/i.test(value)) return 'permission'
+  return 'generic'
+}
+
+/**
+ * A failing operation can report different symptoms across a streak (e.g. a
+ * slow reset times out once, then leaves index.lock and fails with "file
+ * exists" twice). Surfacing only the last symptom misleads — "check the
+ * network" when the real blocker is a stale lock. Keep the most actionable
+ * hint seen during the whole streak instead. Priority: lock is concrete and
+ * directly fixable, so it outranks the vaguer timeout/permission symptoms.
+ */
+const FAILURE_HINT_PRIORITY: Record<WorkspaceFailureHint, number> = {
+  lock: 4,
+  permission: 3,
+  timeout: 2,
+  generic: 1
+}
+
+export function mergeFailureHint(current: WorkspaceFailureHint | undefined, next: WorkspaceFailureHint | undefined): WorkspaceFailureHint | undefined {
+  if (!current) return next
+  if (!next) return current
+  return FAILURE_HINT_PRIORITY[next] > FAILURE_HINT_PRIORITY[current] ? next : current
+}
+
+/**
+ * A tool interrupted mid side effect is a resume warning, not a permanent
+ * lock. Returning a note here means the caller should show it to the model and
+ * clear the flag; returning undefined means nothing needs verification.
+ */
+export function resumedToolWarning(
+  restored: boolean,
+  pendingTool: string | undefined,
+  format: (tool: string) => string
+): string | undefined {
+  return restored && pendingTool ? format(pendingTool) : undefined
 }

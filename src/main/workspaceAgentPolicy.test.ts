@@ -9,7 +9,7 @@ import test from 'node:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets, retryableModelStatuses, isTransientModelHttpStatus } from './workspaceAgentPolicy.ts'
+import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning } from './workspaceAgentPolicy.ts'
 
 test('transient upstream 5xx faults retry in place instead of failing the run', () => {
   // A gateway "Database error" surfaces as 500/503; these must be replayed.
@@ -34,7 +34,7 @@ test('three approval modes cover file writes, restricted scripts, sandbox/host j
     { name: 'file write or previewed replacement', script: false, write: true, native: false, boundary: {}, expected: [true, false, false] },
     { name: 'restricted JavaScript', script: true, write: true, native: false, boundary: {}, expected: [true, false, false] },
     { name: 'sandbox Python/Shell including background', script: true, write: true, native: true, boundary: { executionMode: 'sandbox' as const }, expected: [true, false, false] },
-    { name: 'host Python/Shell including background', script: true, write: true, native: true, boundary: { executionMode: 'host' as const }, expected: [true, true, false] },
+    { name: 'host Python/Shell including background', script: true, write: true, native: true, boundary: { executionMode: 'host' as const }, expected: [true, true, true] },
     { name: 'HTTP extension', script: false, write: true, native: false, boundary: { external: true }, expected: [true, true, false] },
     { name: 'HTTP extension claiming read-only', script: false, write: false, native: false, boundary: { external: true }, expected: [true, true, false] }
   ]
@@ -43,6 +43,19 @@ test('three approval modes cover file writes, restricted scripts, sandbox/host j
       assert.equal(needsWorkspaceApproval(mode, entry.script, entry.write, entry.native, entry.boundary), entry.expected[index], `${mode}: ${entry.name}`)
     }
   }
+})
+
+test('full access still requires approval for host jobs that can write outside the workspace', () => {
+  // The write boundary is a hard limit: full mode never waives approval for
+  // unsandboxed execution, which is the only path that can touch files outside
+  // the authorized folder. Sandboxed jobs and in-workspace writes stay automatic.
+  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'host' }), true)
+  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'sandbox' }), false)
+  assert.equal(needsWorkspaceApproval('full', true, true, false, {}), false)
+  assert.equal(needsWorkspaceApproval('full', false, true, false, {}), false)
+  // desktop/browser boundaries remain hard even in full mode.
+  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'host', desktop: true }), true)
+  assert.match(workspaceApprovalInstructions('full'), /Host \(unsandboxed\).*require per-call approval/)
 })
 
 test('unknown modes and native boundaries request approval; model guidance follows the selected mode', () => {
@@ -106,4 +119,74 @@ test('git metadata error redirects to git_read while credentials stay hard-block
     try { assertWorkspacePathAllowed(path) } catch (error) { message = (error as Error).message }
     assert.doesNotMatch(message, /git_read/)
   }
+})
+
+test('repeated failure signature ignores free-text fields but keeps operation identity', () => {
+  const a = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'stash', repo: 'erpv3main', purpose: 'backup before sync', message: 'backup-20261119' }))
+  const b = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'stash', repo: 'erpv3main', purpose: 'retry backup', message: 'backup-20261119-erpv3main' }))
+  const c = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'reset', repo: 'erpv3main', purpose: 'backup' }))
+  const d = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'stash', repo: 'other-repo', purpose: 'backup' }))
+  assert.equal(a, b)
+  assert.notEqual(a, c)
+  assert.notEqual(a, d)
+  assert.equal(repeatedFailureSignature('git_read', undefined).startsWith('git_read:'), true)
+  assert.equal(repeatedFailureSignature('git_write', '{bad json').startsWith('git_write:'), true)
+})
+
+test('successful reads never reset the failure streak of a different failing operation', () => {
+  const counts = new Map<string, number>()
+  const writeKey = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'stash', repo: 'erpv3main' }))
+  const readKey = repeatedFailureSignature('git_read', JSON.stringify({ operation: 'status' }))
+  assert.equal(trackOperationOutcome(counts, writeKey, false), 1)
+  assert.equal(trackOperationOutcome(counts, writeKey, false), 2)
+  assert.equal(trackOperationOutcome(counts, readKey, true), 0)
+  assert.equal(trackOperationOutcome(counts, writeKey, false), 3)
+  assert.equal(counts.get(writeKey), 3)
+  assert.equal(counts.has(readKey), false)
+  assert.equal(trackOperationOutcome(counts, writeKey, true), 0)
+  assert.equal(counts.has(writeKey), false)
+})
+
+test('repeated failure limiter stops after the bounded number of identical failures', () => {
+  const counts = new Map<string, number>()
+  const key = repeatedFailureSignature('git_write', JSON.stringify({ operation: 'stash' }))
+  let stop: number | undefined
+  for (let i = 1; i <= 8; i++) {
+    const streak = trackOperationOutcome(counts, key, false)
+    if (streak >= 4 && stop === undefined) stop = streak
+  }
+  assert.equal(stop, 4)
+})
+
+test('workspace failure hint classifies lock, timeout, permission and generic errors', () => {
+  assert.equal(workspaceFailureHint("error: Unable to create index.lock': File exists. Another git process"), 'lock')
+  assert.equal(workspaceFailureHint('Execution timed out after 120000ms'), 'timeout')
+  assert.equal(workspaceFailureHint('fatal: Permission denied'), 'permission')
+  assert.equal(workspaceFailureHint('some other failure'), 'generic')
+})
+
+test('resumed interrupted tool produces a verification warning and can be cleared', () => {
+  let pendingTool: string | undefined = '修改 Git 仓库'
+  const note = resumedToolWarning(true, pendingTool, (tool) => `verify ${tool}`)
+  assert.equal(note, 'verify 修改 Git 仓库')
+  pendingTool = undefined
+  assert.equal(resumedToolWarning(true, pendingTool, (tool) => `verify ${tool}`), undefined)
+  assert.equal(resumedToolWarning(false, '修改 Git 仓库', (tool) => `verify ${tool}`), undefined)
+})
+
+test('failure hint stays on the most actionable symptom across a streak', () => {
+  // The ERPv3 case: slow reset times out first, then leaves index.lock and
+  // fails with "file exists". The final symptom was "timed out" but the real,
+  // fixable blocker is the lock — it must win so the user is not told to
+  // "check the network".
+  let hint = mergeFailureHint(undefined, workspaceFailureHint('Execution timed out'))
+  assert.equal(hint, 'timeout')
+  hint = mergeFailureHint(hint, workspaceFailureHint("fatal: Unable to create '.git/index.lock': File exists. Another git process"))
+  assert.equal(hint, 'lock')
+  hint = mergeFailureHint(hint, workspaceFailureHint('Execution timed out'))
+  assert.equal(hint, 'lock', 'a later vaguer timeout must not overwrite the lock hint')
+  // Permission outranks timeout but not lock.
+  assert.equal(mergeFailureHint('timeout', 'permission'), 'permission')
+  assert.equal(mergeFailureHint('permission', 'lock'), 'lock')
+  assert.equal(mergeFailureHint(undefined, undefined), undefined)
 })

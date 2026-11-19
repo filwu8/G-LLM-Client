@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
+import { withStoreWriteRetry } from './storageWriteRetry.ts'
 
 export const WORKSPACE_EVIDENCE_HISTORY = 128
 
@@ -76,8 +77,15 @@ export class WorkspaceCheckpointStore {
     mkdirSync(dirname(this.path), { recursive: true })
     const temporaryPath = `${this.path}.${randomUUID()}.tmp`
     try {
-      writeFileSync(temporaryPath, JSON.stringify(checkpoint), { encoding: 'utf8', flag: 'wx', mode: 0o600, flush: true })
-      renameSync(temporaryPath, this.path)
+      // Windows can briefly lock the target during the atomic rename (AV/indexers).
+      // Retry transient locks so a checkpoint write cannot abort an agent run.
+      // Clear a prior attempt's temp file first: writeFileSync uses flag 'wx',
+      // which would otherwise fail with EEXIST on the second attempt.
+      withStoreWriteRetry(() => {
+        rmSync(temporaryPath, { force: true })
+        writeFileSync(temporaryPath, JSON.stringify(checkpoint), { encoding: 'utf8', flag: 'wx', mode: 0o600, flush: true })
+        renameSync(temporaryPath, this.path)
+      })
     } finally {
       rmSync(temporaryPath, { force: true })
     }

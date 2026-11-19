@@ -21,7 +21,8 @@ import {
   startConversationRun,
   stopConversationWebSearch,
   stopPendingWebSearch,
-  syncConversationUpdateIntoStreamingDrafts
+  syncConversationUpdateIntoStreamingDrafts,
+  withApprovalMode
 } from './conversationRuntime.ts'
 import type { Conversation } from '../../shared/types.ts'
 
@@ -49,6 +50,33 @@ test('keeps a draft workspace when changing model creates the first conversation
 
   assert.equal(materialized.workspace, workspace)
   assert.equal(conversation.workspace, undefined)
+})
+
+test('overlays the selected permission mode onto a workspace before it is persisted', () => {
+  const askWorkspace = {
+    rootPath: '/workspace/project',
+    displayName: 'project',
+    permission: 'read-write' as const,
+    approvalMode: 'ask' as const,
+    grantedAt: 11,
+    lastVerifiedAt: 11
+  }
+
+  // A fresh conversation selected full access but the workspace was derived
+  // from a project default of 'ask'. The selected mode must win.
+  const full = withApprovalMode(askWorkspace, 'full')
+  assert.equal(full?.approvalMode, 'full')
+  assert.equal(askWorkspace.approvalMode, 'ask', 'must not mutate the source workspace')
+
+  const auto = withApprovalMode(askWorkspace, 'auto')
+  assert.equal(auto?.approvalMode, 'auto')
+
+  // Already aligned -> reuse the same object; no needless re-render.
+  assert.equal(withApprovalMode(full, 'full'), full)
+
+  // Missing inputs are harmless no-ops.
+  assert.equal(withApprovalMode(undefined, 'full'), undefined)
+  assert.equal(withApprovalMode(askWorkspace, undefined), askWorkspace)
 })
 
 test('materializes an empty conversation when its model selection changes', () => {

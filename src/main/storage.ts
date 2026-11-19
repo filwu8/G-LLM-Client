@@ -5,6 +5,7 @@
  */
 
 import { normalizeEnvNames } from './workspaceAgentPolicy'
+import { withStoreWriteRetry } from './storageWriteRetry'
 import { app } from 'electron'
 import { openProviderKey, PROVIDER_SECRET_PREFIX, sealProviderKey } from './providerCredentials'
 import Store from 'electron-store'
@@ -366,7 +367,7 @@ function switchDataRoot(targetPath: string, customRoot?: string): void {
     .filter(root => root.previous !== root.next)
   workspaceVault().relocateBindings(roots)
   const nextStore = createDataStore(targetPath)
-  nextStore.store = relocated
+  withStoreWriteRetry(() => { nextStore.store = relocated })
   writeDataLocationConfig(customRoot)
   activeDataRoot = targetPath
   store = nextStore
@@ -699,30 +700,33 @@ export const defaultSettings: AppSettings = {
   setupCompleted: false
 }
 
-function createDataStore(root: string) { return new Store<StoreSchema>({
-  name: 'g-llm-client',
-  cwd: root,
-  defaults: {
-    settings: defaultSettings,
-    activeProjectId: defaultProjectId,
-    projects: [],
-    providers: [],
-    assistants: [],
-    assistantOrders: {},
-    deletedBuiltInAssistants: [],
-    conversations: [],
-    notes: [],
-    memories: [],
-    tools: [],
-    skills: [],
-    installationId: '',
-    dataRootAliases: [],
-    themeRequestUsage: {
-      totalRequests: 0,
-      officialRequests: 0
+function createDataStore(root: string) {
+  const dataStore = new Store<StoreSchema>({
+    name: 'g-llm-client',
+    cwd: root,
+    defaults: {
+      settings: defaultSettings,
+      activeProjectId: defaultProjectId,
+      projects: [],
+      providers: [],
+      assistants: [],
+      assistantOrders: {},
+      deletedBuiltInAssistants: [],
+      conversations: [],
+      notes: [],
+      memories: [],
+      tools: [],
+      skills: [],
+      installationId: '',
+      dataRootAliases: [],
+      themeRequestUsage: {
+        totalRequests: 0,
+        officialRequests: 0
+      }
     }
-  }
-}) }
+  })
+  return dataStore
+}
 let store = createDataStore(activeDataRoot)
 
 function storageT(key: string, options?: TOptions): string {
@@ -796,7 +800,7 @@ export function getActiveProjectId(): string {
 export function setActiveProjectId(projectId: string): string {
   const nextProjectId = sanitizeProjectId(projectId)
   const activeProjectId = getProjects().some((project) => project.id === nextProjectId) ? nextProjectId : defaultProjectId
-  store.set('activeProjectId', activeProjectId)
+  withStoreWriteRetry(() => store.set('activeProjectId', activeProjectId))
   return activeProjectId
 }
 
@@ -809,7 +813,7 @@ export function saveProject(project: Project): Project {
   }
   if (normalized.workspacePath && !statSync(normalized.workspacePath).isDirectory()) throw new Error('Workspace folder is unavailable')
   const next = [normalized, ...projects.filter((item) => item.id !== normalized.id)]
-  store.set('projects', next.slice(0, 50))
+  withStoreWriteRetry(() => store.set('projects', next.slice(0, 50)))
   return normalized
 }
 
@@ -817,10 +821,10 @@ export function deleteProject(projectId: string): void {
   const normalizedProjectId = sanitizeProjectId(projectId)
   if (normalizedProjectId === defaultProjectId) return
 
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'projects',
     getProjects().filter((project) => project.id !== normalizedProjectId)
-  )
+  ))
 
   if (getActiveProjectId() === normalizedProjectId) {
     setActiveProjectId(defaultProjectId)
@@ -1450,17 +1454,17 @@ export function saveProvider(provider: ApiProvider): ApiProvider {
     ? previous.apiKey : sealProviderKey(normalized.apiKey, systemSecretCrypto())
   const stored = { ...normalized, apiKey, credentialUnavailable: undefined }
   const next = [stored, ...providers.filter((item) => item.id !== normalized.id)]
-  store.set('providers', next.slice(0, 40))
+  withStoreWriteRetry(() => store.set('providers', next.slice(0, 40)))
   return getProviders().find(item => item.id === normalized.id)!
 }
 
 export function deleteProvider(id: string): void {
   if (id === DEFAULT_PROVIDER_ID) return
 
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'providers',
     store.get('providers', []).filter((provider) => provider.id !== id)
-  )
+  ))
 
   const settings = getSettings()
   if (settings.activeProviderId === id) {
@@ -1611,7 +1615,7 @@ export function setSettings(settings: AppSettings): AppSettings {
     setupCompleted: settings.setupCompleted
   }
 
-  store.set('settings', normalized)
+  withStoreWriteRetry(() => store.set('settings', normalized))
   return normalized
 }
 
@@ -1620,7 +1624,7 @@ export function getInstallationId(): string {
   if (existing) return existing
 
   const installationId = randomUUID()
-  store.set('installationId', installationId)
+  withStoreWriteRetry(() => store.set('installationId', installationId))
   return installationId
 }
 
@@ -1646,7 +1650,7 @@ export function recordThemeRequestUsage(official: boolean): ThemeRequestUsage {
     officialRequests: current.officialRequests + (official ? 1 : 0),
     updatedAt: Date.now()
   }
-  store.set('themeRequestUsage', next)
+  withStoreWriteRetry(() => store.set('themeRequestUsage', next))
   return next
 }
 
@@ -1737,10 +1741,10 @@ export function reorderAssistants(ids: string[], projectId = getActiveProjectId(
   const orderedIds = Array.from(new Set(ids.filter((id) => typeof id === 'string' && validIds.has(id))))
   const missingIds = assistants.map((assistant) => assistant.id).filter((id) => !orderedIds.includes(id))
   const assistantOrders = store.get('assistantOrders', {})
-  store.set('assistantOrders', {
+  withStoreWriteRetry(() => store.set('assistantOrders', {
     ...assistantOrders,
     [normalizedProjectId]: [...orderedIds, ...missingIds]
-  })
+  }))
   return getAssistants(normalizedProjectId)
 }
 
@@ -1751,7 +1755,7 @@ export function saveAssistant(assistant: Assistant, projectId = getActiveProject
     normalized,
     ...assistants.filter((item) => !(item.id === normalized.id && item.projectId === normalized.projectId))
   ]
-  store.set('assistants', next.slice(0, 400))
+  withStoreWriteRetry(() => store.set('assistants', next.slice(0, 400)))
   return normalized
 }
 
@@ -1759,27 +1763,27 @@ export function deleteAssistant(id: string, projectId = getActiveProjectId()): v
   const normalizedProjectId = sanitizeProjectId(projectId)
   if (DEFAULT_ASSISTANTS.some((assistant) => assistant.id === id)) {
     const deletedKey = getDeletedBuiltInAssistantKey(normalizedProjectId, id)
-    store.set('deletedBuiltInAssistants', [...new Set([...getDeletedBuiltInAssistantKeys(), deletedKey])])
+    withStoreWriteRetry(() => store.set('deletedBuiltInAssistants', [...new Set([...getDeletedBuiltInAssistantKeys(), deletedKey])]))
   }
-  store.set('assistants', removeAssistantDelegationReferences(
+  withStoreWriteRetry(() => store.set('assistants', removeAssistantDelegationReferences(
     getAllCustomAssistants(),
     id,
     normalizedProjectId
-  ))
-  store.set(
+  )))
+  withStoreWriteRetry(() => store.set(
     'conversations',
     getAllConversations().filter(
       (conversation) => !(conversation.assistantId === id && conversation.projectId === normalizedProjectId)
     )
-  )
-  store.set(
+  ))
+  withStoreWriteRetry(() => store.set(
     'notes',
     getAllNotes().filter((note) => !(note.assistantId === id && note.projectId === normalizedProjectId))
-  )
-  store.set(
+  ))
+  withStoreWriteRetry(() => store.set(
     'memories',
     getAllMemories().filter((memory) => !(memory.assistantId === id && memory.projectId === normalizedProjectId))
-  )
+  ))
 }
 
 function getAllConversations(): Conversation[] {
@@ -1839,7 +1843,7 @@ export function saveConversation(conversation: Conversation, projectId = getActi
   if (!normalized.workspace && normalized.messages.length) normalized.workspace = createDefaultConversationWorkspace(normalized.id, normalized.projectId)
   const conversations = getAllConversations()
   const next = [normalized, ...conversations.filter((item) => item.id !== normalized.id)]
-  store.set('conversations', next.slice(0, 1000))
+  withStoreWriteRetry(() => store.set('conversations', next.slice(0, 1000)))
   return normalized
 }
 
@@ -1886,10 +1890,10 @@ export function saveWorkspaceAgentResult(request: WorkspaceAgentRequest, result:
 }
 
 export function deleteConversation(id: string): void {
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'conversations',
     getAllConversations().filter((conversation) => conversation.id !== id)
-  )
+  ))
 }
 
 function getAllNotes(): KnowledgeNote[] {
@@ -1908,15 +1912,15 @@ export function saveNote(note: KnowledgeNote, projectId = getActiveProjectId()):
   const normalized = sanitizeNote(note, projectId)
   const notes = getAllNotes()
   const next = [normalized, ...notes.filter((item) => item.id !== normalized.id)]
-  store.set('notes', next.slice(0, 2000))
+  withStoreWriteRetry(() => store.set('notes', next.slice(0, 2000)))
   return normalized
 }
 
 export function deleteNote(id: string): void {
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'notes',
     getAllNotes().filter((note) => note.id !== id)
-  )
+  ))
 }
 
 function getAllMemories(): AssistantMemory[] {
@@ -1937,15 +1941,15 @@ export function saveMemory(memory: AssistantMemory, projectId = getActiveProject
 
   const memories = getAllMemories()
   const next = [normalized, ...memories.filter((item) => item.id !== normalized.id)]
-  store.set('memories', next.slice(0, 1000))
+  withStoreWriteRetry(() => store.set('memories', next.slice(0, 1000)))
   return normalized
 }
 
 export function deleteMemory(id: string): void {
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'memories',
     getAllMemories().filter((memory) => memory.id !== id)
-  )
+  ))
 }
 
 function getAllTools(): ToolConfig[] {
@@ -1961,23 +1965,23 @@ export function saveTool(tool: ToolConfig, projectId = getActiveProjectId()): To
   const normalized = sanitizeTool(tool, projectId)
   const tools = getAllTools()
   const next = [normalized, ...tools.filter((item) => item.id !== normalized.id)]
-  store.set('tools', next.slice(0, 300))
+  withStoreWriteRetry(() => store.set('tools', next.slice(0, 300)))
   return normalized
 }
 
 export function deleteTool(id: string): void {
-  store.set(
+  withStoreWriteRetry(() => store.set(
     'tools',
     getAllTools().filter((tool) => tool.id !== id)
-  )
-  store.set('assistants', getAllCustomAssistants().map((assistant) => ({
+  ))
+  withStoreWriteRetry(() => store.set('assistants', getAllCustomAssistants().map((assistant) => ({
     ...assistant,
     toolIds: assistant.toolIds?.filter((toolId) => toolId !== id)
-  })))
-  store.set('skills', getAllSkills().map((skill) => ({
+  }))))
+  withStoreWriteRetry(() => store.set('skills', getAllSkills().map((skill) => ({
     ...skill,
     toolIds: skill.toolIds.filter((toolId) => toolId !== id)
-  })))
+  }))))
 }
 
 function getAllSkills(): SkillConfig[] {
@@ -1992,7 +1996,7 @@ export function getSkills(projectId = getActiveProjectId()): SkillConfig[] {
 export function saveSkill(skill: SkillConfig, projectId = getActiveProjectId()): SkillConfig {
   const normalized = sanitizeSkill(skill, projectId)
   const skills = getAllSkills()
-  store.set('skills', [normalized, ...skills.filter((item) => item.id !== normalized.id)].slice(0, 500))
+  withStoreWriteRetry(() => store.set('skills', [normalized, ...skills.filter((item) => item.id !== normalized.id)].slice(0, 500)))
   return normalized
 }
 
@@ -2047,18 +2051,18 @@ export function commitConversationSkillInstallation(conversation: Conversation, 
     && normalizePathForCompare(item.workspace.rootPath) === normalizePathForCompare(savedConversation.workspace!.rootPath))) {
     throw new SkillInstallationError('workspaceConflict')
   }
-  store.set({
+  withStoreWriteRetry(() => store.set({
     skills: [skill, ...allSkills.filter((item) => item.id !== skill.id)],
     assistants: [boundAssistant, ...allAssistants.filter((item) => !(item.id === boundAssistant.id && item.projectId === projectId))],
     conversations: [savedConversation, ...conversations.filter((item) => item.id !== conversation.id)].slice(0, 1000)
-  })
+  }))
   return { conversation: savedConversation, skill, capabilities: { projectId, assistants: getAssistants(projectId), skills: getSkills(projectId) } }
 }
 
 export function deleteSkill(id: string): void {
-  store.set('skills', getAllSkills().filter((skill) => skill.id !== id))
-  store.set('assistants', getAllCustomAssistants().map((assistant) => ({
+  withStoreWriteRetry(() => store.set('skills', getAllSkills().filter((skill) => skill.id !== id)))
+  withStoreWriteRetry(() => store.set('assistants', getAllCustomAssistants().map((assistant) => ({
     ...assistant,
     skillIds: assistant.skillIds?.filter((skillId) => skillId !== id)
-  })))
+  }))))
 }

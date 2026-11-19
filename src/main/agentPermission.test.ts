@@ -25,7 +25,7 @@ test('global permission modes map to the documented approval matrix', () => {
     { name: 'workspace file write', script: false, write: true, native: false, boundary: {}, expected: [true, false, false] },
     { name: 'restricted JavaScript', script: true, write: true, native: false, boundary: {}, expected: [true, false, false] },
     { name: 'sandboxed python/shell', script: true, write: true, native: true, boundary: { executionMode: 'sandbox' as const }, expected: [true, false, false] },
-    { name: 'host python/shell', script: true, write: true, native: true, boundary: { executionMode: 'host' as const }, expected: [true, true, false] },
+    { name: 'host python/shell', script: true, write: true, native: true, boundary: { executionMode: 'host' as const }, expected: [true, true, true] },
     { name: 'http extension tool', script: false, write: false, native: false, boundary: { external: true }, expected: [true, true, false] },
     { name: 'computer/browser tool', script: false, write: false, native: false, boundary: { desktop: true }, expected: [true, true, true] }
   ]
@@ -42,10 +42,13 @@ test('global permission modes map to the documented approval matrix', () => {
   }
 })
 
-test('full access still asks for dedicated computer and browser tools', () => {
-  // Hard boundary: relaxing the mode never grants desktop control silently.
+test('full access still asks for dedicated computer, browser and host execution tools', () => {
+  // Hard write boundary: relaxing the mode never grants desktop control or
+  // unsandboxed host execution silently, because both can touch files outside
+  // the authorized workspace.
   assert.equal(needsWorkspaceApproval('full', false, false, false, { desktop: true }), true)
-  assert.equal(needsWorkspaceApproval('full', false, false, true, { executionMode: 'host' }), false)
+  assert.equal(needsWorkspaceApproval('full', false, false, true, { executionMode: 'host' }), true)
+  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'sandbox' }), false)
 })
 
 test('an unknown mode degrades to the safest behaviour', () => {
@@ -61,8 +64,8 @@ test('rejection signatures are stable and trim surrounding whitespace', () => {
 
 test('a rejected operation stays blocked even when the mode would allow it', () => {
   const denied = new Set([approvalSignature('run_shell', 'deploy.sh')])
-  // In full mode the policy alone would let this run...
-  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'host' }), false)
+  // Sandboxed shell in full mode would be allowed by policy alone...
+  assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'sandbox' }), false)
   // ...but the rejection ledger still forces an approval.
   assert.equal(isRejectedOperation(denied, 'run_shell', 'deploy.sh'), true)
   assert.equal(isRejectedOperation(denied, 'run_shell', 'other.sh'), false)

@@ -128,6 +128,11 @@ async function main() {
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
     } else if (scenario === 'blocked') {
       delta = verdict('申请书缺少申请人名称。', '请提供申请人名称。', 'blocked')
+    } else if (scenario === 'freeform') {
+      // The model explains its work in prose but never returns the required
+      // workspaceStatus JSON; the failure must still surface that explanation.
+      if (step > 0) assert.match(request.messages.at(-1).content, /没有被识别为有效的 workspaceStatus JSON/)
+      delta = { role: 'assistant', content: '我已核对三个仓库，根仓库的 HEAD 尚未复核完成，需要一次只读检查。' }
     } else if (scenario === 'fallback') {
       delta = step === 0
         ? { role: 'assistant', content: JSON.stringify({ tool: 'inspect_file', arguments: { path: 'source.txt' } }) }
@@ -154,6 +159,14 @@ async function main() {
   const request = (content: string): WorkspaceAgentRequest => ({ conversationId: 'contract-a', assistant, workspace: { ...workspace, approvalMode: 'full' }, provider,
     settings: { ...storage.getSettings(), language: 'zh-CN', webSearchMode: 'off' }, messages: [{ id: `user-${scenario}`, role: 'user', content, attachments: imported, createdAt: now }], webSearchMode: 'off', webSearchEnabled: false })
   try {
+    scenario = 'freeform'; step = 0
+    const freeform = await runWorkspaceAgent(request('核对三个仓库并报告结果'))
+    assert.equal(freeform.plan.status, 'failed')
+    // The model's own explanation survives instead of being replaced by a bare error.
+    assert.match(freeform.content, /根仓库的 HEAD 尚未复核完成/)
+    assert.match(freeform.content, /任务未完成/)
+
+    scenario = 'document'; step = 0
     const document = await runWorkspaceAgent(request('请读取采购合同并生成 Word 审阅稿“review.docx”和验收清单“checklist.docx”'), undefined, async () => true)
     assert.equal(document.plan.status, 'succeeded', JSON.stringify({ plan: document.plan, activities: document.activities }))
     assert.deepEqual(document.changedFiles.map(file => file.replace(/\\/g, '/')).sort(), ['outputs/checklist.docx', 'outputs/review.docx'])
@@ -212,9 +225,12 @@ async function main() {
 
     checkpoints.save({ ...savedProgress, pendingTool: '写入文件' })
     const uncertain = await runWorkspaceAgent(interrupted)
-    assert.equal(uncertain.plan.status, 'failed')
-    assert.match(uncertain.content, /上次执行.*结果待确认/)
-    assert.equal(step, 2, 'an uncertain operation is not replayed')
+    // A resumed run with an uncertain pending tool is told to verify first and
+    // then continue; it no longer fails forever. The model checks real state
+    // before redoing side effects and reaches a normal verdict.
+    assert.equal(uncertain.plan.status, 'succeeded')
+    assert.match(uncertain.content, /已交付两份文件/)
+    assert.ok(step >= 2, 'the resumed run proceeds to a verdict')
 
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })

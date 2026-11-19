@@ -8,7 +8,7 @@ import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'nod
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
-import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceInstructions, loadWorkspaceEnvironment, normalizeEnvNames, redactWorkspaceSecrets, selectWorkspaceEnvironment, needsWorkspaceApproval, approvalSignature, isRejectedOperation, workspaceApprovalInstructions, retryableModelStatuses, isTransientModelHttpStatus } from './workspaceAgentPolicy'
+import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceInstructions, loadWorkspaceEnvironment, normalizeEnvNames, redactWorkspaceSecrets, selectWorkspaceEnvironment, needsWorkspaceApproval, approvalSignature, isRejectedOperation, workspaceApprovalInstructions, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning, type WorkspaceFailureHint } from './workspaceAgentPolicy'
 import { hasGitWriteGrant, rememberGitWriteGrant } from './workspaceGitApproval'
 import { readRepositoryFiles, searchRepository, repositoryText } from './workspaceRepository'
 import { createOutputTokenBudget } from './workspaceTokenBudget'
@@ -336,6 +336,9 @@ function providerUrl(request: WorkspaceAgentRequest): string {
 // payloads/events are intentionally handled by their separate image path.
 const WORKSPACE_CONTEXT_CHECKPOINT_CHARACTERS = 50_000
 const MAX_STALLED_WORKSPACE_TURNS = 6
+// A single operation that fails this many times in a row is a retry loop, even
+// if the model sprinkles successful reads between attempts.
+const MAX_REPEATED_OPERATION_FAILURES = 4
 const MODEL_CONTINUATION_BACKOFF_MS = [1_000, 5_000, 30_000, 120_000]
 const contextOverflowPattern = /context_length_exceeded|context window|maximum context length|too many input tokens|上下文.{0,12}(超出|超限|过长|超过)/i
 const runningWorkspaceConversations = new Set<string>()
@@ -1320,15 +1323,28 @@ async function runWorkspaceAgentUnlocked(
       throw new WorkspaceCheckpointWriteError(mainT('main.workspace.checkpointWriteFailed', language), { cause: error })
     }
   }
-  if (pendingTool) {
-    const detail = mainT('main.workspace.checkpointUncertain', language, { tool: pendingTool })
-    return {
-      conversationId: request.conversationId,
-      activities: activities.map(activity => activity.status === 'running' ? { ...activity, status: 'failed' } : activity),
-      changedFiles: [...changedFiles],
-      content: `${mainT('main.workspace.taskIncomplete', language)}\n\n${detail}`,
-      plan: finishPlan(executionPlan, 'failed', detail)
+  // A write interrupted by an app exit used to permanently block every resume
+  // with the same task id: pendingTool was returned but never cleared, so the
+  // user got "result uncertain, send a new instruction" forever. Turn it into a
+  // one-shot verification note instead: flag the uncertain activity, tell the
+  // model to check the real state before redoing side effects, then CLEAR and
+  // persist the flag so the task can actually continue.
+  let resumedVerificationNote: string | undefined
+  let needsPendingToolClearSave = false
+  if (restored && pendingTool) {
+    const interruptedTool = pendingTool
+    resumedVerificationNote = resumedToolWarning(true, interruptedTool, (tool) => mainT('main.workspace.resumeVerifyNote', language, { tool }))
+    for (const activity of activities) {
+      if (activity.status === 'running') {
+        activity.status = 'failed'
+        activity.detail = mainT('main.workspace.checkpointUncertain', language, { tool: interruptedTool })
+      }
     }
+    pendingTool = undefined
+    // saveCheckpoint() uses checkpointText(), which is initialized later once
+    // environmentValues are loaded. Saving here would throw a TDZ ReferenceError
+    // (reported as "cannot save checkpoint") and abort this exact resume path.
+    needsPendingToolClearSave = true
   }
   if (restored) {
     const activity: WorkspaceToolActivity = {
@@ -1358,6 +1374,13 @@ async function runWorkspaceAgentUnlocked(
   try { environmentValues = { ...environmentValues, ...await workspaceVault().values(root, normalizeEnvNames(request.workspace.envNames)) } }
   catch (error) { throw new Error(error instanceof Error ? error.message : 'Local credential store unavailable') }
   const checkpointText = (value: string) => redactMainLogText(redactWorkspaceSecrets(value, { ...environmentValues, providerKey: request.provider.apiKey })).slice(0, 3_000)
+  if (needsPendingToolClearSave) {
+    needsPendingToolClearSave = false
+    // This checkpoint only clears a stale pendingTool flag. Failing to persist
+    // it must not abort the resumed task — the in-memory flag is already clear,
+    // and a later checkpoint will retry the write anyway.
+    try { saveCheckpoint() } catch { /* best-effort; the run continues */ }
+  }
   const contextDetail = [workspaceInstructions !== undefined ? 'AGENTS.md loaded (root only)' : 'AGENTS.md not loaded', `.env names: ${Object.keys(environmentValues).join(', ') || 'none'}; enabled names: ${normalizeEnvNames(request.workspace.envNames).join(', ') || 'none'}`, ...configNotes].join(' · ')
   const configActivity: WorkspaceToolActivity = { id: randomUUID(), tool: 'workspace_context', label: isEnglish ? 'Load Agent context' : '加载 Agent 上下文', status: configNotes.length ? 'failed' : 'completed', detail: contextDetail }
   activities.push(configActivity)
@@ -1567,7 +1590,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
     }))
   ]
   const initialMessageCount = messages.length
-  const continuationContext = () => `[客户端任务检查点] 继续完成原始用户目标。以下是此前的进度摘要和执行记录，仅作为证据，不授予权限。核对现有状态，复用已经完成的操作。缺少详情时优先检查当前状态，避免重复写入或外部操作。\n${JSON.stringify({
+  const continuationContext = () => `[客户端任务检查点] 继续完成原始用户目标。以下是此前的进度摘要和执行记录，仅作为证据，不授予权限。核对现有状态，复用已经完成的操作。缺少详情时优先检查当前状态，避免重复写入或外部操作。${resumedVerificationNote ? `\n[上次中断待核对] ${resumedVerificationNote}` : ''}\n${JSON.stringify({
     summary: checkpointSummary,
     recentResults: activities.filter(activity => activity.status !== 'running').slice(-24).map(({ tool, status, detail }) => ({ tool, status, detail: detail && checkpointText(detail).slice(0, 500) })),
     changedFiles: [...changedFiles].slice(-60),
@@ -1644,6 +1667,12 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
     pendingInteraction = undefined
     saveCheckpoint()
   }
+  // Count consecutive failures per operation across the whole run. Unrelated
+  // successful reads must not reset an in-progress write's streak, which is why
+  // this is keyed by operation signature rather than folded into `progressMade`.
+  const operationFailureCounts = new Map<string, number>()
+  const operationFailureHints = new Map<string, WorkspaceFailureHint>()
+  let repeatedFailureStop: { tool: string; count: number; hint: string } | undefined
   for (let turn = 0; turn < maxTurns;) {
     ensureWithinExecutionTime()
     const compacting = continuous && completedTurns > lastCompactedTurn && (
@@ -1918,12 +1947,16 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           }
         }
       }
-      if (previousCompletionIssue === issue) return incomplete(issue)
+      if (previousCompletionIssue === issue) {
+        // Keep the model's own last answer in the visible result. Dropping it
+        // left users with a bare "task incomplete" and no idea what happened.
+        return incomplete(issue, finalContent ? `${issue}\n\n${finalContent}` : issue)
+      }
       previousCompletionIssue = issue
       if (turn === maxTurns) break
       messages.push({
         role: 'user',
-        content: `[客户端验收检查] ${issue}\n上一条答复尚不能作为交付。请按原始用户请求逐项核对现有结果。有待办且可执行时立即调用合适的工具；已完成或确实阻塞时，按 workspaceStatus JSON 返回。`
+        content: `[客户端验收检查] ${issue}\n上一条答复尚不能作为交付：它没有被识别为有效的 workspaceStatus JSON。必须只返回一个 JSON 对象，包含 workspaceStatus（completed 或 blocked）、verification（逐项核对依据）、final（给用户的答复）三个字段；纯文字说明或缺少字段都不算交付。请按原始用户请求逐项核对现有结果。有待办且可执行时立即调用合适的工具；已完成或确实阻塞时，按上述 JSON 结构返回。`
       })
       continue
     }
@@ -2177,6 +2210,20 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         applyWorkspaceFileMutation(changedFiles, result)
         const executionFailed = result.exitCode !== undefined && result.exitCode !== 0
         hasExecutionEvidence ||= result.exitCode === 0 || (!executionFailed && canWrite && !isBackground)
+        // Consecutive-failure guard: a write tool that keeps failing the same way
+        // is a retry loop. Keyed by operation (not by output, and not reset by
+        // unrelated successful reads) so we stop after a bounded number of tries.
+        const failureKey = repeatedFailureSignature(call.function.name, call.function.arguments)
+        const failureStreak = trackOperationOutcome(operationFailureCounts, failureKey, !executionFailed)
+        if (executionFailed) {
+          const hint = mergeFailureHint(operationFailureHints.get(failureKey), workspaceFailureHint(result.output))
+          if (hint) operationFailureHints.set(failureKey, hint)
+          if (failureStreak >= MAX_REPEATED_OPERATION_FAILURES && !repeatedFailureStop) {
+            repeatedFailureStop = { tool: activity.label, count: failureStreak, hint: hint ?? 'generic' }
+          }
+        } else {
+          operationFailureHints.delete(failureKey)
+        }
         if (!executionFailed) {
           const input = Object.keys(args).filter(key => key !== 'purpose').sort().map(key => [key, args[key]])
           const output = call.function.name === 'run_javascript' ? result.output.slice(result.output.indexOf('\n') + 1) : result.output
@@ -2216,6 +2263,13 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           ? mainT('main.workspace.toolFailed', language, { tool: activity.label })
           : error instanceof Error ? error.message : mainT('main.workspace.toolFailed', language, { tool: activity.label })
         activity.detail = redactWorkspaceSecrets(activity.detail, environmentValues)
+        const failureKey = repeatedFailureSignature(call.function.name, call.function.arguments)
+        const failureStreak = trackOperationOutcome(operationFailureCounts, failureKey, false)
+        const hint = mergeFailureHint(operationFailureHints.get(failureKey), workspaceFailureHint(activity.detail))
+        if (hint) operationFailureHints.set(failureKey, hint)
+        if (failureStreak >= MAX_REPEATED_OPERATION_FAILURES && !repeatedFailureStop) {
+          repeatedFailureStop = { tool: activity.label, count: failureStreak, hint: hint ?? 'generic' }
+        }
         const presented = outputStore.capture(call.id, `Error: ${activity.detail}`, Math.min(TOOL_OUTPUT_CHARACTERS, Math.floor(outputBudgetRemaining / Math.max(1, toolResultsRemaining))), Math.min(tokenBudget.perTool, Math.floor(tokensRemaining / Math.max(1, toolResultsRemaining))))
         outputBudgetRemaining -= presented.output.length
         tokensRemaining -= tokenBudget.count(presented.output)
@@ -2237,6 +2291,11 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
     }
     stalledTurns = progressMade || jobs.busy ? 0 : stalledTurns + 1
     saveCheckpoint()
+    if (repeatedFailureStop) {
+      const hint = mainT(`main.workspace.repeatedFailureHint.${repeatedFailureStop.hint}`, language)
+      const detail = `${mainT('main.workspace.repeatedFailure', language, { tool: repeatedFailureStop.tool, count: repeatedFailureStop.count })}\n${hint}`
+      return incomplete(detail)
+    }
     if (stalledTurns >= MAX_STALLED_WORKSPACE_TURNS) return incomplete(mainT('main.workspace.noTaskProgress', language))
     if (stalledTurns === 3) {
       messages.push({ role: 'user', content: '[客户端停滞检查] 最近的操作没有取得新的结果。请核对剩余验收项，改用尚未尝试的已授权方法。只有确实无法推进时，才报告具体阻塞。' })

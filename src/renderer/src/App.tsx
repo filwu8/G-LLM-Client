@@ -94,6 +94,7 @@ import {
   stopConversationWebSearch,
   stopPendingWebSearch,
   syncConversationUpdateIntoStreamingDrafts,
+  withApprovalMode,
   type ConversationRunStates
 } from './conversationRuntime'
 import { replaceUserMessageBranch } from './conversationEditing'
@@ -1105,7 +1106,7 @@ export default function App() {
     streamingConversationDraftsRef.current
   )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
-  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace)
+  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace, agentPermissionMode)
 
   // Fetch the workspace-agent settings before the user opens the dialog, so the
   // first paint there carries real data instead of repainting ~120ms later.
@@ -3080,6 +3081,8 @@ export default function App() {
     // No bound workspace yet (or a plain chat): keep the draft aligned and, when
     // the user asked to remember the choice, update the default for new tasks.
     if (!persisted) {
+      // Keep the draft workspace's mode aligned with the picker so the derived
+      // selector value cannot disagree with what will be enforced on first send.
       setDraftWorkspace((current) => current ? { ...current, approvalMode: mode } : current)
       if (settings?.rememberAgentPermission) {
         try {
@@ -3510,6 +3513,12 @@ export default function App() {
       catch (error) { showToolNotice(error instanceof Error ? error.message : String(error)); return }
       finally { preparingWorkspaceRef.current = false }
     }
+    // The permission picker is the single source of truth for a run. A
+    // project-derived workspace hardcodes 'ask', so carry the user's selected
+    // mode into the workspace before it is persisted. Otherwise the toolbar
+    // flips back to "request approval" and the agent downgrades on the first
+    // message of a fresh conversation that had selected full access.
+    requestWorkspace = withApprovalMode(requestWorkspace, agentPermissionMode) ?? requestWorkspace
     let attachments = pendingAttachments
     preparingWorkspaceRef.current = true
     try { if (attachments.length) attachments = await window.gllm.importWorkspaceAttachments(requestWorkspace.rootPath, attachments) }

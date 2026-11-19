@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { readFile, realpath, stat, unlink } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { isProtectedWorkspacePath } from './workspaceAgentPolicy.ts'
 import { runWorkspaceProcess } from './workspaceProcess.ts'
@@ -85,6 +85,49 @@ export function redactGitOutput(text: string): string {
     .replace(/\b(token|password|passwd|secret|api[_-]?key)\s*[=:]\s*\S+/gi, (_match, name: string) => `${name}=[REDACTED]`)
 }
 
+/**
+ * A git write killed by our own timeout (taskkill /F) cannot run its cleanup,
+ * so it leaves <gitdir>/index.lock behind. That stale lock then blocks every
+ * later git write in the same repo ("Unable to create index.lock: File exists"),
+ * turning one slow operation into a permanent retry loop. Remove only the lock
+ * our command created (mtime within the command window); never touch a lock
+ * that predates the command, which may belong to a legitimate concurrent git.
+ */
+export async function clearStaleIndexLock(cwd: string, startedAtMs: number, endedAtMs = Date.now()): Promise<boolean> {
+  const gitPath = resolve(cwd, '.git')
+  let lockPath = resolve(gitPath, 'index.lock')
+  try {
+    const info = await stat(gitPath)
+    if (info.isFile()) {
+      // Worktree / submodule: .git is a file containing "gitdir: <path>".
+      const content = (await readFile(gitPath, 'utf8')).trim()
+      const match = content.match(/^gitdir:\s*(.+)$/i)
+      if (!match) return false
+      lockPath = resolve(cwd, match[1].trim(), 'index.lock')
+    }
+    const lockInfo = await stat(lockPath)
+    // Only clear a lock created during our command window. A lock older than
+    // the command belongs to another process and must not be removed.
+    if (lockInfo.mtimeMs < startedAtMs - 1000) return false
+    if (lockInfo.mtimeMs > endedAtMs + 1000) return false
+    await unlink(lockPath)
+    return true
+  } catch {
+    // No lock present, or already gone: nothing to clear.
+    return false
+  }
+}
+
+/**
+ * Detect the stale-index.lock failure signature in git output. Both reads
+ * (status refreshes the index) and writes can hit it, and git reports it as a
+ * normal non-zero exit rather than throwing — so callers must inspect output
+ * and heal proactively instead of relying on the timeout/catch path.
+ */
+export function isIndexLockConflict(text: string): boolean {
+  return /index\.lock['"]?\s*:?.*file exists|unable to create ['"].*index\.lock/i.test(String(text ?? ''))
+}
+
 function gitEnvironment(): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH,
@@ -136,17 +179,40 @@ export async function runGitRead(root: string, args: Record<string, unknown>, si
   const rootReal = await realpath(root)
   const { cwd, repo } = await resolveGitCwd(rootReal, args)
   const argv = buildArguments(operation, args, rootReal)
-  const result = await runWorkspaceProcess({
+  const maxCharacters = Math.max(2000, Math.min(20_000, Math.round(Number(args.maxCharacters)) || 8000))
+  const runOnce = () => runWorkspaceProcess({
     executable: process.platform === 'win32' ? 'git.exe' : 'git',
     args: argv,
     cwd,
     env: gitEnvironment(),
     signal,
-    timeoutMs: 30_000,
+    // `git status` refreshes the index and can be slow on very large repos.
+    timeoutMs: 120_000,
     maxOutputBytes: MAX_OUTPUT_BYTES,
     outputOverflow: 'truncate'
   })
-  const maxCharacters = Math.max(2000, Math.min(20_000, Math.round(Number(args.maxCharacters)) || 8000))
+  const startedAtMs = Date.now()
+  let result: Awaited<ReturnType<typeof runWorkspaceProcess>>
+  try {
+    result = await runOnce()
+  } catch (error) {
+    // A timed-out/killed git (even a read) leaves index.lock behind.
+    await clearStaleIndexLock(cwd, startedAtMs)
+    throw error
+  }
+  // git reports a stale lock as a normal non-zero exit, not an exception.
+  // Heal it and retry once so a leftover lock from an earlier killed command
+  // does not hard-block all later git operations.
+  if (result.exitCode !== 0 && isIndexLockConflict(`${result.stdout}\n${result.stderr}`)) {
+    const retryStartedAt = Date.now()
+    await clearStaleIndexLock(cwd, 0, retryStartedAt)
+    try {
+      result = await runOnce()
+    } catch (error) {
+      await clearStaleIndexLock(cwd, retryStartedAt)
+      throw error
+    }
+  }
   const raw = `Exit code: ${result.exitCode}${repo !== '.' ? `\nrepo: ${repo}` : ''}\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
   return { output: redactGitOutput(raw).slice(0, maxCharacters) }
 }
@@ -166,7 +232,11 @@ function safeRemote(value: unknown): string {
  */
 async function resolveGitCwd(rootReal: string, args: Record<string, unknown>): Promise<{ cwd: string; repo: string }> {
   const input = args.repo === undefined ? '' : String(args.repo).trim()
-  if (!input) return { cwd: rootReal, repo: '.' }
+  // discoverWorkspaceRepositories reports the root repository as "." and the
+  // model is told to use that exact value for root-level git operations. Treat
+  // "." (and its explicit separators) as the workspace root instead of letting
+  // safeRelativePath reject an empty relative path as "outside the workspace".
+  if (!input || input === '.' || input === './' || input === '.\\') return { cwd: rootReal, repo: '.' }
   const repo = safeRelativePath(rootReal, input)
   const target = resolve(rootReal, repo)
   const info = await realpath(target).then(() => stat(target)).catch(() => {
@@ -240,6 +310,19 @@ export interface GitWriteResult {
 }
 
 /**
+ * Bulk working-tree operations (reset/checkout/clean) can rewrite tens of
+ * thousands of files on a large repo; the old flat 120s timeout killed git
+ * mid-write and left index.lock behind. Give these a much larger ceiling.
+ * The caller's AbortSignal still carries the global goal deadline, so a long
+ * value here cannot make a run exceed its configured limit.
+ */
+export function gitWriteTimeoutMs(operation: GitWriteOperation): number {
+  if (operation === 'reset' || operation === 'checkout' || operation === 'clean') return 600_000
+  if (operation === 'fetch' || operation === 'pull') return 180_000
+  return 180_000 // stash
+}
+
+/**
  * Run an allowlisted,审批-gated git write operation. Callers MUST obtain
  * approval through the workspace approval flow before invoking this; this
  * function only guarantees the command shape is safe and auditable.
@@ -251,17 +334,41 @@ export async function runGitWrite(root: string, args: Record<string, unknown>, s
   const rootReal = await realpath(root)
   const { cwd, repo } = await resolveGitCwd(rootReal, args)
   const argv = buildWriteArguments(operation, args, rootReal)
-  const result = await runWorkspaceProcess({
+  const maxCharacters = Math.max(2000, Math.min(20_000, Math.round(Number(args.maxCharacters)) || 8000))
+  const runOnce = () => runWorkspaceProcess({
     executable: process.platform === 'win32' ? 'git.exe' : 'git',
     args: argv,
     cwd,
     env: gitEnvironment(),
     signal,
-    timeoutMs: 120_000,
+    timeoutMs: gitWriteTimeoutMs(operation),
     maxOutputBytes: MAX_OUTPUT_BYTES,
     outputOverflow: 'truncate'
   })
-  const maxCharacters = Math.max(2000, Math.min(20_000, Math.round(Number(args.maxCharacters)) || 8000))
+  const startedAtMs = Date.now()
+  let result: Awaited<ReturnType<typeof runWorkspaceProcess>>
+  try {
+    result = await runOnce()
+  } catch (error) {
+    // A killed/aborted git cannot clear its own lock. Clean up the one created
+    // by this command so a retry is not blocked by our own stale index.lock,
+    // then surface the original timeout/cancel error to the caller.
+    await clearStaleIndexLock(cwd, startedAtMs)
+    throw error
+  }
+  // A stale lock left by an earlier killed command surfaces as exit 128 here
+  // (a normal return, not the catch path). Heal it and retry once in place so
+  // the operation succeeds without needing another model turn.
+  if (result.exitCode !== 0 && isIndexLockConflict(`${result.stdout}\n${result.stderr}`)) {
+    const retryStartedAt = Date.now()
+    await clearStaleIndexLock(cwd, 0, retryStartedAt)
+    try {
+      result = await runOnce()
+    } catch (error) {
+      await clearStaleIndexLock(cwd, retryStartedAt)
+      throw error
+    }
+  }
   const raw = `Exit code: ${result.exitCode}${repo !== '.' ? `\nrepo: ${repo}` : ''}\ngit ${argv.slice(argv.indexOf(operation)).join(' ')}\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
   return { output: redactGitOutput(raw).slice(0, maxCharacters), exitCode: result.exitCode }
 }
