@@ -2912,6 +2912,20 @@ export default function App() {
     void executeWorkspaceConversation(activeConversation, activeConversation.workspace, conversationProvider)
   }
 
+  function cancelWorkspaceTask() {
+    if (!activeConversation || !hasUnfinishedWorkspaceTask(activeConversation)) return
+    if (!window.confirm(t('workspace.cancelTaskConfirm'))) return
+    const cancelMessage = createMessage('assistant', t('workspace.cancelledMessage'))
+    const nextConversation: Conversation = {
+      ...activeConversation,
+      messages: [...activeConversation.messages, cancelMessage],
+      updatedAt: Date.now()
+    }
+    void window.gllm.removeWorkspaceCheckpoint(activeConversation.id)
+    saveConversationUpdate(nextConversation)
+    showToolNotice(t('workspace.cancelledNotice'))
+  }
+
   function openWorkspaceArtifactMenu(event: ReactMouseEvent, rootPath: string, relativePath: string) {
     event.preventDefault()
     event.stopPropagation()
@@ -4500,7 +4514,7 @@ export default function App() {
                 onClear={clearGoalTask}
               />
             )}
-            {!isStreaming && hasUnfinishedWorkspaceTask(activeConversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} />}
+            {!isStreaming && hasUnfinishedWorkspaceTask(activeConversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} onCancel={cancelWorkspaceTask} />}
             {currentWorkspace && (
               <WorkspaceBar
                 workspace={currentWorkspace}

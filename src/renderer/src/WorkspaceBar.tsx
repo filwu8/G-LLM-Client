@@ -319,13 +319,14 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
   )
 }
 
-export function WorkspaceResumeNotice({ onResume }: { onResume: () => void }) {
+export function WorkspaceResumeNotice({ onResume, onCancel }: { onResume: () => void; onCancel: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="composer-notice" role="status">
       <span>{t('workspace.resumeAvailable')}</span>
       <div className="composer-notice-actions">
         <button type="button" onClick={onResume}>{t('workspace.resumeTask')}</button>
+        <button type="button" className="danger" onClick={onCancel}>{t('workspace.cancelTask')}</button>
       </div>
     </div>
   )

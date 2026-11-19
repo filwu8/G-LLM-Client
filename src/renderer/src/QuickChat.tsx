@@ -1508,6 +1508,24 @@ export default function QuickChat() {
     void executeQuickWorkspaceConversation(current, current.workspace)
   }
 
+  function cancelQuickWorkspaceTask() {
+    const current = conversationRef.current
+    if (!current || !hasUnfinishedWorkspaceTask(current)) return
+    if (!window.confirm(t('workspace.cancelTaskConfirm'))) return
+    const cancelMessage = createMessage('assistant', t('workspace.cancelledMessage'))
+    const updated: Conversation = {
+      ...current,
+      messages: [...current.messages, cancelMessage],
+      updatedAt: Date.now()
+    }
+    void window.gllm.removeWorkspaceCheckpoint(current.id)
+    setConversation(updated)
+    setConversations((items) => [updated, ...items.filter((item) => item.id !== updated.id)])
+    conversationRef.current = updated
+    void window.gllm.saveConversation(updated)
+    setStatus(t('workspace.cancelledNotice'))
+  }
+
   function editQuickMessage(message: ChatMessage) {
     if (isStreaming || message.role !== 'user') return
     setEditingMessageId(message.id)
@@ -2521,7 +2539,7 @@ export default function QuickChat() {
             onClear={clearQuickGoal}
           />
         )}
-        {!isStreaming && hasUnfinishedWorkspaceTask(conversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} />}
+        {!isStreaming && hasUnfinishedWorkspaceTask(conversation) && <WorkspaceResumeNotice onResume={resumeWorkspaceTask} onCancel={cancelQuickWorkspaceTask} />}
         {currentWorkspace && (
           <WorkspaceBar
             workspace={currentWorkspace}
