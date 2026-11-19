@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.31](docs/releases/v2.0.31.md)
+当前代码版本：[V2.0.32](docs/releases/v2.0.32.md)
 
 Microsoft Store 当前公开版：[V2.0.31](https://apps.microsoft.com/detail/9MVD547V4ZN9)，发布于 2026-11-13。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
@@ -23,6 +23,15 @@ Microsoft Store 当前公开版：[V2.0.31](https://apps.microsoft.com/detail/9M
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.32 Agent 权限模式与任务可靠性
+
+- 工作区顶栏新增 Agent 权限模式切换，图标化显示三种状态：逐次请求批准、只读并允许写入授权目录、完全访问。新建会话选定完全访问后会保持该模式，不再中途退回逐次批准。
+- 完全访问仍以用户授权的文件夹为边界：授权目录内可写，目录外只读，host 脚本和越界写入仍逐次确认。
+- 未完成任务的提示新增“取消任务”，确认后清除已保存的进度，已产生的文件改动保留。
+- 修复若干导致任务中断的问题：仓库根目录参数被误判越界、Git 索引锁争用导致连续失败、进度保存瞬时失败终止任务、把“不要修改任何文件”误判为写操作。
+- 降低工作区工具栏首次点击的响应延迟。
+- 依赖更新至 i18next 27、react-i18next 18、React 19.3、mermaid 12、lucide-react 1.73；@napi-rs/canvas 统一到 1.1.1，安装包不再携带重复的原生二进制。
 
 ## V2.0.31 工作区任务持续执行与恢复
 
