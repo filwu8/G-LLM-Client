@@ -124,7 +124,19 @@
 | `src/shared/assistantDelegation.ts` `createDelegationContext` | 派发预算（12 次 / 2 层） |
 | `src/main/workspaceAgent.ts` `readSeatContextFiles` | 读席位规则、记忆、最新日志 |
 | `src/main/workspaceAgent.ts` `executeAssistantDelegation` | 派发执行入口 |
-| `src/main/assistantImport.ts` `importAssistantsFromDirectory` | 从目录批量建总台与席位 |
+| `src/main/assistantImport.ts` `importAssistantsFromDirectory` | 从目录批量建总台与席位（纯逻辑在 `assistantImportPlan.ts`） |
 | `src/main/meetingRoom.ts` | 会议室读取与发帖 |
 | `src/main/storage.ts` `sanitizeAssistant` | 字段落盘时的清洗 |
 | `src/renderer/src/App.tsx` | 助手设置里的「工作区目录」输入框 |
+
+## 验证记录
+
+以下结果是实际跑出来的，不是设计设想。
+
+1. **会议室解析**：对真实 `vb/AI交易系统_五席位/AI会议室.txt` 跑解析器，得到 70 帖 / 11 个署名 / `tailComplete=true` / 630746 字节；`scripts/meeting-smoke.mts` 在临时目录用真实 `append_room.ps1` 发帖，从 1 帖变 2 帖，署名、正文、时间一致。
+2. **会话落库**：用 esbuild 把 `src/main/storage.ts` 打成 cjs，在 `app.setPath('userData', <临时目录>)` 下调用 `saveConversation({ id: 'parent-conv::seat-livermore', ... })`，再 `getConversations()` 与 `getConversationById()` 都能取到，`messages` 为 2，`assistantId` 为席位 id。说明 `父会话id::席位id` 这种 id 能被 storage 正常保存与列出。
+3. **目录导入**：对真实 `vb/AI交易系统_五席位` 跑 `planAssistantImport`，识别出总台 + 7 个席位（`artifacts` / `Task` / `_archive` / `_research` / `__pycache__` / `_总台` 被跳过并给出原因）；再拿用户真实库里的 3 个助手当 `existing` 连续导入两次，第二次 id 全部复用，总数 3 + 1 + 7 = 11，没有重复。
+4. **构建与测试**：`npx tsc --noEmit` 无错误；`npm run build`（i18n:check + licenses + tsc + electron-vite build + bundle:verify）通过；`npm run test:assistant-platform` 14 项通过；`src/main/assistantImport.test.ts` 3 项通过；`i18n:check` 校验 1369 个键。
+5. **打包**：`npm run package:win` 产出 `dist/G-LLM-Client-Setup-2.0.31-x64.exe`，211.8 MB，已 signtool 签名。
+
+没有覆盖到的：真机点开 app 手动派发一次。这条路径需要真实 API Key 和用户交互，自动化脚本只能验到 storage 与解析层。
