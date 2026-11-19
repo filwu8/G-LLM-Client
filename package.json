@@ -35,7 +35,7 @@
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "bundle:verify": "node scripts/verify-main-bundle.mjs",
     "preview": "electron-vite preview",
-    "package:win": "pnpm build && electron-builder --win --x64 --publish never",
+    "package:win": "pnpm build && electron-builder --win --x64 --publish never --config.electronDist=node_modules/electron/dist",
     "package:msix": "pnpm build && electron-builder --win dir --x64 --publish never --config.electronDist=node_modules/electron/dist && node scripts/package-msix.mjs",
     "package:mac": "pnpm build && electron-builder --mac --arm64 --x64 --publish never",
     "package:linux": "pnpm build && electron-builder --linux --x64 --publish never",
