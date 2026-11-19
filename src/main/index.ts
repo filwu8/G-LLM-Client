@@ -2572,7 +2572,15 @@ app.whenReady().then(() => {
         },
         // Read the live mode so a switch in the composer applies to the very
         // next tool call of this running task.
-        () => resolveAgentPermissionMode(request.conversationId)
+        () => resolveAgentPermissionMode(request.conversationId),
+        (proposal) => {
+          const payload: import('../shared/types').WorkspaceGoalProposal = {
+            id: randomUUID(), conversationId: request.conversationId, proposedAt: Date.now(), ...proposal
+          }
+          for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
+            if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:goal-proposed', payload)
+          }
+        }
       )
       active.controller.signal.throwIfAborted()
       } // end harness else-branch

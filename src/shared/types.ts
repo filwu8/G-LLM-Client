@@ -747,6 +747,10 @@ export interface AgentPlanStep {
   title: string
   status: AgentPlanStepStatus
   detail?: string
+  /** Set on steps the model owns through the todo tool; runtime phases omit it. */
+  managedBy?: 'model'
+  /** Present-continuous label shown while the step is running. */
+  activeForm?: string
 }
 
 export interface AgentExecutionPlan {
@@ -874,6 +878,18 @@ export interface WorkspaceAgentProgress {
   conversationId: string
   activity: WorkspaceToolActivity
   changedFiles?: string[]
+  /** Present when the model rebuilt its todo checklist mid-run. */
+  plan?: AgentExecutionPlan
+}
+
+/** A goal the agent suggests during a run. The user decides whether to start it. */
+export interface WorkspaceGoalProposal {
+  id: string
+  conversationId: string
+  goal: string
+  acceptanceCriteria: string
+  reason?: string
+  proposedAt: number
 }
 
 export interface WorkspaceRunSnapshot {

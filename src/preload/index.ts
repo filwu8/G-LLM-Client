@@ -48,6 +48,7 @@ import type {
   ThemeEntitlementResult,
   ToolConfig,
   WorkspaceAgentProgress,
+  WorkspaceGoalProposal,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
@@ -334,6 +335,11 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, progress: WorkspaceAgentProgress) => listener(progress)
     ipcRenderer.on('workspace-agent:progress', handler)
     return () => ipcRenderer.removeListener('workspace-agent:progress', handler)
+  },
+  onWorkspaceGoalProposal: (listener: (proposal: WorkspaceGoalProposal) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, proposal: WorkspaceGoalProposal) => listener(proposal)
+    ipcRenderer.on('workspace-agent:goal-proposed', handler)
+    return () => ipcRenderer.removeListener('workspace-agent:goal-proposed', handler)
   },
   onWorkspaceApprovalRequested: (listener: (prompt: WorkspaceApprovalPrompt) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, prompt: WorkspaceApprovalPrompt) => listener(prompt)

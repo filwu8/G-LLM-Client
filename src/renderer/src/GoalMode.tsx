@@ -23,17 +23,18 @@ export interface GoalSetupValue {
   contextMode: GoalContextMode
 }
 
-export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initialGoal, onChooseDirectory, onClose, onStart }: {
+export function GoalSetupDialog({ currentWorkspace, defaultWebSearchMode, initialGoal, initialAcceptanceCriteria, onChooseDirectory, onClose, onStart }: {
   currentWorkspace?: ConversationWorkspace
   defaultWebSearchMode?: WebSearchMode
   initialGoal?: string
+  initialAcceptanceCriteria?: string
   onChooseDirectory: () => Promise<string | null>
   onClose: () => void
   onStart: (value: GoalSetupValue) => void
 }) {
   const { t } = useTranslation()
   const [goal, setGoal] = useState(() => initialGoal?.trim() ?? '')
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState('')
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(initialAcceptanceCriteria?.trim() ?? '')
   const [contextMode, setContextMode] = useState<GoalContextMode>('auto')
   const [rootPath, setRootPath] = useState(currentWorkspace?.rootPath ?? '')
   const [approvalMode, setApprovalMode] = useState<NonNullable<ConversationWorkspace['approvalMode']>>(currentWorkspace?.approvalMode ?? 'auto')

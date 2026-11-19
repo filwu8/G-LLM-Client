@@ -218,7 +218,9 @@ import type {
   WorkspaceApprovalPrompt,
   WorkspaceInteractionRequest,
   WorkspaceInteractionResponse,
-  WorkspaceToolActivity
+  WorkspaceToolActivity,
+  AgentExecutionPlan,
+  WorkspaceGoalProposal
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
 import { estimateTokenCount } from '@shared/tokenEstimate'
@@ -888,6 +890,11 @@ export default function App() {
   const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false)
   const [workspaceInteractions, setWorkspaceInteractions] = useState<WorkspaceInteractionRequest[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
+  // Live todo checklist while a run is in flight; the persisted plan lands on the
+  // message only when the run finishes.
+  const [workspacePlanByConversation, setWorkspacePlanByConversation] = useState<Record<string, AgentExecutionPlan>>({})
+  // A goal the agent suggested mid-run; seeds the setup dialog the user confirms.
+  const [goalProposalSeed, setGoalProposalSeed] = useState<{ goal: string; acceptanceCriteria: string } | null>(null)
   const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
@@ -1645,6 +1652,17 @@ export default function App() {
           [progress.conversationId]: progress.changedFiles ?? []
         }))
       }
+      if (progress.plan) setWorkspacePlanByConversation((current) => ({ ...current, [progress.conversationId]: progress.plan as AgentExecutionPlan }))
+    }),
+    []
+  )
+
+  useEffect(
+    () => window.gllm.onWorkspaceGoalProposal((proposal: WorkspaceGoalProposal) => {
+      if (proposal.conversationId !== activeConversationIdRef.current) return
+      setGoalProposalSeed({ goal: proposal.goal, acceptanceCriteria: proposal.acceptanceCriteria })
+      setDraft(proposal.goal)
+      setGoalSetupOpen(true)
     }),
     []
   )
@@ -4078,10 +4096,10 @@ export default function App() {
                             startedAt={activeRunStartedAt}
                           />
                         )}
-                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan) && (
+                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan || (activeConversationId ? workspacePlanByConversation[activeConversationId] : undefined)) && (
                           <WorkspaceActivityLog
                             activities={message.workspaceActivities ?? []}
-                            plan={message.agentPlan}
+                            plan={message.agentPlan ?? (activeConversationId ? workspacePlanByConversation[activeConversationId] : undefined)}
                             changedFiles={message.workspaceChangedFiles}
                             artifactRoot={message.workspaceArtifactRoot}
                             onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
@@ -4888,9 +4906,13 @@ export default function App() {
         <GoalSetupDialog
           currentWorkspace={currentWorkspace}
           defaultWebSearchMode={webSearchMode}
-          initialGoal={draft}
+          initialGoal={goalProposalSeed?.goal ?? draft}
+          initialAcceptanceCriteria={goalProposalSeed?.acceptanceCriteria}
           onChooseDirectory={chooseGoalWorkspaceDirectory}
-          onClose={() => setGoalSetupOpen(false)}
+          onClose={() => {
+            setGoalSetupOpen(false)
+            setGoalProposalSeed(null)
+          }}
           onStart={(value) => void startGoalMode(value)}
         />
       )}
