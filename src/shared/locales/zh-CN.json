@@ -414,25 +414,7 @@
     "empty": "这个席位还没有对话。点下面的「进入对话」开始。",
     "noContent": "（空会话）",
     "messageCount": "{{count}} 条消息",
-    "enter": "进入对话",
-    "delegate": "派任务"
-  },
-  "delegate": {
-    "title": "给 {{seat}} 派活",
-    "subtitle": "任务会作为新对话发给这个席位",
-    "task": "任务",
-    "taskPlaceholder": "写下要它做什么，例如：把今天焊死芯片的委比数据补进交易日记。",
-    "snapshot": "席位最近结论",
-    "from": "来自「{{source}}」",
-    "noConclusion": "这个席位还没有结论可参考",
-    "openTasks": "未完成：{{tasks}}",
-    "attachConclusion": "把这段结论一起带给席位",
-    "attachHint": "勾上后席位会看到自己上次的结论，不必重新翻记录",
-    "send": "派发",
-    "sending": "派发中…",
-    "sent": "任务已发给 {{seat}}",
-    "needSettings": "设置还没加载，无法发起对话",
-    "cancel": "取消"
+    "enter": "进入对话"
   },
   "notices": {
     "inactiveAssistant": "当前助手已停用，请先启用或切换助手。",

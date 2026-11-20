@@ -1,7 +1,7 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1  — Change Date: 2030-08-01 */
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, Send, X } from 'lucide-react'
+import { ArrowUpRight, X } from 'lucide-react'
 import type { Assistant, Conversation } from '@shared/types'
 import { AssistantAvatar } from './App'
 
@@ -20,12 +20,11 @@ function stamp(at: number): string {
     : date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onDelegate, onEnterSeat }: {
+export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onEnterSeat }: {
   seat: Assistant | null
   conversations: Conversation[]
   onClose: () => void
   onOpenConversation: (conversationId: string, assistantId: string) => void
-  onDelegate: (seat: Assistant) => void
   onEnterSeat: (seat: Assistant) => void
 }) {
   const { t } = useTranslation()
@@ -77,9 +76,6 @@ export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, o
       <footer className="seat-drawer-foot">
         <button type="button" className="seat-drawer-secondary" onClick={() => { onClose(); if (rows[0]) onOpenConversation(rows[0].id, seat.id); else onEnterSeat(seat) }}>
           <ArrowUpRight size={14} />{t('seatDrawer.enter')}
-        </button>
-        <button type="button" className="seat-drawer-primary" onClick={() => { onClose(); onDelegate(seat) }}>
-          <Send size={14} />{t('seatDrawer.delegate')}
         </button>
       </footer>
     </aside>

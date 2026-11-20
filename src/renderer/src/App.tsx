@@ -143,7 +143,6 @@ import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
 import { MeetingRoomDialog } from './MeetingRoom'
 import { SeatDrawer } from './SeatDrawer'
-import { DelegateDialog, type SeatSnapshot } from './DelegateDialog'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
@@ -881,7 +880,6 @@ export default function App() {
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
   const [collapsedAssistants, setCollapsedAssistants] = useState<Set<string>>(new Set())
   const [seatDrawer, setSeatDrawer] = useState<Assistant | null>(null)
-  const [delegateTarget, setDelegateTarget] = useState<Assistant | null>(null)
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({})
   const [composerAttachments, setComposerAttachments] = useState<Record<string, PreparedAttachment[]>>({})
   const [composerQuoteRefs, setComposerQuoteRefs] = useState<Record<string, KnowledgeReference[]>>({})
@@ -1109,41 +1107,6 @@ export default function App() {
     () => getEffectiveProvider(activeAssistant, activeProvider, providers),
     [activeAssistant, activeProvider, providers]
   )
-  /** Latest conclusion per seat, so the orchestrator can see state before delegating. */
-  const seatSnapshots = useMemo(() => {
-    const map: Record<string, SeatSnapshot> = {}
-    for (const seat of assistants) {
-      const latest = conversations
-        .filter((conversation) => conversation.assistantId === seat.id)
-        .sort((first, second) => second.updatedAt - first.updatedAt)[0]
-      const last = latest
-        ? [...latest.messages].reverse().find((message) => message.role === 'assistant' && message.content.trim())
-        : undefined
-      map[seat.id] = {
-        conclusion: last ? last.content.replace(/\s+/g, ' ').trim().slice(0, 280) : '',
-        source: latest?.title ?? '',
-        openTasks: ''
-      }
-    }
-    return map
-  }, [assistants, conversations])
-
-  async function sendDelegateTask(seat: Assistant, input: { task: string; attachConclusion: boolean }) {
-    if (!settings) throw new Error(t('delegate.needSettings'))
-    const provider = getEffectiveProvider(seat, activeProvider, providers)
-    const snapshot = seatSnapshots[seat.id]
-    const body = input.attachConclusion && snapshot?.conclusion
-      ? `${input.task}\n\n---\n【席位最近结论 · 来自「${snapshot.source}」】\n${snapshot.conclusion}`
-      : input.task
-    const conversation = createConversation(seat, provider, activeProjectId)
-    conversation.title = `派活：${input.task.slice(0, 24)}`
-    conversation.messages = [createMessage('user', body)]
-    await window.gllm.saveConversation(conversation)
-    setConversations((current) => [conversation, ...current])
-    window.gllm.streamChat({ conversationId: conversation.id, assistant: seat, provider, messages: conversation.messages, settings })
-    showToolNotice(t('delegate.sent', { seat: seat.name }))
-  }
-
   const activeAssistantConversations = useMemo(
     () => collapsePristineConversationDrafts(
       sortConversationsForSidebar(
@@ -5049,16 +5012,7 @@ export default function App() {
       <SeatDrawer seat={seatDrawer} conversations={conversations}
         onClose={() => setSeatDrawer(null)}
         onOpenConversation={(conversationId, assistantId) => { setActiveAssistantId(assistantId); selectConversation(conversationId); setSeatDrawer(null) }}
-        onDelegate={(seat) => setDelegateTarget(seat)}
         onEnterSeat={(seat) => { setSeatDrawer(null); openAssistant(seat) }} />
-      {delegateTarget && (
-        <DelegateDialog
-          seat={delegateTarget}
-          snapshot={seatSnapshots[delegateTarget.id]}
-          onClose={() => setDelegateTarget(null)}
-          onSend={(input) => sendDelegateTask(delegateTarget, input)}
-        />
-      )}
       {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog

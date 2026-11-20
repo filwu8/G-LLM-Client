@@ -414,25 +414,7 @@
     "empty": "No conversation yet. Use “Open chat” below to start one.",
     "noContent": "(empty)",
     "messageCount": "{{count}} messages",
-    "enter": "Open chat",
-    "delegate": "Delegate"
-  },
-  "delegate": {
-    "title": "Delegate to {{seat}}",
-    "subtitle": "The task opens as a new conversation for this seat",
-    "task": "Task",
-    "taskPlaceholder": "What should this seat do? e.g. add today’s order-book ratio to the trading journal.",
-    "snapshot": "Latest conclusion",
-    "from": "From “{{source}}”",
-    "noConclusion": "This seat has no conclusion yet",
-    "openTasks": "Open: {{tasks}}",
-    "attachConclusion": "Bring this conclusion along",
-    "attachHint": "The seat sees its own last conclusion instead of digging through history",
-    "send": "Send",
-    "sending": "Sending…",
-    "sent": "Task sent to {{seat}}",
-    "needSettings": "Settings are not loaded yet",
-    "cancel": "Cancel"
+    "enter": "Open chat"
   },
   "notices": {
     "inactiveAssistant": "This assistant is disabled. Enable it or choose another assistant.",
