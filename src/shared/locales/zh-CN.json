@@ -415,7 +415,7 @@
     "noContent": "（空会话）",
     "messageCount": "{{count}} 条消息",
     "enter": "进入对话",
-    "delegate": "派活"
+    "delegate": "派任务"
   },
   "delegate": {
     "title": "给 {{seat}} 派活",

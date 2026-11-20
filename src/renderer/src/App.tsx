@@ -59,6 +59,7 @@ import {
   Trash2,
   Upload,
   FolderInput,
+  History,
   Wrench,
   X,
   type LucideIcon
@@ -2320,7 +2321,7 @@ export default function App() {
   function openAssistantContextMenu(event: ReactMouseEvent, assistant: Assistant) {
     event.preventDefault()
     event.stopPropagation()
-    const menuHeight = 126
+    const menuHeight = 168
     setAssistantContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 190),
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
@@ -3975,12 +3976,28 @@ export default function App() {
                 <button
                   key={assistant.id}
                   className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}${depth > 0 ? ' assistant-card-child' : ''}`}
-                  onClick={() => setSeatDrawer(assistant)}
+                  onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
                   title={`${displayAssistant.name}\n${t(`assistantSettings.statuses.${assistant.status ?? 'active'}`)} · ${assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local')} · v${assistant.configSource?.version ?? '1.0.0'}`}
                   type="button"
                 >
                   <AssistantAvatar assistant={assistant} />
+                  <span
+                    className="assistant-card-history"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('seatDrawer.conversations')}
+                    title={t('seatDrawer.conversations')}
+                    onClick={(event) => { event.stopPropagation(); setSeatDrawer(assistant) }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setSeatDrawer(assistant)
+                    }}
+                  >
+                    <History size={12} />
+                  </span>
                   {childCount > 0 && <span
                     className="assistant-card-toggle"
                     role="button"
@@ -4031,6 +4048,9 @@ export default function App() {
           </div>
 
           <div className="rail-actions">
+            <button className={meetingOpen ? 'icon-button active' : 'icon-button'} onClick={() => setMeetingOpen(value => !value)} title={t('meeting.title')} type="button">
+              <MessageSquare size={18} />
+            </button>
             <button className="icon-button" onClick={() => setAssistantCenterOpen(true)} title={t('app.addAssistant')}>
               <Plus size={18} />
             </button>
@@ -4062,6 +4082,10 @@ export default function App() {
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.preventDefault()}
           >
+            <button type="button" onClick={() => { setAssistantContextMenu(null); setSeatDrawer(assistant) }}>
+              <History size={15} />
+              {t('seatDrawer.conversations')}
+            </button>
             <button
               type="button"
               onClick={() => void toggleAssistantPin(assistant)}
@@ -5025,7 +5049,8 @@ export default function App() {
       <SeatDrawer seat={seatDrawer} conversations={conversations}
         onClose={() => setSeatDrawer(null)}
         onOpenConversation={(conversationId, assistantId) => { setActiveAssistantId(assistantId); selectConversation(conversationId); setSeatDrawer(null) }}
-        onDelegate={(seat) => setDelegateTarget(seat)} />
+        onDelegate={(seat) => setDelegateTarget(seat)}
+        onEnterSeat={(seat) => { setSeatDrawer(null); openAssistant(seat) }} />
       {delegateTarget && (
         <DelegateDialog
           seat={delegateTarget}

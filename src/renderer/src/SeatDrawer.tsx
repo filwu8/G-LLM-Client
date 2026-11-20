@@ -20,12 +20,13 @@ function stamp(at: number): string {
     : date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onDelegate }: {
+export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onDelegate, onEnterSeat }: {
   seat: Assistant | null
   conversations: Conversation[]
   onClose: () => void
   onOpenConversation: (conversationId: string, assistantId: string) => void
   onDelegate: (seat: Assistant) => void
+  onEnterSeat: (seat: Assistant) => void
 }) {
   const { t } = useTranslation()
 
@@ -74,7 +75,7 @@ export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, o
       </div>
 
       <footer className="seat-drawer-foot">
-        <button type="button" className="seat-drawer-secondary" onClick={() => { onClose(); if (rows[0]) onOpenConversation(rows[0].id, seat.id) }} disabled={rows.length === 0}>
+        <button type="button" className="seat-drawer-secondary" onClick={() => { onClose(); if (rows[0]) onOpenConversation(rows[0].id, seat.id); else onEnterSeat(seat) }}>
           <ArrowUpRight size={14} />{t('seatDrawer.enter')}
         </button>
         <button type="button" className="seat-drawer-primary" onClick={() => { onClose(); onDelegate(seat) }}>

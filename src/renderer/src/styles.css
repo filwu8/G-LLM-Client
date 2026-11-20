@@ -553,6 +553,10 @@ img.space-logo {
   min-height: 48px;
 }
 
+.assistant-card { position: relative; }
+.assistant-card-history { position: absolute; top: 6px; right: 6px; z-index: 1; display: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; color: inherit; opacity: .5; cursor: pointer; }
+.assistant-card:hover .assistant-card-history, .assistant-card-history:focus-visible { display: inline-flex; }
+.assistant-card-history:hover { opacity: 1; background: hsl(var(--muted)); }
 .assistant-card-toggle { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 auto; margin-inline-end: 2px; border-radius: 4px; color: inherit; opacity: .6; cursor: pointer; }
 .assistant-card-toggle:hover { opacity: 1; background: hsl(var(--muted)); }
 .assistant-card:has(> .assistant-card-toggle) { grid-template-columns: 18px 34px minmax(0, 1fr); }
