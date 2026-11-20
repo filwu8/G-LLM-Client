@@ -15,6 +15,8 @@ import {
   Copy,
   Crown,
   Database,
+  ChevronDown,
+  ChevronRight,
   Download,
   Eye,
   EyeOff,
@@ -139,6 +141,8 @@ import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorks
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
 import { MeetingRoomDialog } from './MeetingRoom'
+import { SeatDrawer } from './SeatDrawer'
+import { DelegateDialog, type SeatSnapshot } from './DelegateDialog'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
@@ -778,7 +782,7 @@ function withPendingChoice(conversation: Conversation): Conversation {
   }
 }
 
-function AssistantAvatar({ assistant, className = '' }: { assistant: Assistant; className?: string }) {
+export function AssistantAvatar({ assistant, className = '' }: { assistant: Assistant; className?: string }) {
   const Icon = iconMap[assistant.icon] ?? Sparkles
   const classes = ['assistant-icon', assistant.color, assistant.avatarDataUrl ? 'custom-avatar' : '', className].filter(Boolean).join(' ')
 
@@ -874,6 +878,9 @@ export default function App() {
   const [dataLocation, setDataLocation] = useState<DataLocationInfo | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
+  const [collapsedAssistants, setCollapsedAssistants] = useState<Set<string>>(new Set())
+  const [seatDrawer, setSeatDrawer] = useState<Assistant | null>(null)
+  const [delegateTarget, setDelegateTarget] = useState<Assistant | null>(null)
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({})
   const [composerAttachments, setComposerAttachments] = useState<Record<string, PreparedAttachment[]>>({})
   const [composerQuoteRefs, setComposerQuoteRefs] = useState<Record<string, KnowledgeReference[]>>({})
@@ -1101,6 +1108,41 @@ export default function App() {
     () => getEffectiveProvider(activeAssistant, activeProvider, providers),
     [activeAssistant, activeProvider, providers]
   )
+  /** Latest conclusion per seat, so the orchestrator can see state before delegating. */
+  const seatSnapshots = useMemo(() => {
+    const map: Record<string, SeatSnapshot> = {}
+    for (const seat of assistants) {
+      const latest = conversations
+        .filter((conversation) => conversation.assistantId === seat.id)
+        .sort((first, second) => second.updatedAt - first.updatedAt)[0]
+      const last = latest
+        ? [...latest.messages].reverse().find((message) => message.role === 'assistant' && message.content.trim())
+        : undefined
+      map[seat.id] = {
+        conclusion: last ? last.content.replace(/\s+/g, ' ').trim().slice(0, 280) : '',
+        source: latest?.title ?? '',
+        openTasks: ''
+      }
+    }
+    return map
+  }, [assistants, conversations])
+
+  async function sendDelegateTask(seat: Assistant, input: { task: string; attachConclusion: boolean }) {
+    if (!settings) throw new Error(t('delegate.needSettings'))
+    const provider = getEffectiveProvider(seat, activeProvider, providers)
+    const snapshot = seatSnapshots[seat.id]
+    const body = input.attachConclusion && snapshot?.conclusion
+      ? `${input.task}\n\n---\n【席位最近结论 · 来自「${snapshot.source}」】\n${snapshot.conclusion}`
+      : input.task
+    const conversation = createConversation(seat, provider, activeProjectId)
+    conversation.title = `派活：${input.task.slice(0, 24)}`
+    conversation.messages = [createMessage('user', body)]
+    await window.gllm.saveConversation(conversation)
+    setConversations((current) => [conversation, ...current])
+    window.gllm.streamChat({ conversationId: conversation.id, assistant: seat, provider, messages: conversation.messages, settings })
+    showToolNotice(t('delegate.sent', { seat: seat.name }))
+  }
+
   const activeAssistantConversations = useMemo(
     () => collapsePristineConversationDrafts(
       sortConversationsForSidebar(
@@ -1269,23 +1311,29 @@ export default function App() {
       bucket.push(item)
       children.set(parentId, bucket)
     }
-    const rows: { assistant: Assistant; depth: number }[] = []
+    const rows: { assistant: Assistant; depth: number; childCount: number }[] = []
     const placed = new Set<string>()
     for (const item of filteredAssistants) {
       if (item.parentAssistantId && known.has(item.parentAssistantId)) continue
-      rows.push({ assistant: item, depth: 0 })
+      const visibleChildren = (children.get(item.id) ?? [])
+        .filter((entry) => filteredAssistants.some((candidate) => candidate.id === entry.id))
+      rows.push({ assistant: item, depth: 0, childCount: visibleChildren.length })
       placed.add(item.id)
-      for (const child of children.get(item.id) ?? []) {
-        if (!filteredAssistants.some((entry) => entry.id === child.id)) continue
-        rows.push({ assistant: child, depth: 1 })
+      // Keep the parent's row but hide its seats while the group is collapsed.
+      if (collapsedAssistants.has(item.id)) {
+        for (const child of visibleChildren) placed.add(child.id)
+        continue
+      }
+      for (const child of visibleChildren) {
+        rows.push({ assistant: child, depth: 1, childCount: 0 })
         placed.add(child.id)
       }
     }
     for (const item of filteredAssistants) {
-      if (!placed.has(item.id)) rows.push({ assistant: item, depth: 0 })
+      if (!placed.has(item.id)) rows.push({ assistant: item, depth: 0, childCount: 0 })
     }
     return rows
-  }, [assistants, filteredAssistants])
+  }, [assistants, filteredAssistants, collapsedAssistants])
 
   useEffect(() => window.gllm.onStorageLocationChanged?.((state, previousRoot) => {
     applyAppState(state)
@@ -2249,6 +2297,15 @@ export default function App() {
     } finally {
       setIsPickingAttachment(false)
     }
+  }
+
+  function toggleAssistantSeats(assistantId: string) {
+    setCollapsedAssistants((current) => {
+      const next = new Set(current)
+      if (next.has(assistantId)) next.delete(assistantId)
+      else next.add(assistantId)
+      return next
+    })
   }
 
   function openAssistant(assistant: Assistant) {
@@ -3897,7 +3954,7 @@ export default function App() {
           </label>
 
           <div className="assistant-list">
-            {layeredAssistants.map(({ assistant, depth }) => {
+            {layeredAssistants.map(({ assistant, depth, childCount }) => {
               const active = assistant.id === activeAssistantId
               const displayAssistant = localizeAssistant(assistant)
               const assistantRunStatuses = conversations
@@ -3918,12 +3975,29 @@ export default function App() {
                 <button
                   key={assistant.id}
                   className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}${depth > 0 ? ' assistant-card-child' : ''}`}
-                  onClick={() => openAssistant(assistant)}
+                  onClick={() => setSeatDrawer(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
                   title={`${displayAssistant.name}\n${t(`assistantSettings.statuses.${assistant.status ?? 'active'}`)} · ${assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local')} · v${assistant.configSource?.version ?? '1.0.0'}`}
                   type="button"
                 >
                   <AssistantAvatar assistant={assistant} />
+                  {childCount > 0 && <span
+                    className="assistant-card-toggle"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!collapsedAssistants.has(assistant.id)}
+                    aria-label={t('app.toggleAssistantSeats', { count: childCount })}
+                    title={t('app.toggleAssistantSeats', { count: childCount })}
+                    onClick={(event) => { event.stopPropagation(); toggleAssistantSeats(assistant.id) }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      toggleAssistantSeats(assistant.id)
+                    }}
+                  >
+                    {collapsedAssistants.has(assistant.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                  </span>}
                   <span className="assistant-card-copy">
                     <span className="assistant-card-heading">
                       <strong>{displayAssistant.name}</strong>
@@ -4948,6 +5022,18 @@ export default function App() {
       )}
       {meetingOpen && <MeetingRoomDialog open onClose={() => setMeetingOpen(false)} workspace={currentWorkspace}
         assistantName={activeAssistantDisplay.name} refreshKey={`${activeConversation?.updatedAt ?? 0}:${workspaceChangedFiles.length}`} />}
+      <SeatDrawer seat={seatDrawer} conversations={conversations}
+        onClose={() => setSeatDrawer(null)}
+        onOpenConversation={(conversationId, assistantId) => { setActiveAssistantId(assistantId); selectConversation(conversationId); setSeatDrawer(null) }}
+        onDelegate={(seat) => setDelegateTarget(seat)} />
+      {delegateTarget && (
+        <DelegateDialog
+          seat={delegateTarget}
+          snapshot={seatSnapshots[delegateTarget.id]}
+          onClose={() => setDelegateTarget(null)}
+          onSend={(input) => sendDelegateTask(delegateTarget, input)}
+        />
+      )}
       {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog
