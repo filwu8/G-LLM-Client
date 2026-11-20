@@ -588,6 +588,32 @@ export default function QuickChat() {
     setSkills(change.skills)
   }), [])
 
+  // The full window broadcasts this whenever the enforced mode changes, including
+  // when the change originates there. Without it the picker here keeps showing a
+  // mode the agent is no longer using.
+  useEffect(() => window.gllm.onAgentPermissionModeChanged((change) => {
+    if (change.conversationId === conversationRef.current?.id) setQuickPermissionMode(change.mode)
+  }), [])
+
+  // Re-read the enforced mode when the target conversation changes, and drop the
+  // local override once nothing is selected: the main process resolves runtime
+  // override -> stored workspace mode -> settings default, so asking it beats
+  // keeping a value that may have been chosen for a different conversation.
+  useEffect(() => {
+    const conversationId = conversation?.id
+    if (!conversationId) {
+      setQuickPermissionMode(null)
+      return
+    }
+    let cancelled = false
+    void window.gllm.getAgentPermissionMode(conversationId)
+      .then((mode) => {
+        if (!cancelled && conversationRef.current?.id === conversationId) setQuickPermissionMode(mode)
+      })
+      .catch(() => { /* Fall back to the derived value. */ })
+    return () => { cancelled = true }
+  }, [conversation?.id])
+
   useEffect(() => {
     return window.gllm.onDeepLinkHandoffStatus(({ status }) => {
       if (status !== 'success') return
@@ -989,6 +1015,9 @@ export default function QuickChat() {
       const change = await window.gllm.setAgentPermissionMode(conversation.id, mode)
       if (!change.persisted && currentWorkspace) await changeQuickWorkspaceApproval(mode)
     } catch (error) {
+      // Fall back to the mode the main process still enforces rather than
+      // leaving the picker on a switch that never landed.
+      setQuickPermissionMode(null)
       setStatus(error instanceof Error ? error.message : t('agentPermission.changeFailed'))
     }
   }
