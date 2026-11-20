@@ -12,6 +12,8 @@ const POST_TAIL_PATTERN = '署名：([^\\r\\n]{1,80})\\r?\\n写入时间：([^\\
 const RULE_PATTERN = /^[=═]{4,}$/
 
 export interface MeetingPost {
+  /** 1-based position in the room, so the UI can show 楼层 like a forum. */
+  floor: number
   seat: string
   at: string
   body: string
@@ -67,7 +69,7 @@ export function parseMeetingPosts(text: string): { posts: MeetingPost[]; skipped
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text)) !== null) {
     const body = text.slice(cursor, match.index).trim()
-    if (body) posts.push({ seat: match[1].trim(), at: match[2].trim(), body })
+    if (body) posts.push({ floor: posts.length + 1, seat: match[1].trim(), at: match[2].trim(), body })
     else skipped += 1
     cursor = match.index + match[0].length
   }

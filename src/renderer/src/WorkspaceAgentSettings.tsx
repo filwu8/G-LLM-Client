@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { X, Plus, Trash2 } from 'lucide-react'
 import type { ConversationWorkspace } from '@shared/types'
 export type WorkspaceAgentSettings = Pick<ConversationWorkspace, 'nativeExecution' | 'loadAgentsMd' | 'envNames' | 'executionMode' | 'sandboxNetwork' | 'computerAccess' | 'browserAccess' | 'computerWindowAccess' | 'browserWindowAccess' | 'harness'>
+
+/** Where a saved execution profile is applied: this conversation only, every
+ * conversation of the current assistant, or the assistant plus its child seats. */
+export type WorkspaceApplyScope = 'conversation' | 'assistant' | 'children'
 interface VariableRow { name: string; description: string; configured: boolean; value: string; enabled: boolean }
 
 type WorkspaceAgentSettingsPayload = Awaited<ReturnType<typeof window.gllm.getWorkspaceAgentSettings>>
@@ -104,11 +108,12 @@ export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { works
 }
 
 export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
-  workspace: ConversationWorkspace; onSave: (settings: WorkspaceAgentSettings) => Promise<void>; onClose: () => void
+  workspace: ConversationWorkspace; onSave: (settings: WorkspaceAgentSettings, scope?: WorkspaceApplyScope) => Promise<void>; onClose: () => void
 }) {
   const { t } = useTranslation()
   const prefetched = settingsPrefetch.get(workspace.rootPath)
   const [nativeExecution, setNativeExecution] = useState(workspace.nativeExecution === true)
+  const [applyScope, setApplyScope] = useState<WorkspaceApplyScope>('conversation')
   const [computerAccess, setComputerAccess] = useState(workspace.computerAccess === true)
   const [browserAccess, setBrowserAccess] = useState(workspace.browserAccess === true)
   const [computerWindowAccess, setComputerWindowAccess] = useState(workspace.computerWindowAccess === true)
@@ -179,7 +184,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       const updates = rows.filter(row => row.value !== '').map(row => ({ name: row.name, description: row.description, value: row.value }))
       if (updates.length || removed.length) await window.gllm.saveWorkspaceVariables(workspace.rootPath, [...updates, ...[...new Set(removed)].filter(name => /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && !rows.some(row => row.name === name)).map(name => ({ name, description: '', remove: true }))])
       setRows(current => current.map(row => ({ ...row, value: '' })))
-      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork, harness: { ...(workspace.harness ?? {}), enabled: harnessEnabled, delegateAll: harnessDelegateAll } })
+      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork, harness: { ...(workspace.harness ?? {}), enabled: harnessEnabled, delegateAll: harnessDelegateAll } }, applyScope)
       // Saved values invalidate the prefetch: refresh it so the next open is fast
       // and shows the new state.
       settingsPrefetch.delete(workspace.rootPath)
@@ -256,7 +261,17 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       <button className="secondary-action" type="button" disabled={loading || rows.length >= 32} onClick={() => setRows(current => [...current, { name: '', description: '', configured: false, value: '', enabled: true }])}><Plus size={14} />{t('workspace.agentAddVariable')}</button>
       {!valid && <p role="alert">{t('workspace.agentEnvInvalid')}</p>}
       {error && <p role="alert">{error}</p>}
-      <footer><button className="secondary-action" disabled={saving} onClick={onClose}>{t('common.cancel')}</button><button className="primary-action" disabled={!valid || saving || loading} onClick={() => void save()}>{t('common.save')}</button></footer>
+      <footer>
+        <label className="workspace-apply-scope">{t('workspace.applyScope')}
+          <select value={applyScope} onChange={event => setApplyScope(event.target.value as WorkspaceApplyScope)} disabled={saving}>
+            <option value="conversation">{t('workspace.applyScopeConversation')}</option>
+            <option value="assistant">{t('workspace.applyScopeAssistant')}</option>
+            <option value="children">{t('workspace.applyScopeChildren')}</option>
+          </select>
+        </label>
+        <button className="secondary-action" disabled={saving} onClick={onClose}>{t('common.cancel')}</button>
+        <button className="primary-action" disabled={!valid || saving || loading} onClick={() => void save()}>{t('common.save')}</button>
+      </footer>
     </section>
   </div>
 }

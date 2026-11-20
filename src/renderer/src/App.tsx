@@ -134,7 +134,7 @@ import {
 } from './localizedContent'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog, WorkspaceResumeNotice } from './WorkspaceBar'
 import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
-import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings, type WorkspaceApplyScope } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
 import { MeetingRoom } from './MeetingRoom'
@@ -3111,14 +3111,31 @@ export default function App() {
     if (!workspace.browserAccess) await window.gllm.closeAgentBrowser(activeConversation.id)
   }
 
-  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings) {
+  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings, scope: WorkspaceApplyScope = 'conversation') {
     if (!currentWorkspace) return
     const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
     if (!activeConversation) {
       setDraftWorkspace(workspace)
       return
     }
-    await saveDesktopWorkspace(workspace)
+    if (scope === 'conversation') {
+      await saveDesktopWorkspace(workspace)
+      return
+    }
+    // Fan the saved profile out to sibling conversations so the user does not
+    // have to flip the same switches once per seat.
+    const assistantIds = new Set([activeAssistantId])
+    if (scope === 'children') {
+      for (const id of activeAssistant?.delegateAssistantIds ?? []) assistantIds.add(id)
+    }
+    const targets = conversations.filter(item => item.workspace && assistantIds.has(item.assistantId))
+    for (const target of targets) {
+      await window.gllm.saveConversation({ ...target, workspace: { ...target.workspace!, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }, updatedAt: Date.now() })
+    }
+    const updated = await window.gllm.saveConversation({ ...activeConversation, workspace, updatedAt: Date.now() })
+    const state = await window.gllm.getState()
+    setConversations(state.conversations)
+    showToolNotice(t('workspace.applyScopeDone', { count: Math.max(1, targets.length), name: updated.workspace?.displayName ?? workspace.displayName }))
   }
 
   /**

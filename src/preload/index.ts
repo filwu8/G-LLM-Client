@@ -97,7 +97,7 @@ ipcRenderer.on('composer:open-in-main', (_event, target: ComposerSessionTarget) 
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
-  readMeetingRoom: (workspaceRoot: string): Promise<{ path: string; bytes: number; tailComplete: boolean; skipped: number; scriptPath: string; posts: { seat: string; at: string; body: string }[] }> =>
+  readMeetingRoom: (workspaceRoot: string): Promise<{ path: string; bytes: number; tailComplete: boolean; skipped: number; scriptPath: string; posts: { floor: number; seat: string; at: string; body: string }[] }> =>
     ipcRenderer.invoke('meeting:read', { workspaceRoot }),
   postMeetingMessage: (input: { workspaceRoot: string; seat: string; content: string }): Promise<{ at: string; seat: string; bytes: number; appendBytes: number }> =>
     ipcRenderer.invoke('meeting:post', input),
