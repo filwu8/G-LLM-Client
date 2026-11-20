@@ -587,6 +587,7 @@ export type ProviderTemplateId =
   | 'volcengine-ark'
   | 'siliconflow'
   | 'openrouter'
+  | 'opencode-go'
   | 'groq'
   | 'mistral'
   | 'xai'
@@ -609,6 +610,8 @@ export interface ProviderTemplate {
   chatCompletionsPath?: string
   imageGenerationsPath?: string
   modelsPath?: string
+  /** Extra request headers; `{{session}}` is replaced with the provider id. */
+  extraHeaders?: Record<string, string>
   defaultModel: string
   suggestedModels: string[]
   requiresApiKey: boolean
@@ -632,6 +635,8 @@ export interface ApiProvider {
   modelsPath?: string
   apiKey: string
   credentialUnavailable?: boolean
+  /** Extra request headers; `{{session}}` is replaced with the provider id. */
+  extraHeaders?: Record<string, string>
   defaultModel: string
   models: ProviderModel[]
   modelsUpdatedAt?: number

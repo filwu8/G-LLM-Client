@@ -214,6 +214,25 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     requiresApiKey: true
   },
   {
+    id: 'opencode-go',
+    name: 'opencode Go',
+    description: 'opencode Go 订阅网关（OpenAI 兼容）',
+    category: 'aggregator',
+    apiBaseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    extraHeaders: { 'x-opencode-session': '{{session}}' },
+    defaultModel: 'deepseek-v4.1-flash',
+    suggestedModels: [
+      'deepseek-v4.1-flash',
+      'kimi-k3.1-pro',
+      'qwen3.8-max',
+      'glm-5.3',
+      'grok-4.7',
+      'minimax-m3',
+      'claude-haiku-5-5'
+    ],
+    requiresApiKey: true
+  },
+  {
     id: 'groq',
     name: 'Groq',
     description: '高速推理 OpenAI 兼容接口',
@@ -302,6 +321,17 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 
 export const DEFAULT_PROVIDER: ApiProvider = createProviderFromTemplate('gllm', DEFAULT_PROVIDER_ID)
 
+/** Expand `{{session}}` in provider extra headers into a stable per-provider value.
+ * Some gateways (e.g. opencode Go) require a session header to route requests. */
+export function resolveProviderExtraHeaders(provider: Pick<ApiProvider, 'id' | 'extraHeaders'>): Record<string, string> {
+  const resolved: Record<string, string> = {}
+  for (const [name, value] of Object.entries(provider.extraHeaders ?? {})) {
+    if (!name.trim()) continue
+    resolved[name.trim()] = value.replace(/\{\{session\}\}/g, provider.id)
+  }
+  return resolved
+}
+
 export function getProviderTemplate(id: ProviderTemplateId): ProviderTemplate {
   return PROVIDER_TEMPLATES.find((template) => template.id === id) ?? PROVIDER_TEMPLATES[0]
 }
@@ -318,6 +348,7 @@ export function createProviderFromTemplate(templateId: ProviderTemplateId, id = 
     chatCompletionsPath: template.chatCompletionsPath,
     imageGenerationsPath: template.imageGenerationsPath,
     modelsPath: template.modelsPath,
+    extraHeaders: template.extraHeaders ? { ...template.extraHeaders } : undefined,
     apiKey: '',
     defaultModel: template.defaultModel,
     models: template.suggestedModels.map((id) => ({ id, capabilities: inferModelCapabilities(id), type: inferModelType(id) })),

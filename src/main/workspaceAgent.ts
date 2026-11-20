@@ -16,6 +16,7 @@ import { WorkspaceJobs } from './workspaceJobs'
 import { WorkspaceCheckpointStore, WORKSPACE_EVIDENCE_HISTORY, workspaceTaskId } from './workspaceCheckpoint'
 import { getDataLocationInfo, getConversationById, getProviders, resolveCurrentDataPath, saveConversation } from './storage'
 import { estimateTokenCount } from '../shared/tokenEstimate'
+import { resolveProviderExtraHeaders } from '../shared/providers'
 import { redactMainLogText } from './logRedaction'
 import { WorkspaceReplacements } from './workspaceReplacements'
 import { formatInteractionAnswer, normalizeInteractionRequest } from './workspaceInteractions'
@@ -381,6 +382,7 @@ async function fetchModelResponse(
   return fetchWorkspaceModelResponse({
     url: providerUrl(request),
     apiKey: request.provider.apiKey,
+    extraHeaders: resolveProviderExtraHeaders(request.provider),
     body,
     identity,
     signal

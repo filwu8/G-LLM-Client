@@ -827,6 +827,17 @@ export function deleteProject(projectId: string): void {
   }
 }
 
+function sanitizeProviderExtraHeaders(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const headers: Record<string, string> = {}
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+    const key = name.trim()
+    if (!key || typeof raw !== 'string') continue
+    headers[key] = raw.slice(0, 500)
+  }
+  return Object.keys(headers).length ? headers : undefined
+}
+
 function sanitizeProvider(provider: ApiProvider): ApiProvider {
   const now = Date.now()
   const fallbackModel = provider.defaultModel?.trim() || DEFAULT_PROVIDER.defaultModel
@@ -845,6 +856,7 @@ function sanitizeProvider(provider: ApiProvider): ApiProvider {
     imageGenerationsPath,
     modelsPath,
     apiKey: provider.apiKey.trim(),
+    extraHeaders: sanitizeProviderExtraHeaders(provider.extraHeaders),
     defaultModel: provider.defaultModel.trim() || models[0]?.id || DEFAULT_PROVIDER.defaultModel,
     models,
     modelsUpdatedAt: provider.modelsUpdatedAt,
