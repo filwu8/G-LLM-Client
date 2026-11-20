@@ -328,12 +328,32 @@ function writeDataLocationConfig(customDataRoot?: string): void {
 
 let activeDataRoot = resolveDataRoot()
 
+/*
+ * `conf` re-reads and re-parses the whole store file on every `get()`, and this
+ * accessor runs once per conversation (and per note) during sanitisation. With a
+ * few hundred conversations that is hundreds of full parses of a multi-megabyte
+ * file, which blocks the main process for seconds while the window is coming up.
+ *
+ * `dataRootAliases` only grows during a data-location migration, and migration
+ * swaps `store` for a brand-new instance, so keying the cache on the instance
+ * keeps it fresh without any manual invalidation.
+ */
+const dataRootAliasCache = new WeakMap<Store<StoreSchema>, string[]>()
+
+function getDataRootAliases(): string[] {
+  const cached = dataRootAliasCache.get(store)
+  if (cached) return cached
+  const aliases = store.get('dataRootAliases', [])
+  dataRootAliasCache.set(store, aliases)
+  return aliases
+}
+
 export function resolveCurrentDataPath(path: string): string {
-  return store.get('dataRootAliases', []).reduce((current, root) => relocateDataPath(current, root, activeDataRoot), path)
+  return getDataRootAliases().reduce((current, root) => relocateDataPath(current, root, activeDataRoot), path)
 }
 
 function resolveCurrentConversation(conversation: Conversation): Conversation {
-  return store.get('dataRootAliases', []).reduce((current, root) => relocateConversation(current, root, activeDataRoot), conversation)
+  return getDataRootAliases().reduce((current, root) => relocateConversation(current, root, activeDataRoot), conversation)
 }
 
 export function ensureConversationWorkspace(conversationId: string, projectId = getActiveProjectId()) {
@@ -1306,7 +1326,7 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
 
 function sanitizeNote(note: KnowledgeNote, fallbackProjectId = getActiveProjectId()): KnowledgeNote {
   const now = Date.now()
-  const content = store.get('dataRootAliases', []).reduce((current, root) => relocateMarkdownLinks(current, root, activeDataRoot), String(note.content ?? '').trim())
+  const content = getDataRootAliases().reduce((current, root) => relocateMarkdownLinks(current, root, activeDataRoot), String(note.content ?? '').trim())
 
   return {
     id: note.id?.trim() || `note_${now}_${Math.random().toString(16).slice(2)}`,
