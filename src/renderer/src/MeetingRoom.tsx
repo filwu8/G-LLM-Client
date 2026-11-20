@@ -1,7 +1,7 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1  — Change Date: 2030-08-01 */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, CornerDownRight, MessageSquare, RefreshCw, Send } from 'lucide-react'
+import { CornerDownRight, MessageSquare, RefreshCw, Send, X } from 'lucide-react'
 import type { ConversationWorkspace } from '@shared/types'
 
 interface MeetingPostView { floor: number; seat: string; at: string; body: string }
@@ -18,22 +18,23 @@ function seatHue(seat: string): number {
 
 function PostBody({ body }: { body: string }) {
   const match = QUOTE_PATTERN.exec(body)
-  if (!match) return <p className="meeting-room-post-body">{body}</p>
+  if (!match) return <div className="forum-post-body">{body}</div>
   const quoted = match[1]
   const rest = body.slice(match[0].length).replace(/^\n+/, '')
   return <>
-    <p className="meeting-room-quote">#{quoted}</p>
-    <p className="meeting-room-post-body">{rest}</p>
+    <div className="forum-post-quote">{match[2]?.trim() || `#${quoted}`}</div>
+    <div className="forum-post-body">{rest}</div>
   </>
 }
 
-export function MeetingRoom({ workspace, assistantName, refreshKey }: {
+export function MeetingRoomDialog({ open, onClose, workspace, assistantName, refreshKey }: {
+  open: boolean
+  onClose: () => void
   workspace?: ConversationWorkspace
   assistantName: string
   refreshKey: string
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const [posts, setPosts] = useState<MeetingPostView[]>([])
   const [roomPath, setRoomPath] = useState('')
   const [tailComplete, setTailComplete] = useState(true)
@@ -45,10 +46,11 @@ export function MeetingRoom({ workspace, assistantName, refreshKey }: {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
-    if (!workspace || !expanded) return
+    if (!workspace || !open) return
     setLoading(true)
     window.gllm.readMeetingRoom(workspace.rootPath).then(result => {
       if (cancelled) return
@@ -63,7 +65,14 @@ export function MeetingRoom({ workspace, assistantName, refreshKey }: {
       setError(String((reason as Error)?.message ?? reason))
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workspace?.rootPath, expanded, refresh, refreshKey])
+  }, [workspace?.rootPath, open, refresh, refreshKey])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   const send = async () => {
     if (!workspace || !draft.trim() || sending) return
@@ -74,6 +83,7 @@ export function MeetingRoom({ workspace, assistantName, refreshKey }: {
       setDraft('')
       setNotice(t('meeting.posted', { at: result.at, bytes: result.bytes }))
       setRefresh(value => value + 1)
+      requestAnimationFrame(() => listRef.current?.scrollTo({ top: 0 }))
     } catch (reason) {
       setError(String((reason as Error)?.message ?? reason))
     } finally {
@@ -86,46 +96,57 @@ export function MeetingRoom({ workspace, assistantName, refreshKey }: {
     composerRef.current?.focus()
   }
 
+  if (!open) return null
   const ordered = [...posts].reverse()
   const seatLabel = assistantName || t('meeting.currentAssistant')
 
-  return <section className={`meeting-room-panel${expanded ? ' is-expanded' : ''}`} aria-label={t('meeting.aria')}>
-    <div className="workspace-files-heading">
-      <button className="workspace-files-title" type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} title={roomPath}>
-        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<MessageSquare size={14} />
-        <strong>{t('meeting.title')}</strong>
-        <span>{posts.length > 0 ? t('meeting.postCount', { count: posts.length }) : t('meeting.notLoaded')}</span>
-      </button>
-      {expanded && <button type="button" onClick={() => setRefresh(value => value + 1)} disabled={!workspace || loading} aria-label={t('meeting.refresh')}><RefreshCw size={13} /></button>}
-    </div>
-    {expanded && <>
-      {!workspace ? <p className="workspace-files-empty">{t('meeting.pickWorkspace')}</p> : <>
-        {!tailComplete && <p className="workspace-files-error" role="alert">{t('meeting.tailBroken')}</p>}
-        {skipped > 0 && <p className="workspace-files-empty">{t('meeting.skipped', { count: skipped })}</p>}
-        <div className="meeting-room-list" aria-busy={loading}>
-          {ordered.map(post => <article className="meeting-room-post" key={post.floor}>
-            <header>
-              <span className="meeting-room-avatar" style={{ background: `hsl(${seatHue(post.seat)} 52% 42%)` }} aria-hidden="true">{post.seat.slice(0, 1)}</span>
+  return <div className="forum-overlay" role="presentation" onClick={onClose}>
+    <div className="forum-shell" role="dialog" aria-modal="true" aria-label={t('meeting.aria')} onClick={event => event.stopPropagation()}>
+      <header className="forum-head">
+        <div className="forum-head-title">
+          <MessageSquare size={17} />
+          <h2>{t('meeting.title')}</h2>
+          <span className="forum-head-count">{t('meeting.postCount', { count: posts.length })}</span>
+        </div>
+        <div className="forum-head-actions">
+          <button type="button" onClick={() => setRefresh(value => value + 1)} disabled={!workspace || loading} title={t('meeting.refresh')}><RefreshCw size={15} /></button>
+          <button type="button" onClick={onClose} title={t('common.close')}><X size={16} /></button>
+        </div>
+      </header>
+
+      <div className="forum-scroll" ref={listRef} aria-busy={loading}>
+        {!workspace && <p className="forum-hint">{t('meeting.pickWorkspace')}</p>}
+        {workspace && !tailComplete && <p className="forum-warn" role="alert">{t('meeting.tailBroken')}</p>}
+        {workspace && skipped > 0 && <p className="forum-hint">{t('meeting.skipped', { count: skipped })}</p>}
+        {workspace && ordered.map(post => <article className="forum-post" key={post.floor}>
+          <div className="forum-post-avatar" style={{ background: `hsl(${seatHue(post.seat)} 50% 44%)` }} aria-hidden="true">{post.seat.slice(0, 1)}</div>
+          <div className="forum-post-main">
+            <div className="forum-post-meta">
               <strong>{post.seat}</strong>
               <time>{post.at}</time>
-              <span className="meeting-room-floor">#{post.floor}</span>
-            </header>
+              <span className="forum-post-floor">{post.floor}楼</span>
+            </div>
             <PostBody body={post.body} />
-            <footer>
+            <div className="forum-post-actions">
               <button type="button" onClick={() => replyTo(post)}><CornerDownRight size={12} />{t('meeting.reply')}</button>
-            </footer>
-          </article>)}
-          {!loading && ordered.length === 0 && !error && <p className="workspace-files-empty">{t('meeting.empty')}</p>}
-        </div>
-        <div className="meeting-room-composer">
-          <textarea ref={composerRef} value={draft} onChange={event => setDraft(event.target.value)} rows={4} placeholder={t('meeting.placeholder', { seat: seatLabel })} />
-          <div>
-            <span>{notice || t('meeting.signature', { seat: seatLabel })}</span>
-            <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}><Send size={13} />{sending ? t('meeting.sending') : t('meeting.send')}</button>
+            </div>
           </div>
+        </article>)}
+        {workspace && !loading && ordered.length === 0 && !error && <p className="forum-hint">{t('meeting.empty')}</p>}
+        {error && <p className="forum-warn" role="alert">{error}</p>}
+      </div>
+
+      <footer className="forum-composer">
+        <textarea ref={composerRef} value={draft} onChange={event => setDraft(event.target.value)} rows={3}
+          placeholder={t('meeting.placeholder', { seat: seatLabel })} disabled={!workspace || sending}
+          onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send() } }} />
+        <div className="forum-composer-bar">
+          <span title={roomPath}>{notice || t('meeting.signature', { seat: seatLabel })}</span>
+          <button type="button" onClick={() => void send()} disabled={sending || !draft.trim() || !workspace}>
+            <Send size={14} />{sending ? t('meeting.sending') : t('meeting.send')}
+          </button>
         </div>
-      </>}
-      {error && <p className="workspace-files-error" role="alert">{error}</p>}
-    </>}
-  </section>
+      </footer>
+    </div>
+  </div>
 }

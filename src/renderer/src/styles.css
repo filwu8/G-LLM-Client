@@ -10730,46 +10730,44 @@ img.space-logo {
 .workspace-files-empty, .workspace-files-hint { margin: 4px 9px 6px; font-size: 11px; opacity: .62; }
 .workspace-files-error { margin: 4px 9px 6px; font-size: 11px; color: hsl(var(--destructive)); opacity: 1; }
 .workspace-files-parent { margin: 0 8px 4px; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 11px; opacity: .8; }
-/* Meeting room reuses the file panel chrome so the two bars stack as one column. */
-.meeting-room-panel {
-  flex: 0 0 auto; margin: 8px 0 0; overflow: hidden;
-  border: 1px solid hsl(var(--border) / .8); border-radius: 9px;
-  background: var(--surface-bar);
-  box-shadow:
-    0 1px 0 var(--elevation-rim-top) inset,
-    0 -1px 0 var(--elevation-rim-bottom) inset,
-    var(--elevation-bar);
-  transition: box-shadow 170ms ease, background 170ms ease, border-color 170ms ease;
-}
-.meeting-room-panel.is-expanded {
-  background: var(--surface-sheet);
-  border-color: hsl(var(--border));
-  box-shadow:
-    0 1px 0 var(--elevation-rim-top) inset,
-    0 -1px 0 var(--elevation-rim-bottom) inset,
-    var(--elevation-bar-open);
-}
-.meeting-room-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 9px; max-height: 420px; overflow-y: auto; overflow-x: hidden; background: hsl(var(--background)); }
-.meeting-room-post { display: flex; flex-direction: column; gap: 5px; padding: 9px 10px; border: 1px solid hsl(var(--border) / .7); border-radius: 8px; background: hsl(var(--card)); }
-.meeting-room-post header { display: flex; align-items: center; gap: 7px; }
-.meeting-room-avatar { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: 0 0 auto; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 600; }
-.meeting-room-post header strong { font-size: 12px; }
-.meeting-room-post header time { font-size: 10.5px; opacity: .55; }
-.meeting-room-floor { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; opacity: .5; }
-.meeting-room-post-body { margin: 0; font-size: 12.5px; line-height: 1.62; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
-.meeting-room-quote { margin: 0 0 3px; padding: 2px 7px; border-left: 2px solid hsl(var(--primary) / .6); background: hsl(var(--primary) / .08); border-radius: 3px; font-size: 10.5px; opacity: .8; }
-.meeting-room-post footer { display: flex; justify-content: flex-end; }
-.meeting-room-post footer button { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 0; border-radius: 5px; background: transparent; color: inherit; font-size: 10.5px; opacity: .55; cursor: pointer; }
-.meeting-room-post footer button:hover { opacity: 1; background: hsl(var(--muted)); }
-.meeting-room-composer { display: flex; flex-direction: column; gap: 6px; padding: 6px 9px 8px; border-top: 1px solid hsl(var(--border) / .6); }
-.meeting-room-composer textarea { resize: vertical; min-height: 64px; padding: 7px 9px; border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--background)); color: inherit; font: inherit; font-size: 12.5px; }
-.meeting-room-composer > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.meeting-room-composer span { font-size: 10.5px; opacity: .6; }
-.meeting-room-composer button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 0; border-radius: 6px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 11.5px; cursor: pointer; }
-.meeting-room-composer button:disabled { opacity: .5; cursor: default; }
+/* Forum-style meeting room: its own overlay, independent from the file panel chrome. */
+.forum-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px; background: hsl(0 0% 0% / .46); backdrop-filter: blur(2px); }
+.forum-shell { display: flex; flex-direction: column; width: min(880px, 100%); height: min(84vh, 900px); overflow: hidden; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--background)); box-shadow: 0 24px 64px hsl(0 0% 0% / .38); }
+.forum-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 0 0 auto; padding: 12px 16px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+.forum-head-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.forum-head-title h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.forum-head-count { font-size: 11.5px; opacity: .6; }
+.forum-head-actions { display: flex; gap: 4px; }
+.forum-head-actions button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.forum-head-actions button:hover { background: hsl(var(--muted)); }
+.forum-head-actions button:disabled { opacity: .4; cursor: default; }
+.forum-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.forum-post { display: flex; gap: 11px; padding: 13px 16px; border-bottom: 1px solid hsl(var(--border) / .5); }
+.forum-post:last-of-type { border-bottom: 0; }
+.forum-post-avatar { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 auto; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; }
+.forum-post-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.forum-post-meta { display: flex; align-items: baseline; gap: 8px; }
+.forum-post-meta strong { font-size: 12.5px; }
+.forum-post-meta time { font-size: 11px; opacity: .55; }
+.forum-post-floor { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; opacity: .45; }
+.forum-post-body { font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+.forum-post-quote { padding: 3px 9px; border-left: 2px solid hsl(var(--primary) / .55); border-radius: 4px; background: hsl(var(--muted) / .65); font-size: 11.5px; opacity: .8; }
+.forum-post-actions { display: flex; gap: 6px; opacity: 0; transition: opacity .12s ease; }
+.forum-post:hover .forum-post-actions, .forum-post:focus-within .forum-post-actions { opacity: 1; }
+.forum-post-actions button { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border: 1px solid hsl(var(--border)); border-radius: 5px; background: transparent; color: inherit; font-size: 11px; cursor: pointer; }
+.forum-post-actions button:hover { background: hsl(var(--muted)); }
+.forum-hint { margin: 14px 16px; font-size: 12px; opacity: .6; }
+.forum-warn { margin: 14px 16px; font-size: 12px; color: hsl(var(--destructive)); }
+.forum-composer { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; padding: 10px 16px 12px; border-top: 1px solid hsl(var(--border)); background: hsl(var(--card) / .55); }
+.forum-composer textarea { width: 100%; resize: vertical; min-height: 62px; max-height: 200px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: inherit; font: inherit; font-size: 12.5px; line-height: 1.6; }
+.forum-composer textarea:focus { outline: 2px solid hsl(var(--primary) / .4); outline-offset: -1px; }
+.forum-composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.forum-composer-bar > span { min-width: 0; overflow: hidden; font-size: 11px; opacity: .6; text-overflow: ellipsis; white-space: nowrap; }
+.forum-composer-bar button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 5px 14px; border: 0; border-radius: 7px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 12.5px; cursor: pointer; }
+.forum-composer-bar button:disabled { opacity: .45; cursor: not-allowed; }
+@media(max-width: 700px) { .forum-overlay { padding: 0; } .forum-shell { width: 100%; height: 100%; border: 0; border-radius: 0; } }
 .workspace-apply-scope { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; font-size: 11px; opacity: .8; }
 .workspace-apply-scope select { padding: 3px 6px; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--background)); color: inherit; font-size: 11px; }
-@media(max-width: 700px) { .meeting-room-panel { margin: 6px 0 0; } .meeting-room-list { max-height: 220px; } }
 .tool-center-modal.tool-center-embedded { width: 100%; max-width: none; max-height: none; box-shadow: none; border: 0; background: transparent; }
 @media(max-width: 700px) { .workspace-files-heading > button > span, .workspace-files-title span { display: none; } .workspace-files-panel { margin: 6px 0 0; } }
 .gllm-account-panel { margin: 8px 0 14px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); color: hsl(var(--foreground)); }

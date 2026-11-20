@@ -25,6 +25,7 @@ import {
   ImagePlus,
   KeyRound,
   Languages,
+  MessageSquare,
   MessageSquarePlus,
   MonitorCog,
   Moon,
@@ -137,7 +138,7 @@ import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
 import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings, type WorkspaceApplyScope } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
-import { MeetingRoom } from './MeetingRoom'
+import { MeetingRoomDialog } from './MeetingRoom'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
@@ -905,6 +906,7 @@ export default function App() {
   const [conversationModelOpen, setConversationModelOpen] = useState(false)
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(true)
+  const [meetingOpen, setMeetingOpen] = useState(false)
   const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [goalModeArmed, setGoalModeArmed] = useState(false)
   const [goalAssessing, setGoalAssessing] = useState(false)
@@ -4104,8 +4106,6 @@ export default function App() {
           {filesOpen && <WorkspaceFilesPanel workspace={currentWorkspace} busy={isPickingAttachment || isStreaming}
             refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
             onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
-          {filesOpen && <MeetingRoom workspace={currentWorkspace} assistantName={activeAssistantDisplay.name}
-            refreshKey={`${activeConversation?.updatedAt ?? 0}:${workspaceChangedFiles.length}`} />}
           <div className={`message-viewport${showActivityPanel ? ' has-activity-panel' : ''}`}>
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
             {isManagedGllmProvider(conversationProvider) && <GllmAccountPanel provider={conversationProvider} onManualConfiguration={() => setSettingsOpen(true)} />}
@@ -4753,6 +4753,14 @@ export default function App() {
                 >
                   <FolderOpen size={16} />
                 </button>
+                <button
+                  className={meetingOpen ? 'active' : ''}
+                  title={t('meeting.title')}
+                  type="button"
+                  onClick={() => setMeetingOpen(value => !value)}
+                >
+                  <MessageSquare size={16} />
+                </button>
                 <button aria-label={t('workspace.desktopAccess')} title={t('workspace.desktopAccess')} disabled={isStreaming} className={currentWorkspace?.computerAccess || currentWorkspace?.browserAccess || currentWorkspace?.computerWindowAccess || currentWorkspace?.browserWindowAccess ? 'active' : ''} type="button" onClick={() => setDesktopSetupOpen(true)}><MonitorCog size={16} /></button>
                 <button
                   className={goalModeArmed || goalSetupOpen || Boolean(activeConversation?.goalDraft) || Boolean(activeConversation?.goalTask) ? 'active' : ''}
@@ -4938,6 +4946,8 @@ export default function App() {
           onImport={importAssistantTemplate}
         />
       )}
+      {meetingOpen && <MeetingRoomDialog open onClose={() => setMeetingOpen(false)} workspace={currentWorkspace}
+        assistantName={activeAssistantDisplay.name} refreshKey={`${activeConversation?.updatedAt ?? 0}:${workspaceChangedFiles.length}`} />}
       {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog
