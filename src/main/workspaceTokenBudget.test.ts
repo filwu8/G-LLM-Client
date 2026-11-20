@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createOutputTokenBudget, outputEncoding } from './workspaceTokenBudget.ts'
-import { WorkspaceOutputStore } from './workspaceOutputStore.ts'
+import { WorkspaceOutputStore, TOOL_ROUND_CHARACTERS } from './workspaceOutputStore.ts'
 test('known model encodings and unknown byte fallback are explicit; special-token literals are ordinary text', async () => {
   assert.equal(outputEncoding('gpt-5.6-luna'), 'o200k_base')
   assert.equal(outputEncoding('gpt-4-turbo'), 'cl100k_base')
@@ -18,7 +18,7 @@ test('known model encodings and unknown byte fallback are explicit; special-toke
 test('six multilingual tool results share a token budget and paged recovery is lossless', async () => {
   const budget = await createOutputTokenBudget('gpt-5.6-luna'), store = new WorkspaceOutputStore(undefined, undefined, budget.count)
   const original = '日志中文🧪\\"\t 日本語 한국어\n'.repeat(500)
-  let tokens = budget.perRound, characters = 24000
+  let tokens = budget.perRound, characters = TOOL_ROUND_CHARACTERS
   for (let i = 0; i < 6; i++) {
     const limit = Math.min(budget.perTool, Math.floor(tokens / (6 - i)))
     const result = store.capture(String(i), original, Math.floor(characters / (6 - i)), limit)

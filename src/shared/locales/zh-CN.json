@@ -406,7 +406,15 @@
     "currentAssistant": "当前助手",
     "posted": "已发帖 · {{at}} · {{bytes}} 字节",
     "sending": "发送中",
-    "send": "发帖"
+    "send": "发帖",
+    "callSeats": "叫席位回应",
+    "callingSeats": "席位回应中：{{seat}}",
+    "pickSeats": "选要叫的席位",
+    "noSeats": "还没有可叫的席位：每个席位需要先配置自己的工作目录",
+    "callSeatsHint": "选中席位会各自读最近的帖，然后以自己的身份回一帖",
+    "seatReplied": "{{seat}} 已回帖",
+    "seatReplyFailed": "{{seat}} 回应失败：{{error}}",
+    "callSeatsInstruction": "你现在在 AI 会议室里。下面是会议室最近的讨论。请以你的身份回一帖：可以回应别人、补充信息或提出下一个问题。把你打算发到会议室的正文直接作为回答输出，不要加署名、时间或分隔线，也不要调用会议室发帖工具，系统会替你发帖。"
   },
   "seatDrawer": {
     "title": "席位",
@@ -414,7 +422,16 @@
     "empty": "这个席位还没有对话。点下面的「进入对话」开始。",
     "noContent": "（空会话）",
     "messageCount": "{{count}} 条消息",
-    "enter": "进入对话"
+    "enter": "进入对话",
+    "config": "配置",
+    "noWorkspace": "这个席位还没绑定工作目录。",
+    "directory": "目录",
+    "openDirectory": "打开目录",
+    "persona": "人格",
+    "memory": "记忆",
+    "noFiles": "目录里没有 AGENTS.md / MEMORY.md，席位现在只靠应用内的人格运行。",
+    "duplicatePrompt": "应用里存着 AGENTS.md 的旧副本，会和文件内容重复注入。",
+    "clearPrompt": "清掉副本"
   },
   "notices": {
     "inactiveAssistant": "当前助手已停用，请先启用或切换助手。",
@@ -625,6 +642,8 @@
     "expired": "这个问题已过期，无法再回答。可以让助手重新发起提问。",
     "textHint": "请填写你的答案",
     "textPlaceholder": "输入内容…",
+    "customPlaceholder": "在这里写你要的议题或回答……",
+    "submitPause": "提交并暂停",
     "confirmHint": "确认继续执行这个操作吗？",
     "recommended": "推荐",
     "custom": "其他 / 自定义",
@@ -658,7 +677,9 @@
     "moreFiles": "另有 {{count}} 个文件",
     "turns": "对话轮次",
     "sensitive": "敏感操作：执行命令或修改文件",
-    "awaitingAnswer": "等待你的回答"
+    "awaitingAnswer": "等待你的回答",
+    "stepInput": "这一步执行的",
+    "stepOutput": "这一步的输出"
   },
   "agentPermission": {
     "label": "Agent 权限",
@@ -717,6 +738,9 @@
     "applyScopeAssistant": "本助手全部会话",
     "applyScopeChildren": "本助手及子席位",
     "applyScopeDone": "已将执行环境应用到 {{count}} 个会话",
+    "applyScopeDraft": "已应用到当前新会话；发送消息后才会真正固定下来。",
+    "applyScopeMismatch": "设置没能写入工作区（主进程回读不一致），请重试一次；仍然失败说明保存链路有 bug。",
+    "applyScopeDefaults": "已保存，并设为所有席位和新对话的默认执行环境",
     "desktopAccess": "电脑与浏览器",
     "managedDirectory": "会话工作空间",
     "computerAccess": "运行本机命令",
@@ -834,7 +858,9 @@
     "agentAddVariable": "添加变量",
     "agentBackgroundLimit": "后台任务 · 最多 {{seconds}} 秒；本轮结束时取消",
     "configurationApprovalTitle": "确认软件配置变更",
-    "configurationApprovalDescription": "这将修改软件设置或当前助手的技能。请核对下方变更；保存后用于后续任务，不会修改本轮已使用的设置。"
+    "configurationApprovalDescription": "这将修改软件设置或当前助手的技能。请核对下方变更；保存后用于后续任务，不会修改本轮已使用的设置。",
+    "stepInput": "这一步执行的",
+    "stepOutput": "这一步的输出"
   },
   "localTask": {
     "title": "本地文件任务",
@@ -1334,7 +1360,9 @@
     "locale": "zh-CN",
     "meeting": {
       "workspaceRequired": "{{operation}} 需要指定工作区",
-      "scriptMissing": "当前工作区没有 data/append_room.ps1，会议室不可用（{{root}}）"
+      "scriptMissing": "当前工作区没有 data/append_room.ps1，会议室不可用（{{root}}）",
+      "seatMissing": "找不到席位 {{seat}}",
+      "emptyReply": "{{seat}} 没有返回可发帖的内容"
     },
     "storage": {
       "pathOverlap": "数据目录不能选择当前数据目录的上级或子级，请选择一个独立文件夹。",
@@ -1454,6 +1482,7 @@
       "todoNeedsId": "todo update 需要现有任务的 id。",
       "todoNeedsStatus": "todo update 需要 status：pending、in_progress、completed 或 deleted。",
       "todoNeedsAction": "todo action 只能是 create、update 或 list。",
+      "seatWorkspaceMissing": "席位「{{seat}}」还没有配置工作目录，无法派活。请先在席位设置里指定它的工作目录，避免它读写总台的文件和记忆。",
       "goalNeedsAction": "goal action 只能是 propose。",
       "goalNeedsContent": "goal propose 需要同时提供 goal 和可核对的 acceptanceCriteria。",
       "codemodeNeedsCode": "codemode 需要脚本内容。",

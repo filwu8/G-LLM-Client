@@ -2,9 +2,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CornerDownRight, MessageSquare, RefreshCw, Send, X } from 'lucide-react'
-import type { ConversationWorkspace } from '@shared/types'
+import type { ConversationWorkspace, MeetingSeatTurnResult } from '@shared/types'
 
 interface MeetingPostView { floor: number; seat: string; at: string; body: string }
+interface MeetingSeat { id: string; name: string }
 
 /** A reply is written as `> 回复 #<floor> <seat>` above the body, so the room
  * file stays plain text while the UI can still show thread context. */
@@ -27,11 +28,14 @@ function PostBody({ body }: { body: string }) {
   </>
 }
 
-export function MeetingRoomDialog({ open, onClose, workspace, assistantName, refreshKey }: {
+export function MeetingRoomDialog({ open, onClose, workspace, assistantName, seats, onCallSeat, refreshKey }: {
   open: boolean
   onClose: () => void
   workspace?: ConversationWorkspace
   assistantName: string
+  /** Seats that can be called: only the ones with their own working directory. */
+  seats: MeetingSeat[]
+  onCallSeat: (seatId: string) => Promise<MeetingSeatTurnResult>
   refreshKey: string
 }) {
   const { t } = useTranslation()
@@ -45,6 +49,8 @@ export function MeetingRoomDialog({ open, onClose, workspace, assistantName, ref
   const [refresh, setRefresh] = useState(0)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const [callingSeat, setCallingSeat] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +79,38 @@ export function MeetingRoomDialog({ open, onClose, workspace, assistantName, ref
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
+
+  // Seats post on their own schedule, so the room has to keep up without a manual click.
+  useEffect(() => {
+    if (!open || !workspace) return
+    const timer = window.setInterval(() => setRefresh(value => value + 1), 8000)
+    return () => window.clearInterval(timer)
+  }, [open, workspace?.rootPath])
+
+  const toggleSeat = (seatId: string) => {
+    setPicked(current => current.includes(seatId) ? current.filter(item => item !== seatId) : [...current, seatId])
+  }
+
+  const callSeats = async () => {
+    if (!workspace || callingSeat || picked.length === 0) return
+    setError('')
+    const failures: string[] = []
+    for (const seatId of picked) {
+      const seat = seats.find(item => item.id === seatId)
+      setCallingSeat(seat?.name ?? seatId)
+      try {
+        const result = await onCallSeat(seatId)
+        if (result.ok) setNotice(t('meeting.seatReplied', { seat: result.seat }))
+        else failures.push(t('meeting.seatReplyFailed', { seat: result.seat, error: result.error ?? '' }))
+      } catch (reason) {
+        failures.push(t('meeting.seatReplyFailed', { seat: seat?.name ?? seatId, error: String((reason as Error)?.message ?? reason) }))
+      }
+      // Refresh between seats so the next one reads the post that just landed.
+      setRefresh(value => value + 1)
+    }
+    setCallingSeat('')
+    setError(failures.join('；'))
+  }
 
   const send = async () => {
     if (!workspace || !draft.trim() || sending) return
@@ -137,6 +175,19 @@ export function MeetingRoomDialog({ open, onClose, workspace, assistantName, ref
       </div>
 
       <footer className="forum-composer">
+        {seats.length === 0
+          ? <p className="forum-hint">{t('meeting.noSeats')}</p>
+          : <div className="forum-seats" title={t('meeting.callSeatsHint')}>
+            <span className="forum-seats-label">{t('meeting.pickSeats')}</span>
+            {seats.map(seat => (
+              <button key={seat.id} type="button" className={picked.includes(seat.id) ? 'on' : ''} disabled={Boolean(callingSeat)}
+                onClick={() => toggleSeat(seat.id)}>{seat.name}</button>
+            ))}
+            <button type="button" className="forum-seats-call" disabled={picked.length === 0 || Boolean(callingSeat)}
+              onClick={() => void callSeats()}>
+              {callingSeat ? t('meeting.callingSeats', { seat: callingSeat }) : t('meeting.callSeats')}
+            </button>
+          </div>}
         <textarea ref={composerRef} value={draft} onChange={event => setDraft(event.target.value)} rows={3}
           placeholder={t('meeting.placeholder', { seat: seatLabel })} disabled={!workspace || sending}
           onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send() } }} />

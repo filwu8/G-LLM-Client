@@ -101,6 +101,10 @@ const api = {
     ipcRenderer.invoke('meeting:read', { workspaceRoot }),
   postMeetingMessage: (input: { workspaceRoot: string; seat: string; content: string }): Promise<{ at: string; seat: string; bytes: number; appendBytes: number }> =>
     ipcRenderer.invoke('meeting:post', input),
+  callMeetingSeat: (input: { request: WorkspaceAgentRequest; seatId: string; instruction: string; roomLimit?: number }): Promise<import('../shared/types').MeetingSeatTurnResult> =>
+    ipcRenderer.invoke('meeting:call-seat', input),
+  describeSeatContext: (input: { workspaceRoot: string; systemPrompt?: string }): Promise<import('../shared/types').SeatContextFiles> =>
+    ipcRenderer.invoke('assistants:seat-context', input),
   importAssistantsFromDirectory: (input: { directory: string; parentName?: string }): Promise<import('../shared/types').AssistantImportResult | null> =>
     ipcRenderer.invoke('assistants:import-directory', input),
   getGllmConnectionState: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connection-state'),

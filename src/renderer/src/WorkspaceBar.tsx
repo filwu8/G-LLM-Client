@@ -4,11 +4,11 @@
  * Change Date: 2030-08-01
  */
 
-import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, Globe, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, CircleCheck, FileText, FolderOpen, Globe, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { WorkspaceAgentSettingsDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { WorkspaceAgentSettingsDialog, type WorkspaceAgentSettings, type WorkspaceApplyScope } from './WorkspaceAgentSettings'
 
 import type { AgentExecutionPlan, ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
 
@@ -163,7 +163,7 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAg
   workspace: ConversationWorkspace
   conversationId?: string | null
   running?: boolean
-  onAgentSettingsChange?: (settings: WorkspaceAgentSettings) => Promise<void>
+  onAgentSettingsChange?: (settings: WorkspaceAgentSettings, scope?: WorkspaceApplyScope) => Promise<void>
   onOpen?: () => void
   onUnbind: () => void
 }) {
@@ -255,6 +255,11 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
   const { t, i18n } = useTranslation()
   const elapsedSeconds = useElapsedSeconds(running, startedAt)
   const duration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
+  // A finished step folds back to one line; only the step that is running now stays open, and an
+  // explicit click always wins so the reader can pull any step up without losing the live one.
+  const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({})
+  const runningId = activities.find((activity) => activity.status === 'running')?.id
+  const isOpen = (activity: WorkspaceToolActivity) => manualOpen[activity.id] ?? activity.id === runningId
   return (
     <div className="workspace-message-activities">
       {plan && (
@@ -279,13 +284,55 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
       {activities.length === 0 && running && (
         <small>{model ? t('app.waitingForModel', { model }) : t('workspace.readingContext')}</small>
       )}
-      {activities.map((activity) => (
-        <div className={`workspace-message-activity ${activity.status}`} key={activity.id} title={activity.detail}>
-          {activity.status === 'running' ? <LoaderCircle className="spin" size={14} /> : activity.status === 'completed' ? <CircleCheck size={14} /> : <XCircle size={14} />}
-          <span>{activity.label}</span>
-          {activity.detail && <small>{activity.detail}</small>}
-        </div>
-      ))}
+      {activities.map((activity) => {
+        const index = activities.indexOf(activity) + 1
+        const open = isOpen(activity)
+        return (
+          <div className={`workspace-message-activity ${activity.status}${open ? ' is-open' : ''}`} key={activity.id}>
+            <button
+              type="button"
+              className="ws-step-head"
+              onClick={() => setManualOpen((current) => ({ ...current, [activity.id]: !open }))}
+              aria-expanded={open}
+              title={activity.detail || activity.label}
+            >
+              {activity.status === 'running' ? <LoaderCircle className="spin" size={14} /> : activity.status === 'completed' ? <CircleCheck size={14} /> : <XCircle size={14} />}
+              <span className="ws-step-num">#{index}</span>
+              <span className="ws-step-label">{activity.label}</span>
+              {activity.seat && <span className="ws-step-seat">{activity.seat}</span>}
+              {!open && activity.detail && <small className="ws-step-teaser">{activity.detail}</small>}
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {open && (
+              <div className="ws-step-body">
+                {activity.input && (
+                  <div className="ws-step-io">
+                    <small>{t('workspace.stepInput')}</small>
+                    <pre>{activity.input}</pre>
+                  </div>
+                )}
+                {activity.detail && <p className="ws-step-detail">{activity.detail}</p>}
+                {activity.output && (
+                  <div className="ws-step-io">
+                    <small>{t('workspace.stepOutput')}</small>
+                    <pre>{activity.output}</pre>
+                  </div>
+                )}
+                {activity.steps && activity.steps.length > 0 && (
+                  <ol className="ws-step-plan">
+                    {activity.steps.map((step) => (
+                      <li key={step.id} className={`${step.status}`} title={step.detail || step.title}>
+                        {step.status === 'running' ? <LoaderCircle className="spin" size={12} /> : step.status === 'completed' ? <CircleCheck size={12} /> : step.status === 'failed' ? <XCircle size={12} /> : <span className="ws-step-plan-dot" />}
+                        <span>{step.title}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
       {changedFiles && changedFiles.length > 0 && (
         <div className="workspace-changed-files">
           <span>{t('workspace.changedFiles')}</span>

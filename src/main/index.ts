@@ -1819,6 +1819,22 @@ app.whenReady().then(() => {
     if (!script) throw new Error(mainT('main.meeting.scriptMissing', language, { root }))
     return postMeetingMessage({ scriptPath: script, roomPath: resolveMeetingRoomFile(script), seat: String(input.seat ?? ''), body: String(input.content ?? '') })
   })
+  ipcMain.handle('meeting:call-seat', async (_event, input: { request?: WorkspaceAgentRequest; seatId?: string; instruction?: string; roomLimit?: number } = {}) => {
+    if (!input?.request) throw new Error(mainT('main.meeting.workspaceRequired', getSettings().language, { operation: 'meeting:call-seat' }))
+    const { runMeetingSeatTurn } = await import('./workspaceAgent')
+    return runMeetingSeatTurn({
+      request: input.request,
+      seatId: String(input.seatId ?? ''),
+      instruction: String(input.instruction ?? ''),
+      roomLimit: input.roomLimit
+    })
+  })
+  ipcMain.handle('assistants:seat-context', async (_event, input: { workspaceRoot?: string; systemPrompt?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', getSettings().language, { operation: 'assistants:seat-context' }))
+    const { describeSeatContextFiles } = await import('./workspaceAgent')
+    return describeSeatContextFiles(root, String(input?.systemPrompt ?? ''))
+  })
   ipcMain.handle('assistants:import-directory', async (event, input: { directory?: string; parentName?: string } = {}) => {
     let directory = String(input?.directory ?? '').trim()
     if (!directory) {

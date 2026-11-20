@@ -7,14 +7,6 @@ import type { Assistant, AssistantColor, AssistantIcon, AssistantImportResult } 
 const COLORS: AssistantColor[] = ['ink', 'green', 'amber', 'blue', 'rose', 'teal', 'violet', 'slate']
 const ICONS: AssistantIcon[] = ['sparkles', 'file', 'scale', 'code']
 
-function readIfExists(file: string, limit = 6000): string {
-  try {
-    return fs.readFileSync(file, 'utf8').slice(0, limit).trim()
-  } catch {
-    return ''
-  }
-}
-
 /** A seat folder carries its own instructions, memory or data directory. */
 function looksLikeSeat(directory: string): boolean {
   return ['AGENTS.md', 'MEMORY.md', 'SEAT.md'].some((file) => fs.existsSync(path.join(directory, file)))
@@ -56,7 +48,6 @@ export function planAssistantImport(
       skipped.push({ name: entry.name, reason: '没有 AGENTS.md / MEMORY.md / data / .workbuddy' })
       continue
     }
-    const instructions = readIfExists(path.join(directory, 'AGENTS.md')) || readIfExists(path.join(directory, 'MEMORY.md'))
     const current = byWorkspace.get(workspaceKey(directory))
     const index = seats.length
     seats.push({
@@ -67,8 +58,10 @@ export function planAssistantImport(
       color: current?.color ?? COLORS[index % COLORS.length],
       icon: current?.icon ?? ICONS[index % ICONS.length],
       avatarDataUrl: current?.avatarDataUrl,
-      systemPrompt: instructions || current?.systemPrompt
-        || `你是「${entry.name}」席位，工作目录是 ${directory}。开始任务前先读该目录的 AGENTS.md 与 MEMORY.md，再动账本。`,
+      // The folder is the source of truth: never copy AGENTS.md into the stored prompt, or the
+      // seat receives its own persona twice and the two copies drift apart.
+      systemPrompt: current?.systemPrompt
+        || `你是「${entry.name}」席位，工作目录是 ${directory}。人格与记忆以该目录的 AGENTS.md、MEMORY.md 为准，开任务前先读它们。`,
       starterPrompts: current?.starterPrompts ?? [],
       status: current?.status ?? 'active',
       modelProviderId: current?.modelProviderId,
@@ -82,7 +75,6 @@ export function planAssistantImport(
     })
   }
   if (seats.length === 0) throw new Error(`在 ${root} 下没有找到任何席位目录`)
-  const rootInstructions = readIfExists(path.join(root, 'AGENTS.md')) || readIfExists(path.join(root, 'MEMORY.md'))
   const currentOrchestrator = byWorkspace.get(workspaceKey(root))
   const orchestrator: Assistant = {
     id: currentOrchestrator?.id ?? randomUUID(),
@@ -92,7 +84,7 @@ export function planAssistantImport(
     color: currentOrchestrator?.color ?? 'ink',
     icon: currentOrchestrator?.icon ?? 'scale',
     avatarDataUrl: currentOrchestrator?.avatarDataUrl,
-    systemPrompt: rootInstructions || currentOrchestrator?.systemPrompt
+    systemPrompt: currentOrchestrator?.systemPrompt
       || `你是总台，负责把任务拆开派给各席位并汇总。可派发的席位：${seats.map((seat) => seat.name).join('、')}。派发时只给边界清晰的一件事，让它自己读文件、动账本。`,
     starterPrompts: currentOrchestrator?.starterPrompts ?? [],
     status: currentOrchestrator?.status ?? 'active',

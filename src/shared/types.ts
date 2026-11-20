@@ -738,6 +738,22 @@ export interface ConversationWorkspace {
   lastVerifiedAt: number
 }
 
+/** Execution policy a workspace inherits until it is configured explicitly on that workspace. */
+export interface AgentWorkspaceDefaults {
+  permission?: 'read' | 'read-write'
+  approvalMode?: AgentPermissionMode
+  executionMode?: 'sandbox' | 'host'
+  sandboxNetwork?: boolean
+  nativeExecution?: boolean
+  computerAccess?: boolean
+  browserAccess?: boolean
+  computerWindowAccess?: boolean
+  browserWindowAccess?: boolean
+  loadAgentsMd?: boolean
+  envNames?: string[]
+  harness?: WorkspaceHarnessConfig
+}
+
 /** Status of the embedded DeepSeek Harness runtime, surfaced to the UI. */
 export interface HarnessRuntimeStatus {
   installed: boolean
@@ -746,18 +762,46 @@ export interface HarnessRuntimeStatus {
   bridgeVersion?: string
 }
 
+export interface SeatContextFileInfo {
+  label: string
+  path: string
+  bytes: number
+}
+
+/** What a seat actually loads from its own folder at run time — the folder is the source of truth. */
+export interface SeatContextFiles {
+  rootPath: string
+  files: SeatContextFileInfo[]
+  /** True when the assistant's stored prompt is just a copy of AGENTS.md, so it is injected twice. */
+  duplicatedPrompt: boolean
+}
+
+export interface MeetingSeatTurnResult {
+  seat: string
+  ok: boolean
+  error?: string
+}
+
 export interface WorkspaceToolActivity {
   id: string
   tool: string
   label: string
   status: 'running' | 'completed' | 'failed'
   detail?: string
+  /** Full command, code or arguments that this step ran, shown when the step is expanded. */
+  input?: string
+  /** Full output of the step, so the panel can show what happened instead of a 240-char teaser. */
+  output?: string
   /** Wall-clock start time, stamped by the main process when the activity appears. */
   startedAt?: number
   /** Wall-clock finish time, stamped when the activity leaves the running state. */
   endedAt?: number
   /** Files touched by this activity, used by the activity panel timeline. */
   files?: string[]
+  /** Set when this entry is a delegated seat's run instead of this conversation's own step. */
+  seat?: string
+  /** The delegated seat's own checklist, rendered under the seat entry. */
+  steps?: AgentPlanStep[]
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
@@ -821,6 +865,8 @@ export interface WorkspaceInteractionResponse {
   selectedIds: string[]
   customText?: string
   cancelled: boolean
+  /** Record the answer, then stop the run and wait for the user instead of continuing. */
+  pause?: boolean
   answeredAt: number
 }
 
@@ -1037,6 +1083,8 @@ export interface AppSettings {
   webSearchMode: WebSearchMode
   /** Default global permission mode applied to new agent tasks. */
   agentPermissionMode: AgentPermissionMode
+  /** Execution policy inherited by every seat and newly created workspace. */
+  agentWorkspaceDefaults?: AgentWorkspaceDefaults
   /** When true the permission choice follows the user across sessions. */
   rememberAgentPermission: boolean
   /** Set once the user accepted the full-access warning. */

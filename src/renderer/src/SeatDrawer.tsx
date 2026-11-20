@@ -1,8 +1,8 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1  — Change Date: 2030-08-01 */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, X } from 'lucide-react'
-import type { Assistant, Conversation } from '@shared/types'
+import { ArrowUpRight, FolderOpen, X } from 'lucide-react'
+import type { Assistant, Conversation, SeatContextFiles } from '@shared/types'
 import { AssistantAvatar } from './App'
 
 function previewOf(conversation: Conversation): string {
@@ -20,14 +20,43 @@ function stamp(at: number): string {
     : date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onEnterSeat }: {
+function fileSize(bytes: number): string {
+  return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`
+}
+
+export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, onEnterSeat, onClearPrompt }: {
   seat: Assistant | null
   conversations: Conversation[]
   onClose: () => void
   onOpenConversation: (conversationId: string, assistantId: string) => void
   onEnterSeat: (seat: Assistant) => void
+  /** Drops the imported copy of AGENTS.md so the file in the folder is the only persona. */
+  onClearPrompt: (seat: Assistant) => void
 }) {
   const { t } = useTranslation()
+  const [context, setContext] = useState<SeatContextFiles | null>(null)
+  const [contextError, setContextError] = useState('')
+  const seatRoot = seat?.workspaceRoot?.trim() ?? ''
+
+  useEffect(() => {
+    if (!seatRoot) {
+      setContext(null)
+      return
+    }
+    let cancelled = false
+    window.gllm.describeSeatContext({ workspaceRoot: seatRoot, systemPrompt: seat?.systemPrompt ?? '' })
+      .then((result) => {
+        if (cancelled) return
+        setContext(result)
+        setContextError('')
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return
+        setContext(null)
+        setContextError(String((reason as Error)?.message ?? reason))
+      })
+    return () => { cancelled = true }
+  }, [seatRoot, seat?.systemPrompt])
 
   useEffect(() => {
     if (!seat) return
@@ -53,6 +82,26 @@ export function SeatDrawer({ seat, conversations, onClose, onOpenConversation, o
       </header>
 
       <div className="seat-drawer-scroll">
+        <div className="seat-drawer-section-title">
+          <span>{t('seatDrawer.config')}</span>
+        </div>
+        {!seatRoot && <p className="seat-drawer-hint">{t('seatDrawer.noWorkspace')}</p>}
+        {seatRoot && <div className="seat-drawer-config">
+          <span>{t('seatDrawer.directory')}</span>
+          <code title={seatRoot}>{seatRoot}</code>
+          <button type="button" title={t('seatDrawer.openDirectory')} onClick={() => void window.gllm.openWorkspaceDirectory(seatRoot)}><FolderOpen size={13} /></button>
+        </div>}
+        {seatRoot && context?.files.map((file) => <div className="seat-drawer-config" key={file.path}>
+          <span>{file.label === 'AGENTS.md' ? t('seatDrawer.persona') : t('seatDrawer.memory')}</span>
+          <code title={file.path}>{file.label} · {fileSize(file.bytes)}</code>
+        </div>)}
+        {seatRoot && context && context.files.length === 0 && <p className="seat-drawer-hint">{t('seatDrawer.noFiles')}</p>}
+        {context?.duplicatedPrompt && <div className="seat-drawer-warn">
+          <span>{t('seatDrawer.duplicatePrompt')}</span>
+          <button type="button" onClick={() => onClearPrompt(seat)}>{t('seatDrawer.clearPrompt')}</button>
+        </div>}
+        {contextError && <p className="seat-drawer-hint">{contextError}</p>}
+
         <div className="seat-drawer-section-title">
           <span>{t('seatDrawer.conversations')}</span>
           <span className="seat-drawer-count">{rows.length}</span>

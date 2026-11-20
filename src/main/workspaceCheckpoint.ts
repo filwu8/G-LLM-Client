@@ -74,6 +74,18 @@ export class WorkspaceCheckpointStore {
     return checkpoint?.taskId === taskId && resolveStoredRoot(checkpoint.root) === root ? checkpoint : undefined
   }
 
+  /**
+   * The model's checklist outlives a task boundary: every user message starts a
+   * new taskId, so `load` never matches and the todo list was rebuilt from
+   * scratch each turn. Read the steps alone, without the single-turn state
+   * (pendingTool, call ids, denials) that must not cross tasks.
+   */
+  loadTodoSteps(root: string, resolveStoredRoot = (path: string) => path): AgentPlanStep[] {
+    const checkpoint = this.read()
+    if (!checkpoint || resolveStoredRoot(checkpoint.root) !== root) return []
+    return Array.isArray(checkpoint.todoSteps) ? checkpoint.todoSteps : []
+  }
+
   save(checkpoint: WorkspaceCheckpoint): void {
     mkdirSync(dirname(this.path), { recursive: true })
     const temporaryPath = `${this.path}.${randomUUID()}.tmp`

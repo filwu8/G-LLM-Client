@@ -10,13 +10,15 @@ const cached = new Map<string, Promise<OutputTokenBudget>>()
 /** Reference text tokenization only. Unknown models use a labelled byte budget. */
 export async function createOutputTokenBudget(model: string): Promise<OutputTokenBudget> {
   const encoding = outputEncoding(model)
-  if (encoding === 'utf8-bytes') return { encoding, perTool: 12000, perRound: 24000, count: text => Buffer.byteLength(text) }
+  // Byte budgets are quoted in UTF-8 bytes; CJK text costs roughly 3 bytes per character, so a
+  // 12k byte budget delivered only ~4k Chinese characters per tool result and read as "truncated".
+  if (encoding === 'utf8-bytes') return { encoding, perTool: 150_000, perRound: 600_000, count: text => Buffer.byteLength(text) }
   let pending = cached.get(encoding)
   if (!pending) {
     pending = (async () => {
       const [{ Tiktoken }, ranks] = await Promise.all([import('js-tiktoken/lite'), encoding === 'o200k_base' ? import('js-tiktoken/ranks/o200k_base') : import('js-tiktoken/ranks/cl100k_base')])
       const tokenizer = new Tiktoken(ranks.default)
-      return { encoding, perTool: 3000, perRound: 6000, count: (text: string) => tokenizer.encode(text, [], []).length }
+      return { encoding, perTool: 40_000, perRound: 160_000, count: (text: string) => tokenizer.encode(text, [], []).length }
     })()
     cached.set(encoding, pending)
   }

@@ -26,13 +26,11 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
   const { t, i18n } = useTranslation()
   const [selected, setSelected] = useState<string[]>([])
   const [custom, setCustom] = useState('')
-  const [showCustom, setShowCustom] = useState(false)
   const language = i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN'
 
   useEffect(() => {
     setSelected([])
     setCustom('')
-    setShowCustom(false)
   }, [request.id])
 
   const expired = Boolean(request.expiresAt && request.expiresAt < Date.now())
@@ -41,12 +39,13 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
   const confirm = request.selection === 'confirm'
   const disabled = busy || expired
 
-  const submit = (ids: string[], customText?: string) => {
+  const submit = (ids: string[], customText?: string, pause = false) => {
     if (disabled) return
     onRespond({
       id: request.id,
       selectedIds: ids,
       ...(customText ? { customText } : {}),
+      ...(pause ? { pause: true } : {}),
       cancelled: false,
       answeredAt: Date.now()
     })
@@ -116,20 +115,14 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
                 </button>
               )
             })}
-            {request.allowCustom && !showCustom && (
-              <button type="button" className="interaction-option interaction-custom-toggle" disabled={disabled} onClick={() => setShowCustom(true)}>
-                <span className="interaction-option-head"><strong>{t('interaction.custom')}</strong></span>
-                <small>{t('interaction.customHint')}</small>
-              </button>
-            )}
-            {showCustom && (
-              <label className="interaction-text">
+            {request.allowCustom && (
+              <label className="interaction-text interaction-custom-field">
+                <span>{t('interaction.customHint')}</span>
                 <textarea
-                  autoFocus
                   disabled={disabled}
                   onChange={(event) => setCustom(event.target.value)}
-                  placeholder={t('interaction.textPlaceholder')}
-                  rows={2}
+                  placeholder={t('interaction.customPlaceholder')}
+                  rows={3}
                   value={custom}
                 />
               </label>
@@ -143,14 +136,24 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
               {t('interaction.skip')}
             </button>
           )}
-          {!textOnly && !confirm && (multiple || showCustom) && (
+          {!textOnly && !confirm && (
             <button
               className="primary-action"
               type="button"
               disabled={disabled || (selected.length === 0 && !custom.trim())}
-              onClick={() => submit(selected, showCustom ? custom.trim() : undefined)}
+              onClick={() => submit(selected, custom.trim() || undefined)}
             >
-              {t(showCustom && selected.length === 0 ? 'interaction.submitCustom' : 'interaction.submit')}
+              {t('interaction.submit')}
+            </button>
+          )}
+          {!textOnly && !confirm && (
+            <button
+              className="secondary-action"
+              type="button"
+              disabled={disabled || (selected.length === 0 && !custom.trim())}
+              onClick={() => submit(selected, custom.trim() || undefined, true)}
+            >
+              {t('interaction.submitPause')}
             </button>
           )}
           {textOnly && (
@@ -161,6 +164,16 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
               onClick={() => submit([], custom.trim())}
             >
               {t('interaction.submit')}
+            </button>
+          )}
+          {textOnly && (
+            <button
+              className="secondary-action"
+              type="button"
+              disabled={disabled || !custom.trim()}
+              onClick={() => submit([], custom.trim(), true)}
+            >
+              {t('interaction.submitPause')}
             </button>
           )}
           {confirm && (

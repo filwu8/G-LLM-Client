@@ -91,7 +91,7 @@ function buildVariableRows(value: WorkspaceAgentSettingsPayload, workspace: Conv
   }))
 }
 
-export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { workspace?: ConversationWorkspace; onSave: (workspace: ConversationWorkspace) => Promise<void>; onClose: () => void }) {
+export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { workspace?: ConversationWorkspace; onSave: (workspace: ConversationWorkspace, scope?: WorkspaceApplyScope) => Promise<void>; onClose: () => void }) {
   const { t } = useTranslation()
   const [candidate, setCandidate] = useState(workspace)
   const [error, setError] = useState('')
@@ -104,7 +104,7 @@ export function DesktopAccessSetupDialog({ workspace, onSave, onClose }: { works
     return () => { active = false }
   }, [workspace])
   if (!candidate) return <div className="assistant-modal-backdrop workspace-approval-backdrop"><section className="workspace-approval-dialog" role="dialog" aria-modal="true"><p role="status">{error || t('workspace.agentLoading')}</p><button type="button" onClick={onClose}>{t('common.close')}</button></section></div>
-  return <WorkspaceAgentSettingsDialog workspace={candidate} onClose={onClose} onSave={settings => onSave({ ...candidate, ...settings, lastVerifiedAt: Date.now() })} />
+  return <WorkspaceAgentSettingsDialog workspace={candidate} onClose={onClose} onSave={(settings, scope) => onSave({ ...candidate, ...settings, lastVerifiedAt: Date.now() }, scope)} />
 }
 
 export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {

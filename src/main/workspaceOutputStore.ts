@@ -1,7 +1,7 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
 import { createHash, randomUUID } from 'node:crypto'
-export const TOOL_OUTPUT_CHARACTERS = 12_000
-export const TOOL_ROUND_CHARACTERS = 24_000
+export const TOOL_OUTPUT_CHARACTERS = 50_000
+export const TOOL_ROUND_CHARACTERS = 400_000
 export function integerOption(value: unknown, fallback: number, min: number, max: number): number {
   if (value === undefined) return fallback
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Expected an integer from ${min} to ${max}`)
@@ -61,7 +61,7 @@ export class WorkspaceOutputStore {
     if (!entry) throw new Error('Output unavailable or evicted from this run. Do not automatically rerun a command that may have side effects.')
     const offset = integerOption(args.offset, 0, 0, entry.text.length)
     if (offset > 0 && /[\uDC00-\uDFFF]/.test(entry.text[offset])) throw new Error('Offset splits a Unicode character; use the exact continuation offset')
-    const max = integerOption(args.maxCharacters, 8000, 256, 12000)
+    const max = integerOption(args.maxCharacters, 50_000, 256, 50_000)
     let end = safeTextEnd(entry.text, Math.min(entry.text.length, offset + max))
     const render = () => JSON.stringify({ id: entry.id, offset, end, totalCharacters: entry.text.length, content: entry.text.slice(offset, end), complete: end === entry.text.length, next: end < entry.text.length ? { id: entry.id, offset: end, maxCharacters: max } : null })
     let result = render()

@@ -406,7 +406,15 @@
     "currentAssistant": "Current assistant",
     "posted": "Posted · {{at}} · {{bytes}} bytes",
     "sending": "Sending",
-    "send": "Post"
+    "send": "Post",
+    "callSeats": "Ask seats to reply",
+    "callingSeats": "Seat replying: {{seat}}",
+    "pickSeats": "Pick the seats to call",
+    "noSeats": "No seat can be called yet: each seat needs its own working directory first",
+    "callSeatsHint": "Each selected seat reads the latest posts, then replies as itself",
+    "seatReplied": "{{seat}} replied",
+    "seatReplyFailed": "{{seat}} failed to reply: {{error}}",
+    "callSeatsInstruction": "You are in the AI meeting room. Below are the latest posts. Reply as yourself: react to others, add what you know, or ask the next question. Output the post body directly as your answer — no signature, timestamp or separator, and do not call the meeting post tool; the app posts it for you."
   },
   "seatDrawer": {
     "title": "Seat",
@@ -414,7 +422,16 @@
     "empty": "No conversation yet. Use “Open chat” below to start one.",
     "noContent": "(empty)",
     "messageCount": "{{count}} messages",
-    "enter": "Open chat"
+    "enter": "Open chat",
+    "config": "Setup",
+    "noWorkspace": "This seat has no workspace directory yet.",
+    "directory": "Directory",
+    "openDirectory": "Open directory",
+    "persona": "Persona",
+    "memory": "Memory",
+    "noFiles": "No AGENTS.md / MEMORY.md in the folder — the seat runs on its in-app persona only.",
+    "duplicatePrompt": "A stale copy of AGENTS.md is stored in the app and gets injected twice.",
+    "clearPrompt": "Drop the copy"
   },
   "notices": {
     "inactiveAssistant": "This assistant is disabled. Enable it or choose another assistant.",
@@ -625,6 +642,8 @@
     "expired": "This question has expired and can no longer be answered. Ask the assistant to start a new one.",
     "textHint": "Your answer",
     "textPlaceholder": "Type your answer…",
+    "customPlaceholder": "Type the topic or answer you want…",
+    "submitPause": "Submit and pause",
     "confirmHint": "Continue with this operation?",
     "recommended": "Recommended",
     "custom": "Other / custom",
@@ -658,7 +677,9 @@
     "moreFiles": "{{count}} more files",
     "turns": "Conversation turns",
     "sensitive": "Sensitive operation: runs commands or modifies files",
-    "awaitingAnswer": "Waiting for your answer"
+    "awaitingAnswer": "Waiting for your answer",
+    "stepInput": "Input",
+    "stepOutput": "Output"
   },
   "agentPermission": {
     "label": "Agent permission",
@@ -717,6 +738,9 @@
     "applyScopeAssistant": "All conversations of this assistant",
     "applyScopeChildren": "This assistant and its child seats",
     "applyScopeDone": "Execution profile applied to {{count}} conversations",
+    "applyScopeDraft": "Applied to this new chat only. It persists once you send a message.",
+    "applyScopeMismatch": "The setting did not reach the workspace (the main process read back a different value). Try once more; if it still fails the save path has a bug.",
+    "applyScopeDefaults": "Saved as the default execution policy for every seat and new conversation",
     "desktopAccess": "Computer & browser",
     "managedDirectory": "Conversation workspace",
     "computerAccess": "Run host commands",
@@ -834,7 +858,9 @@
     "agentAddVariable": "Add variable",
     "agentBackgroundLimit": "Background job · up to {{seconds}} seconds; cancelled when this run ends",
     "configurationApprovalTitle": "Confirm application configuration change",
-    "configurationApprovalDescription": "This changes application settings or this assistant’s skills. Review the changes below. Saved changes apply to subsequent requests; the current request keeps its captured settings."
+    "configurationApprovalDescription": "This changes application settings or this assistant’s skills. Review the changes below. Saved changes apply to subsequent requests; the current request keeps its captured settings.",
+    "stepInput": "Input",
+    "stepOutput": "Output"
   },
   "localTask": {
     "title": "Local file task",
@@ -1334,7 +1360,9 @@
     "locale": "en-US",
     "meeting": {
       "workspaceRequired": "{{operation}} requires a workspace",
-      "scriptMissing": "This workspace has no data/append_room.ps1; the meeting room is unavailable ({{root}})"
+      "scriptMissing": "This workspace has no data/append_room.ps1; the meeting room is unavailable ({{root}})",
+      "seatMissing": "Seat {{seat}} not found",
+      "emptyReply": "{{seat}} returned nothing to post"
     },
     "storage": {
       "pathOverlap": "The data folder cannot be a parent or child of the current data folder. Choose a separate folder.",
@@ -1454,6 +1482,7 @@
       "todoNeedsId": "todo update needs the id of an existing task.",
       "todoNeedsStatus": "todo update needs status: pending, in_progress, completed or deleted.",
       "todoNeedsAction": "todo action must be create, update or list.",
+      "seatWorkspaceMissing": "Seat \"{{seat}}\" has no working directory yet, so it cannot take a task. Set its working directory in the seat settings first, otherwise it would read and write the main console's files and memory.",
       "goalNeedsAction": "goal action must be propose.",
       "goalNeedsContent": "goal propose needs both a goal and verifiable acceptanceCriteria.",
       "codemodeNeedsCode": "codemode needs a code body.",
