@@ -1,7 +1,27 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
 import { createHash, randomUUID } from 'node:crypto'
-export const TOOL_OUTPUT_CHARACTERS = 12_000
-export const TOOL_ROUND_CHARACTERS = 24_000
+/**
+ * Per-tool and per-round character ceilings for tool output sent back to the model.
+ *
+ * The per-round ceiling is shared across every tool call in the round, so the old
+ * 24,000 characters became 4,000 per tool as soon as six calls ran together — well
+ * under a single ordinary source file (~10,000-25,000 characters). The model then
+ * truncated, re-read the same file, and burned turns. These values keep the same
+ * shared-budget design but leave room for a whole file at realistic concurrency.
+ *
+ * Keep `TOOL_OUTPUT_CHARACTERS` at roughly a third of `TOOL_ROUND_CHARACTERS`: one or
+ * two calls can each take a full file, and the per-tool ceiling still stops a single
+ * huge result from starving its siblings. The token budget in workspaceTokenBudget
+ * is the safety net for dense text, so these are a user-facing size limit, not the
+ * cost limit.
+ *
+ * Note: WORKSPACE_CONTEXT_CHECKPOINT_CHARACTERS (50,000, workspaceAgent.ts) decides
+ * when continuous runs compact their history. Raising the round ceiling past it means
+ * a heavy round can trigger compaction on the following turn, so the two want tuning
+ * together; that constant is deliberately left untouched here.
+ */
+export const TOOL_OUTPUT_CHARACTERS = 36_000
+export const TOOL_ROUND_CHARACTERS = 96_000
 export function integerOption(value: unknown, fallback: number, min: number, max: number): number {
   if (value === undefined) return fallback
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Expected an integer from ${min} to ${max}`)
