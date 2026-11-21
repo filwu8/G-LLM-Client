@@ -2,7 +2,7 @@
 import { app } from 'electron'
 import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { Conversation, WorkspaceAgentRequest } from '../shared/types'
@@ -52,6 +52,13 @@ async function main() {
   let compactions = 0
   let overflowRejected = false
   let interruptedModelRequestId: string | string[] | undefined
+  let interruptedAttemptId: string | string[] | undefined
+  // The handler below is not awaited by the HTTP server, so an assertion thrown
+  // inside it becomes an unhandled rejection instead of a test failure — the
+  // suite would report success while the mock checks nothing. Collect them and
+  // fail the run explicitly.
+  const fixtureFailures: unknown[] = []
+  process.on('unhandledRejection', (reason) => { fixtureFailures.push(reason) })
   const server = createServer(async (req, res) => {
     let body = ''; for await (const chunk of req) body += chunk
     const request = JSON.parse(body)
@@ -65,6 +72,7 @@ async function main() {
     }
     if (scenario === 'recover' && step === 1 && !interruptedModelRequestId) {
       interruptedModelRequestId = req.headers['x-g-llm-request-id']
+      interruptedAttemptId = req.headers['x-g-llm-attempt-id']
       res.writeHead(503)
       res.end('Temporary fixture failure')
       return
@@ -118,8 +126,13 @@ async function main() {
     } else if (scenario === 'recover') {
       assert.match(JSON.stringify(request.messages), /客户端任务检查点.*outputs[/\\]+first\.txt/s)
       if (step === 1) {
-        assert.notEqual(req.headers['x-g-llm-request-id'], interruptedModelRequestId)
-        assert.match(request.messages.at(-1).content, /客户端连接恢复/)
+        // A retried 503 is replayed by runWorkspaceModelAttempts: the logical
+        // request id stays stable and only the attempt id rotates. That is the
+        // observable proof of a fresh attempt, so assert on it. (The
+        // "[客户端连接恢复]" note is injected only in continuous goal mode, which
+        // this scenario does not exercise.)
+        assert.equal(req.headers['x-g-llm-request-id'], interruptedModelRequestId)
+        assert.notEqual(req.headers['x-g-llm-attempt-id'], interruptedAttemptId)
       }
       delta = step === 0 ? call('write_file', { path: 'outputs/second.txt', content: '第二份交付物' })
         : verdict('执行记录确认两份文件已经写入。', '已交付两份文件。')
@@ -212,7 +225,10 @@ async function main() {
     }, undefined, stop.signal), /aborted/i)
     const checkpoints = new WorkspaceCheckpointStore(storage.getDataLocationInfo().activePath, interrupted.conversationId)
     const taskId = workspaceTaskId(interrupted.messages[0].id)
-    const savedProgress = checkpoints.load(taskId, workspace.rootPath)
+    // The agent records the checkpoint under realpath(root); comparing it with
+    // the raw workspace path only works where tmpdir is not a symlink (it is one
+    // on macOS: /var -> /private/var, and on CI Windows runners). Resolve ours too.
+    const savedProgress = checkpoints.load(taskId, await realpath(workspace.rootPath))
     assert.ok(savedProgress)
     assert.deepEqual(savedProgress.changedFiles.map(file => file.replace(/\\/g, '/')), ['outputs/first.txt'])
     assert.equal(savedProgress.pendingTool, undefined)
@@ -275,6 +291,9 @@ async function main() {
     assert.equal(step, 1, 'an explicit denial must not be retried')
     assert.equal(storage.getSettings().theme, 'dark', 'denial must prevent setting changes')
   } finally { await new Promise<void>(fulfil => server.close(() => fulfil())) }
+  // Surface any assertion the mock handler threw. Without this the run reports
+  // success while the fixture silently verified nothing.
+  assert.deepEqual(fixtureFailures, [], 'mock server assertions must hold')
 
   const stale = configuration.prepareApplicationChange(request('change settings'), 'update_application_settings', { settings: { theme: 'light' } })
   storage.setSettings({ ...storage.getSettings(), theme: 'auto' })
