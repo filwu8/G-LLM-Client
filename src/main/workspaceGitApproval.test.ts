@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import {
   configureGitWriteGrantStorage,
   forgetGitWriteGrants,
@@ -46,8 +46,16 @@ test('grants do not leak across repositories inside the same workspace', () => {
   rememberGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'erpv3main' })
   assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'erpv3main' }), true)
   assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'volumes/erpv3-extra-addons' }), false)
-  // Windows path normalization must not create a second grant scope.
-  assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'ERPV3MAIN\\' }), true)
+  // A trailing separator must not create a second grant scope.
+  assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: `erpv3main${sep}` }), true)
+  // Case folding is a Windows filesystem property, so it must be asserted only
+  // there. On a case-sensitive platform 'ERPV3MAIN' is a different directory
+  // and must keep its own grant: widening the scope would leak an approval.
+  if (process.platform === 'win32') {
+    assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'ERPV3MAIN\\' }), true)
+  } else {
+    assert.equal(hasGitWriteGrant('conv-1', ROOT, 'pull', { repo: 'ERPV3MAIN' }), false)
+  }
 })
 
 test('grants do not leak across conversations', () => {
