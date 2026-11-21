@@ -860,7 +860,8 @@
     "configurationApprovalTitle": "Confirm application configuration change",
     "configurationApprovalDescription": "This changes application settings or this assistant’s skills. Review the changes below. Saved changes apply to subsequent requests; the current request keeps its captured settings.",
     "stepInput": "Input",
-    "stepOutput": "Output"
+    "stepOutput": "Output",
+    "openSeat": "Open seat conversation"
   },
   "localTask": {
     "title": "Local file task",

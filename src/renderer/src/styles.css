@@ -10116,6 +10116,11 @@ img.space-logo {
 .ws-step-seat { flex: 0 0 auto; font-size: 10px; padding: 0 5px; border-radius: 4px; background: hsl(var(--primary) / .14); color: hsl(var(--primary)); }
 .ws-step-teaser { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); }
 .ws-step-head > svg:last-child { flex: 0 0 auto; margin-left: auto; color: hsl(var(--muted-foreground)); opacity: .6; }
+.ws-step-seat-open {
+  display: inline-flex; align-items: stretch; align-self: flex-start; margin: -1px 0 3px 21px; padding: 2px 5px;
+  border: 0; border-radius: 4px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.ws-step-seat-open:hover { background: hsl(var(--primary) / .12); color: hsl(var(--primary)); }
 .ws-step-body {
   display: grid; gap: 5px; margin: 3px 0 7px 21px; padding: 6px 8px; border-radius: 6px;
   border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .3);

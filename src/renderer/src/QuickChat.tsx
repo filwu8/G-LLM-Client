@@ -2282,6 +2282,7 @@ export default function QuickChat() {
                     changedFiles={message.workspaceChangedFiles}
                     artifactRoot={message.workspaceArtifactRoot}
                     onArtifactOpen={(rootPath, relativePath) => void window.gllm.revealWorkspaceFile(rootPath, relativePath)}
+                    onSeatOpen={(assistantId, conversationId) => void window.gllm.showMainWindow({ conversationId, assistantId })}
                   />
                 )}
                 {message.error && (
@@ -2367,6 +2368,7 @@ export default function QuickChat() {
                   artifactRoot={currentWorkspace.rootPath}
                   model={selectedProvider.defaultModel}
                   onArtifactOpen={(rootPath, relativePath) => void window.gllm.revealWorkspaceFile(rootPath, relativePath)}
+                  onSeatOpen={(assistantId, conversationId) => void window.gllm.showMainWindow({ conversationId, assistantId })}
                   running
                 />
               ) : (

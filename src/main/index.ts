@@ -81,8 +81,9 @@ import {
   shouldRefreshProviderModels
 } from '../shared/providers'
 import { ActiveResponseRegistry } from './activeResponse'
-import { AgentRunLedger } from './agentRunLedger'
+import { AgentRunLedger, bindSharedAgentRunLedger } from './agentRunLedger'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
+import { shouldBookParentRun } from './seatProgressForward'
 import { WorkspaceInteractionStore } from './workspaceInteractions'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
@@ -478,6 +479,7 @@ function getMainLogDirectory(): string {
 
 function getAgentRunLedger(): AgentRunLedger {
   agentRunLedger ??= new AgentRunLedger(getMainLogDirectory())
+  bindSharedAgentRunLedger(agentRunLedger)
   return agentRunLedger
 }
 
@@ -2449,11 +2451,19 @@ app.whenReady().then(() => {
       ...result,
       activities: result.activities.map(activity => ({ ...activity, ...(activityStamps.get(activity.id) ?? {}) }))
     })
+    // Seat conversations a delegate run is filling right now. The renderer only shows
+    // live steps on a conversation it believes is running, so a seat view would stay
+    // empty until the run finished and saved its record.
+    const liveSeatConversations = new Set<string>()
     const endActivity = (error?: string) => {
       activeWorkspaceRuns.delete(request.conversationId)
       if (isCurrentActiveResponse(active.key, active.controller)) {
         broadcastChatActivity({ conversationId: request.conversationId, kind: 'workspace', active: false, error })
+        for (const seatConversationId of liveSeatConversations) {
+          broadcastChatActivity({ conversationId: seatConversationId, kind: 'workspace', active: false, error })
+        }
       }
+      liveSeatConversations.clear()
     }
     let powerBlockerId: number | undefined
     writeMainLog(
@@ -2520,15 +2530,31 @@ app.whenReady().then(() => {
         prepared.request,
         (incoming) => {
           const progress = stampProgress(incoming)
+          // A seat's own steps belong to the seat's conversation. Folding them into the
+          // console's snapshot would also overwrite its changedFiles with the seat's.
+          const inParent = progress.conversationId === request.conversationId
           const index = snapshot.activities.findIndex(activity => activity.id === progress.activity.id)
           const previous = snapshot.activities[index]
-          if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
-          else snapshot.activities[index] = progress.activity
-          if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          if (inParent) {
+            if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
+            else snapshot.activities[index] = progress.activity
+            if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          }
           for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
             if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:progress', progress)
           }
+          if (!inParent) {
+            if (!liveSeatConversations.has(progress.conversationId)) {
+              liveSeatConversations.add(progress.conversationId)
+              broadcastChatActivity({ conversationId: progress.conversationId, kind: 'workspace', active: true, startedAt: Date.now() })
+            }
+            return
+          }
           if (progress.activity.tool === 'model_request_retry') return
+          // A delegated seat's step already logs its own tool call under the seat's
+          // conversation id; counting it here again turns one dispatch into dozens
+          // of delegate_assistant entries. Only the seat's final status is recorded.
+          if (!shouldBookParentRun(progress, request.conversationId)) return
           if (previous?.status === progress.activity.status && previous.detail === progress.activity.detail) return
           const type = progress.activity.status === 'running'
             ? 'tool_started'

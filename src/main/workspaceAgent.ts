@@ -18,6 +18,9 @@ import { getDataLocationInfo, getConversationById, getProviders, resolveCurrentD
 import { estimateTokenCount } from '../shared/tokenEstimate'
 import { resolveProviderExtraHeaders } from '../shared/providers'
 import { redactMainLogText } from './logRedaction'
+import { getSharedAgentRunLedger } from './agentRunLedger'
+import { buildSeatConversation, seatConversationId, type SeatRunOutcome } from './seatConversationRecord'
+import { createSeatProgressForwarder } from './seatProgressForward'
 import { WorkspaceReplacements } from './workspaceReplacements'
 import { formatInteractionAnswer, normalizeInteractionRequest } from './workspaceInteractions'
 import { integerOption } from './workspaceOutputStore'
@@ -359,6 +362,8 @@ function providerUrl(request: WorkspaceAgentRequest): string {
 // Workspace Agent currently speaks OpenAI Chat Completions only. Responses API
 // payloads/events are intentionally handled by their separate image path.
 const WORKSPACE_CONTEXT_CHECKPOINT_CHARACTERS = 50_000
+/** A tool failure must always reach the model, even when the output budget is spent. */
+const MIN_ERROR_OUTPUT_CHARACTERS = 1_200
 const MAX_STALLED_WORKSPACE_TURNS = 6
 const MODEL_CONTINUATION_BACKOFF_MS = [1_000, 5_000, 30_000, 120_000]
 const contextOverflowPattern = /context_length_exceeded|context window|maximum context length|too many input tokens|上下文.{0,12}(超出|超限|过长|超过)/i
@@ -553,54 +558,32 @@ async function runMeetingPost(request: WorkspaceAgentRequest, args: Record<strin
  * sidebar shows what a seat did without opening the orchestrator's transcript.
  * Recording is a convenience: a storage failure must not fail the delegated run.
  */
-function recordSeatRun(input: {
+function persistSeatRun(input: {
   parentConversationId: string
+  parentAssistantId: string
   seat: WorkspaceAgentRequest['assistant']
   workspace: WorkspaceAgentRequest['workspace']
-  task: string
-  result: WorkspaceAgentResult
   runId: string
+  task: string
   startedAt: number
+  /** Omitted at dispatch: the seat record must exist before the work starts, so the
+   *  console's summary row has somewhere to jump while the run is still going. */
+  outcome?: SeatRunOutcome
 }): void {
   try {
-    const conversationId = `${input.parentConversationId}::${input.seat.id}`
-    const existing = getConversationById(conversationId)
-    const now = Date.now()
-    const outputTokens = estimateTokenCount(input.result.content)
-    const task: ChatMessage = {
-      id: `seat_task_${input.runId}`,
-      role: 'user',
-      content: input.task,
-      createdAt: input.startedAt
-    }
-    const reply: ChatMessage = {
-      id: `seat_run_${input.runId}`,
-      role: 'assistant',
-      content: input.result.content,
-      createdAt: now,
-      outputTokens,
-      tokenCount: outputTokens,
-      responseStartedAt: input.startedAt,
-      responseCompletedAt: now,
-      workspaceActivities: input.result.activities,
-      workspaceChangedFiles: input.result.changedFiles,
-      workspaceArtifactRoot: input.workspace.rootPath,
-      agentPlan: input.result.plan,
-      contextSavings: input.result.contextSavings
-    }
-    saveConversation({
-      id: conversationId,
-      assistantId: input.seat.id,
-      title: `${input.seat.name} · ${input.task.replace(/\s+/g, ' ').slice(0, 22)}`,
-      messages: [...(existing?.messages ?? []), task, reply],
-      modelProviderId: input.seat.modelProviderId,
-      modelId: input.seat.modelId,
+    const conversationId = seatConversationId(input.parentConversationId, input.seat.id)
+    saveConversation(buildSeatConversation({
+      existing: getConversationById(conversationId),
+      parentConversationId: input.parentConversationId,
+      parentAssistantId: input.parentAssistantId,
+      seat: input.seat,
       workspace: input.workspace,
-      totalTokens: (existing?.totalTokens ?? 0) + outputTokens,
-      totalOutputTokens: (existing?.totalOutputTokens ?? 0) + outputTokens,
-      createdAt: existing?.createdAt ?? input.startedAt,
-      updatedAt: now
-    })
+      runId: input.runId,
+      task: input.task,
+      startedAt: input.startedAt,
+      now: Date.now(),
+      outcome: input.outcome
+    }))
     const saved = getConversationById(conversationId)
     if (saved) {
       const change: ConversationChangeEvent = { action: 'saved', conversationId, conversation: saved }
@@ -629,6 +612,7 @@ async function buildSeatRequest(
   return {
     ...request,
     conversationId: `${request.conversationId}::${target.id}`,
+    delegatedFrom: { assistantId: request.assistant.id, conversationId: request.conversationId },
     assistant: isDuplicatedSeatPrompt(target.systemPrompt, seatContext) ? { ...target, systemPrompt: '' } : target,
     workspace: { ...request.workspace, rootPath: workspaceRoot, displayName: target.name },
     provider: resolveSeatProvider(target, request.provider),
@@ -642,9 +626,9 @@ async function buildSeatRequest(
 }
 
 /**
- * The seat runs in its own conversation id, so its progress never reaches the
- * parent view. Fold it into the parent's delegation entry instead: the seat
- * becomes one live line carrying its checklist, not an opaque tool call.
+ * The seat runs in its own conversation id. Two streams come out of one seat step:
+ * the seat itself gets the full step list, while the parent console only gets one
+ * live line carrying a step counter, so it never floods with seat chatter.
  */
 function seatProgressForwarder(input: {
   request: WorkspaceAgentRequest
@@ -653,25 +637,15 @@ function seatProgressForwarder(input: {
   entry?: WorkspaceToolActivity
   onProgress?: (progress: WorkspaceAgentProgress) => void
 }): (progress: WorkspaceAgentProgress) => void {
-  const { entry, onProgress } = input
-  const isEnglish = mainT('main.locale', input.request.settings.language) === 'en-US'
-  let stepCount = 0
-  return (progress) => {
-    if (!onProgress || !entry || progress.conversationId !== input.seatRequest.conversationId) return
-    stepCount += 1
-    if (progress.plan) {
-      const steps = modelPlanSteps(progress.plan)
-      if (steps.length) entry.steps = steps
-    }
-    const checklist = entry.steps?.length
-      ? `${isEnglish ? 'checklist' : '清单'} ${entry.steps.filter(step => step.status === 'completed').length}/${entry.steps.length}`
-      : ''
-    const stepLabel = isEnglish ? `step ${stepCount}` : `第 ${stepCount} 步`
-    entry.seat = input.seatName
-    entry.status = 'running'
-    entry.detail = [checklist, stepLabel, progress.activity.label].filter(Boolean).join(' · ')
-    onProgress({ conversationId: input.request.conversationId, activity: { ...entry } })
-  }
+  return createSeatProgressForwarder({
+    parentConversationId: input.request.conversationId,
+    seatConversationId: input.seatRequest.conversationId,
+    seatAssistantId: input.seatRequest.assistant.id,
+    seatName: input.seatName,
+    isEnglish: mainT('main.locale', input.request.settings.language) === 'en-US',
+    entry: input.entry,
+    onProgress: input.onProgress
+  })
 }
 
 async function executeAssistantDelegation(
@@ -707,24 +681,84 @@ async function executeAssistantDelegation(
   }
   const seatJobs = new WorkspaceJobs()
   const startedAt = Date.now()
-  const forwardSeatProgress = seatProgressForwarder({
+  // Keep the seat's own step list so a failed or cancelled run still shows what it did.
+  const seatSteps: WorkspaceToolActivity[] = []
+  const forwardSeatStep = seatProgressForwarder({
     request,
     seatRequest,
     seatName: target.name,
     entry: hooks?.entry,
     onProgress: hooks?.onProgress
   })
+  const forwardSeatProgress = (progress: WorkspaceAgentProgress): void => {
+    if (progress.conversationId === seatRequest.conversationId) seatSteps.push(progress.activity)
+    forwardSeatStep(progress)
+  }
+  // The record must exist before the work starts: the console's summary row links to it.
+  persistSeatRun({ parentConversationId: request.conversationId, parentAssistantId: request.assistant.id, seat: target, workspace: seatRequest.workspace, runId, task, startedAt })
   try {
-    const result = await runWorkspaceAgentUnlocked(
-      seatRequest,
-      seatJobs,
-      forwardSeatProgress,
-      hooks?.onToolApproval,
-      signal,
-      undefined,
-      `${runId}::${target.id}`
-    )
-    recordSeatRun({ parentConversationId: request.conversationId, seat: target, workspace: seatRequest.workspace, task, result, runId, startedAt })
+    const ledger = getSharedAgentRunLedger()
+    const seatRun = ledger?.start({
+      kind: 'workspace',
+      conversationId: seatRequest.conversationId,
+      requestKey: `delegate:${target.id}`,
+      providerId: seatRequest.provider.id,
+      modelId: seatRequest.provider.defaultModel,
+      details: {
+        seat: target.name,
+        delegatedFromAssistant: request.assistant.id,
+        delegatedFromConversation: request.conversationId
+      }
+    })
+    let result: Awaited<ReturnType<typeof runWorkspaceAgentUnlocked>>
+    try {
+      result = await runWorkspaceAgentUnlocked(
+        seatRequest,
+        seatJobs,
+        forwardSeatProgress,
+        hooks?.onToolApproval,
+        signal,
+        undefined,
+        `${runId}::${target.id}`
+      )
+    } catch (error) {
+      if (seatRun) ledger?.record(seatRun.id, 'run_failed', 'failed', { errorCategory: 'delegation_failed' })
+      const message = error instanceof Error ? error.message : String(error)
+      persistSeatRun({
+        parentConversationId: request.conversationId,
+        parentAssistantId: request.assistant.id,
+        seat: target,
+        workspace: seatRequest.workspace,
+        runId,
+        task,
+        startedAt,
+        outcome: {
+          content: request.settings.language === 'en-US' ? `Failed: ${message}` : `失败：${message}`,
+          activities: seatSteps
+        }
+      })
+      throw error
+    }
+    if (seatRun) {
+      ledger?.record(seatRun.id, 'run_succeeded', 'succeeded', { changedFiles: result.changedFiles.length })
+    }
+    persistSeatRun({
+      parentConversationId: request.conversationId,
+      parentAssistantId: request.assistant.id,
+      seat: target,
+      workspace: seatRequest.workspace,
+      runId,
+      task,
+      startedAt,
+      outcome: {
+        content: result.content,
+        activities: result.activities,
+        changedFiles: result.changedFiles,
+        plan: result.plan,
+        contextSavings: result.contextSavings,
+        outputTokens: estimateTokenCount(result.content)
+      }
+    })
     const summary = result.content.trim() || '子助手未给出文字结论'
     const changed = result.changedFiles.slice(0, 40)
     const changedBlock = changed.length > 0
@@ -735,6 +769,9 @@ async function executeAssistantDelegation(
       context: decision.nextContext
     }
   } finally {
+    // The runner sets this entry's final completed/failed status right after this
+    // call returns; that one record is the real dispatch result.
+    delete hooks?.entry?.delegatedStep
     await seatJobs.dispose()
   }
 }
@@ -2735,8 +2772,11 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           : error instanceof Error ? error.message : mainT('main.workspace.toolFailed', language, { tool: activity.label })
         activity.detail = redactWorkspaceSecrets(activity.detail, environmentValues)
         activity.output = describeToolOutput(error instanceof Error ? error.message : String(error))
-        const presented = outputStore.capture(call.id, `Error: ${activity.detail}`, Math.min(TOOL_OUTPUT_CHARACTERS, Math.floor(outputBudgetRemaining / Math.max(1, toolResultsRemaining))), Math.min(tokenBudget.perTool, Math.floor(tokensRemaining / Math.max(1, toolResultsRemaining))))
-        outputBudgetRemaining -= presented.output.length
+        // An exhausted output budget must not replace the failure with an
+        // extraction error: the model needs the real reason to stop retrying.
+        const errorBudget = Math.max(MIN_ERROR_OUTPUT_CHARACTERS, Math.min(TOOL_OUTPUT_CHARACTERS, Math.floor(outputBudgetRemaining / Math.max(1, toolResultsRemaining))))
+        const presented = outputStore.capture(call.id, `Error: ${activity.detail}`, errorBudget)
+        outputBudgetRemaining = Math.max(0, outputBudgetRemaining - presented.output.length)
         tokensRemaining -= tokenBudget.count(presented.output)
         toolResultsRemaining--
         toolCallLedger.complete(call.id, presented.output)

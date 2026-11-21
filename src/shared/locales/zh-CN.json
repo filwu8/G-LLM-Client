@@ -860,7 +860,8 @@
     "configurationApprovalTitle": "确认软件配置变更",
     "configurationApprovalDescription": "这将修改软件设置或当前助手的技能。请核对下方变更；保存后用于后续任务，不会修改本轮已使用的设置。",
     "stepInput": "这一步执行的",
-    "stepOutput": "这一步的输出"
+    "stepOutput": "这一步的输出",
+    "openSeat": "打开席位会话"
   },
   "localTask": {
     "title": "本地文件任务",

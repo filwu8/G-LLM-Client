@@ -248,3 +248,18 @@ export class AgentRunLedger {
     }
   }
 }
+
+/**
+ * The main-process ledger is owned by index.ts, but delegated seat runs happen
+ * deep inside the agent loop, which must not import index.ts (circular). index.ts
+ * binds its instance here once it is created.
+ */
+let sharedLedger: AgentRunLedger | null = null
+
+export function bindSharedAgentRunLedger(ledger: AgentRunLedger): void {
+  sharedLedger = ledger
+}
+
+export function getSharedAgentRunLedger(): AgentRunLedger | null {
+  return sharedLedger
+}

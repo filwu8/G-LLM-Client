@@ -287,6 +287,8 @@ export interface Conversation {
   webSearchMode?: WebSearchMode
   workspace?: ConversationWorkspace
   goalTask?: GoalTask
+  /** Set on a seat conversation: the console that dispatched the work. */
+  delegatedFrom?: { assistantId: string; conversationId: string }
   /** Lightweight conversational goal-draft state, used before a GoalTask is created. */
   goalDraft?: GoalDraft
   /**
@@ -800,6 +802,13 @@ export interface WorkspaceToolActivity {
   files?: string[]
   /** Set when this entry is a delegated seat's run instead of this conversation's own step. */
   seat?: string
+  /** Lets the console jump into the seat's own conversation for this entry. */
+  seatAssistantId?: string
+  seatConversationId?: string
+  /** Marks a console-side snapshot of a seat's progress. The step itself is a real
+   *  tool call on the seat's conversation; counting it again here would log one
+   *  “delegate_assistant” call per seat step instead of one per dispatch. */
+  delegatedStep?: boolean
   /** The delegated seat's own checklist, rendered under the seat entry. */
   steps?: AgentPlanStep[]
 }
@@ -924,6 +933,9 @@ export interface WorkspaceAgentRequest {
   assistantTools?: ToolConfig[]
   availableAssistants?: Assistant[]
   delegationContext?: AssistantDelegationContext
+  /** Set on a delegated seat run: who dispatched it, so the run ledger and the
+   *  seat's own conversation can point back at the console that handed out the work. */
+  delegatedFrom?: { assistantId: string; conversationId: string }
   workspace: ConversationWorkspace
   provider: ApiProvider
   messages: ChatMessage[]

@@ -4,7 +4,7 @@
  * Change Date: 2030-08-01
  */
 
-import { Check, ChevronDown, ChevronUp, CircleCheck, FileText, FolderOpen, Globe, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, ChevronUp, CircleCheck, FileText, FolderOpen, Globe, LoaderCircle, ShieldCheck, Unplug, X, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -241,7 +241,7 @@ export function WorkspaceBar({ workspace, conversationId, onOpen, onUnbind, onAg
   )
 }
 
-export function WorkspaceActivityLog({ activities, changedFiles, running = false, model, startedAt, artifactRoot, plan, onArtifactOpen, onArtifactContextMenu }: {
+export function WorkspaceActivityLog({ activities, changedFiles, running = false, model, startedAt, artifactRoot, plan, onArtifactOpen, onArtifactContextMenu, onSeatOpen }: {
   activities: WorkspaceToolActivity[]
   changedFiles?: string[]
   running?: boolean
@@ -251,6 +251,8 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
   plan?: AgentExecutionPlan
   onArtifactOpen?: (rootPath: string, relativePath: string) => void
   onArtifactContextMenu?: (event: ReactMouseEvent, rootPath: string, relativePath: string) => void
+  /** Jump into the delegated seat's own conversation, where the full step list lives. */
+  onSeatOpen?: (assistantId: string, conversationId: string) => void
 }) {
   const { t, i18n } = useTranslation()
   const elapsedSeconds = useElapsedSeconds(running, startedAt)
@@ -287,6 +289,7 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
       {activities.map((activity) => {
         const index = activities.indexOf(activity) + 1
         const open = isOpen(activity)
+        const seatTarget = activity.seatAssistantId && activity.seatConversationId ? { assistantId: activity.seatAssistantId, conversationId: activity.seatConversationId } : null
         return (
           <div className={`workspace-message-activity ${activity.status}${open ? ' is-open' : ''}`} key={activity.id}>
             <button
@@ -303,6 +306,17 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
               {!open && activity.detail && <small className="ws-step-teaser">{activity.detail}</small>}
               {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
+            {seatTarget && onSeatOpen && (
+              <button
+                type="button"
+                className="ws-step-seat-open"
+                onClick={() => onSeatOpen(seatTarget.assistantId, seatTarget.conversationId)}
+                title={t('workspace.openSeat')}
+                aria-label={t('workspace.openSeat')}
+              >
+                <ArrowUpRight size={13} />
+              </button>
+            )}
             {open && (
               <div className="ws-step-body">
                 {activity.input && (

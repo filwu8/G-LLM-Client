@@ -4262,6 +4262,10 @@ export default function App() {
                             artifactRoot={message.workspaceArtifactRoot}
                             onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
                             onArtifactContextMenu={openWorkspaceArtifactMenu}
+                            onSeatOpen={(assistantId, conversationId) => {
+                              setActiveAssistantId(assistantId)
+                              selectConversation(conversationId)
+                            }}
                           />
                         )}
                         {message.reasoningContent && (
@@ -4498,6 +4502,10 @@ export default function App() {
                           model={conversationProvider.defaultModel}
                           onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
                           onArtifactContextMenu={openWorkspaceArtifactMenu}
+                          onSeatOpen={(assistantId, conversationId) => {
+                            setActiveAssistantId(assistantId)
+                            selectConversation(conversationId)
+                          }}
                           running
                           startedAt={activeRunStartedAt}
                         />
