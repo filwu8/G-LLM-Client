@@ -7,16 +7,25 @@ export function outputEncoding(model: string): OutputTokenBudget['encoding'] {
   return 'utf8-bytes'
 }
 const cached = new Map<string, Promise<OutputTokenBudget>>()
-/** Reference text tokenization only. Unknown models use a labelled byte budget. */
+/**
+ * The byte fallback mirrors the token budget at 4 UTF-8 bytes per reference token,
+ * which is roughly what English costs. It is a deliberately conservative proxy so a
+ * model without a bundled tokenizer cannot be handed a wildly larger result than a
+ * tokenized one; CJK text costs ~3 bytes per character and therefore reaches the byte
+ * ceiling at about a third of the character count, which is the same order of tokens.
+ *
+ * These ceilings are the cost guard, not the size guard: the character ceilings in
+ * workspaceOutputStore bind first for ordinary ASCII text.
+ */
 export async function createOutputTokenBudget(model: string): Promise<OutputTokenBudget> {
   const encoding = outputEncoding(model)
-  if (encoding === 'utf8-bytes') return { encoding, perTool: 12000, perRound: 24000, count: text => Buffer.byteLength(text) }
+  if (encoding === 'utf8-bytes') return { encoding, perTool: 48_000, perRound: 96_000, count: text => Buffer.byteLength(text) }
   let pending = cached.get(encoding)
   if (!pending) {
     pending = (async () => {
       const [{ Tiktoken }, ranks] = await Promise.all([import('js-tiktoken/lite'), encoding === 'o200k_base' ? import('js-tiktoken/ranks/o200k_base') : import('js-tiktoken/ranks/cl100k_base')])
       const tokenizer = new Tiktoken(ranks.default)
-      return { encoding, perTool: 3000, perRound: 6000, count: (text: string) => tokenizer.encode(text, [], []).length }
+      return { encoding, perTool: 12_000, perRound: 24_000, count: (text: string) => tokenizer.encode(text, [], []).length }
     })()
     cached.set(encoding, pending)
   }
