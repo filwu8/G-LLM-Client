@@ -2,8 +2,9 @@
 import { app } from 'electron'
 import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import type { Conversation, WorkspaceAgentRequest } from '../shared/types'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
@@ -51,8 +52,16 @@ async function main() {
   let scenario = 'document', step = 0
   let compactions = 0
   let overflowRejected = false
+  let reconnectHits = 0
   let interruptedModelRequestId: string | string[] | undefined
-  const server = createServer(async (req, res) => {
+  let interruptedAttemptId: string | string[] | undefined
+  // The handler below is not awaited by the HTTP server, so an assertion thrown
+  // inside it becomes an unhandled rejection instead of a test failure — the
+  // suite would report success while the mock checks nothing. Collect them and
+  // fail the run explicitly.
+  const fixtureFailures: unknown[] = []
+  process.on('unhandledRejection', (reason) => { fixtureFailures.push(reason) })
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     let body = ''; for await (const chunk of req) body += chunk
     const request = JSON.parse(body)
     assert.equal(request.stream, true)
@@ -65,6 +74,7 @@ async function main() {
     }
     if (scenario === 'recover' && step === 1 && !interruptedModelRequestId) {
       interruptedModelRequestId = req.headers['x-g-llm-request-id']
+      interruptedAttemptId = req.headers['x-g-llm-attempt-id']
       res.writeHead(503)
       res.end('Temporary fixture failure')
       return
@@ -118,14 +128,46 @@ async function main() {
     } else if (scenario === 'recover') {
       assert.match(JSON.stringify(request.messages), /客户端任务检查点.*outputs[/\\]+first\.txt/s)
       if (step === 1) {
-        assert.notEqual(req.headers['x-g-llm-request-id'], interruptedModelRequestId)
-        assert.match(request.messages.at(-1).content, /客户端连接恢复/)
+        // A retried 503 is replayed by runWorkspaceModelAttempts: the logical
+        // request id stays stable and only the attempt id rotates. That is the
+        // observable proof of a fresh attempt, so assert on it. (The
+        // "[客户端连接恢复]" note is injected only in continuous goal mode, which
+        // this scenario does not exercise.)
+        assert.equal(req.headers['x-g-llm-request-id'], interruptedModelRequestId)
+        assert.notEqual(req.headers['x-g-llm-attempt-id'], interruptedAttemptId)
       }
       delta = step === 0 ? call('write_file', { path: 'outputs/second.txt', content: '第二份交付物' })
         : verdict('执行记录确认两份文件已经写入。', '已交付两份文件。')
     } else if (scenario === 'limit') {
       delta = step === 0 ? call('write_file', { path: 'outputs/goal-draft.txt', content: '尚待核对的草稿' })
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
+    } else if (scenario === 'reconnect') {
+      // A 503 is retried in place by runWorkspaceModelAttempts, so the
+      // agent-level retry loop — the only place the reconnect note is injected —
+      // is not reached until those in-place attempts are exhausted. Burning all
+      // three is what makes this scenario exercise the note at all.
+      reconnectHits += 1
+      const noteCount = request.messages.filter((item: { content?: unknown }) =>
+        typeof item.content === 'string' && item.content.includes('[客户端连接恢复]')).length
+      if (reconnectHits <= 3) {
+        // A 503 is retried in place by runWorkspaceModelAttempts (3 attempts), so
+        // the agent-level retry loop — the only place this note is injected — is
+        // not reached yet.
+        assert.equal(noteCount, 0, `no note during in-place retries (hit ${reconnectHits})`)
+        res.writeHead(503)
+        res.end('Temporary fixture failure')
+        return
+      }
+      // The fourth request is the agent-level retry: it carries exactly one note
+      // telling the model to build on the work already done instead of redoing it.
+      assert.equal(noteCount, 1, 'the reconnect note is injected once')
+      if (reconnectHits === 4) {
+        const writeCall = call('write_file', { path: 'outputs/reconnect.txt', content: '只写一次' })
+        writeCall.tool_calls[0].id = `reconnect-${reconnectHits}`
+        delta = writeCall
+      } else {
+        delta = verdict('连接恢复后写入完成。', '已交付 reconnect.txt。')
+      }
     } else if (scenario === 'blocked') {
       delta = verdict('申请书缺少申请人名称。', '请提供申请人名称。', 'blocked')
     } else if (scenario === 'freeform') {
@@ -152,6 +194,16 @@ async function main() {
     res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`)
     res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } })}\n\n`)
     res.end('data: [DONE]\n\n')
+  }
+  // An assertion thrown inside the handler used to leave the request unanswered
+  // and the run hanging until the client gave up — minutes per failure. Answer
+  // immediately so a broken expectation fails in seconds.
+  const server = createServer((req, res) => {
+    void handleRequest(req, res).catch((error) => {
+      fixtureFailures.push(error)
+      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'fixture assertion failed' } }))
+    })
   })
   await new Promise<void>(fulfil => server.listen(0, '127.0.0.1', fulfil))
   const address = server.address(); assert.ok(address && typeof address !== 'string')
@@ -198,6 +250,17 @@ async function main() {
     assert.equal(overflow.activities.filter(activity => activity.tool === 'task_checkpoint').length, 1)
     assert.equal(step, 2)
 
+    scenario = 'reconnect'; step = 0; reconnectHits = 0
+    const reconnected = await runWorkspaceAgent(request('连接恢复后写入 reconnect.txt'))
+    assert.equal(reconnected.plan.status, 'succeeded')
+    assert.deepEqual(reconnected.changedFiles.map(file => file.replace(/\\/g, '/')), ['outputs/reconnect.txt'])
+    assert.equal(reconnectHits, 5, 'three in-place attempts, one agent-level retry, then a normal turn')
+    assert.equal(
+      reconnected.activities.filter(activity => activity.tool === 'model_request_retry').length,
+      2,
+      'one retry notice for the in-place attempts and one for the reconnect'
+    )
+
     scenario = 'stall'; step = 0
     const stalled = await runWorkspaceAgent(request('持续核对 source.txt 中的内容'))
     assert.equal(stalled.plan.status, 'failed')
@@ -212,7 +275,10 @@ async function main() {
     }, undefined, stop.signal), /aborted/i)
     const checkpoints = new WorkspaceCheckpointStore(storage.getDataLocationInfo().activePath, interrupted.conversationId)
     const taskId = workspaceTaskId(interrupted.messages[0].id)
-    const savedProgress = checkpoints.load(taskId, workspace.rootPath)
+    // The agent records the checkpoint under realpath(root); comparing it with
+    // the raw workspace path only works where tmpdir is not a symlink (it is one
+    // on macOS: /var -> /private/var, and on CI Windows runners). Resolve ours too.
+    const savedProgress = checkpoints.load(taskId, await realpath(workspace.rootPath))
     assert.ok(savedProgress)
     assert.deepEqual(savedProgress.changedFiles.map(file => file.replace(/\\/g, '/')), ['outputs/first.txt'])
     assert.equal(savedProgress.pendingTool, undefined)
@@ -275,6 +341,9 @@ async function main() {
     assert.equal(step, 1, 'an explicit denial must not be retried')
     assert.equal(storage.getSettings().theme, 'dark', 'denial must prevent setting changes')
   } finally { await new Promise<void>(fulfil => server.close(() => fulfil())) }
+  // Surface any assertion the mock handler threw. Without this the run reports
+  // success while the fixture silently verified nothing.
+  assert.deepEqual(fixtureFailures, [], 'mock server assertions must hold')
 
   const stale = configuration.prepareApplicationChange(request('change settings'), 'update_application_settings', { settings: { theme: 'light' } })
   storage.setSettings({ ...storage.getSettings(), theme: 'auto' })
