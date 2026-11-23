@@ -1494,7 +1494,6 @@
       "seatWorkspaceMissing": "席位「{{seat}}」还没有配置工作目录，无法派活。请先在席位设置里指定它的工作目录，避免它读写总台的文件和记忆。",
       "goalNeedsAction": "goal action 只能是 propose。",
       "goalNeedsContent": "goal propose 需要同时提供 goal 和可核对的 acceptanceCriteria。",
-      "codemodeNeedsCode": "codemode 需要脚本内容。",
       "searchToolsNeedsQuery": "search_tools 需要查询词。",
       "noTaskProgress": "多次尝试后仍无新进展，任务已暂停。已有进度已保存。",
       "backgroundStalled": "多次尝试后仍未取得后台任务结果，任务已暂停。",

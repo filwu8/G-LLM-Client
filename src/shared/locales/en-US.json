@@ -1494,7 +1494,6 @@
       "seatWorkspaceMissing": "Seat \"{{seat}}\" has no working directory yet, so it cannot take a task. Set its working directory in the seat settings first, otherwise it would read and write the main console's files and memory.",
       "goalNeedsAction": "goal action must be propose.",
       "goalNeedsContent": "goal propose needs both a goal and verifiable acceptanceCriteria.",
-      "codemodeNeedsCode": "codemode needs a code body.",
       "searchToolsNeedsQuery": "search_tools needs a query.",
       "noTaskProgress": "Repeated attempts yielded no new progress. The task is paused and its progress is saved.",
       "backgroundStalled": "Repeated attempts did not collect the background job result. The task is paused.",

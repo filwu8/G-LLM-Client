@@ -193,15 +193,15 @@ pi 没有这些东西。所以执行侧不动。
 | A. 父进程 `node:vm` | 在 `runWorkspaceAgentUnlocked` 内建 vm 上下文，注入白名单工具函数 | 简单，工具直接可用 | 失去 `--permission` 进程隔离 |
 | B. 子进程 + stdio RPC | 复用 `runWorkspaceJavascript`，子进程通过 stdout 发工具请求，父进程执行后写回 stdin | 保留进程沙箱 | 要设计协议、处理并发和超时，复杂 |
 
-**选 A**。理由是白名单工具本身就带权限校验：
+**方案 A 已撤销。** 原先结论是「选 A」，支撑它的推理是：白名单工具本身带权限校验（`read_file` → `repositoryText` → `resolveExisting` + `assertWorkspacePathAllowed`，`search_text` → `searchRepository` 尊重 `.gitignore` 与凭据边界），所以「vm 里不提供 `require` / `process` / `fs`，被绕过也只能调到这些已校验的函数」。
 
-- `read_file` → `repositoryText` → `resolveExisting` + `assertWorkspacePathAllowed`
-- `search_text` → `searchRepository`，已尊重 `.gitignore` 和凭据边界
-- `list_directory` / `inspect_file` / `git_read` 同理
+这个前提不成立。`node:vm` 隔离全局对象但**不隔离 realm**：注入 context 的每一个宿主函数（七个 `tools.*` 包装，连 `console.log` 在内）都把宿主 `Function` 挂在 `constructor` 链上。拿到宿主 `Function` 就能拿到宿主 `process`，而 `process.getBuiltinModule('node:fs')` 直接给出 fs、`getBuiltinModule('node:child_process')` 直接给出子进程。白名单工具在它们背后校验什么都无关紧要 —— 入口根本不在工具里。本机按此构造实测五类逃逸全部成立（读 `process.env`、读写工作区外路径、起子进程），而 `codemode` 不在 `isScript` 集合内，连审批这一层都没有。
 
-vm 里不提供 `require` / `process` / `fs`，被绕过也只能调到这些已校验的函数。`--permission` 保护的是「脚本直接 `fs.readFile('.env')`」，方案 A 通过**根本不给 fs 入口**达到同样效果。
+前提既然不成立，A 相对 B 的唯一优势就消失了；而 B 在仓库里已经存在 —— `runWorkspaceJavascript`（`--permission` + `--allow-fs-read/write` + 5 项 env）。两者剩下的差别只是「脚本里能否调工具包装」，这七个包装带来的便利（`read_document` 解析、`git_read`）不足以换一条主进程任意代码执行通道。
 
-### 工具形态
+**结论：`codemode` 删除。** 批量读用 `read_files`（单次 1–32 个文件），批量计算用 `run_javascript`（子进程 + fs 白名单 + 走审批）。回归测试 `src/main/workspaceAgentIsolation.test.ts` 断言 `workspaceAgent.ts` 不再载入 `node:vm`、不再注册 `codemode`，且 `run_javascript` 仍留在 `isScript` 集合内 —— 防止这段设计被原样加回来。
+
+### 工具形态（已废弃，仅存档）
 
 ```ts
 { type: 'function', function: {
