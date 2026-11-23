@@ -23,6 +23,15 @@ test('recognizes Chinese development and packaging requests as workspace actions
   assert.equal(isWorkspaceActionRequest('解释一下这个目录的用途'), false)
 })
 
+test('negated write verbs are read-only, not workspace actions', () => {
+  assert.equal(isWorkspaceActionRequest('只读，不要修改任何文件，查看后告诉结果'), false)
+  assert.equal(isWorkspaceActionRequest('不要创建文件，只解释目录用途'), false)
+  assert.equal(isWorkspaceActionRequest('无需保存，帮我分析一下'), false)
+  // A real action later in the request still counts.
+  assert.equal(isWorkspaceActionRequest('不要删除旧文件，帮我新建一个 README.md'), true)
+  assert.equal(isWorkspaceActionRequest('解释一下目录，然后构建项目'), true)
+})
+
 test('distinguishes the reported ERP onboarding question from the actual template creation request', () => {
   assert.equal(isWorkspaceActionRequest('我想让你帮我操作ERP，我需要做一些什么'), false)
   assert.equal(isWorkspaceActionRequest('你帮我创建一个 .env，然后我会自己填写进去'), true)

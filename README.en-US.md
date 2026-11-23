@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.31](docs/releases/v2.0.31.md)
+Current code version: [V2.0.32](docs/releases/v2.0.32.md)
 
 Current public Microsoft Store version: [V2.0.31](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-13. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.32 Agent Permission Modes and Task Reliability
+
+- The workspace toolbar adds an agent permission mode switch with three icon states: ask for each action, read-only with writes allowed inside authorized folders, and full access. A conversation started in full access keeps that mode instead of dropping back to per-action approval.
+- Full access still stops at the folders the user authorized: writes are limited to those folders, everything outside is read-only, and host scripts or out-of-scope writes are still confirmed each time.
+- The unfinished-task notice gains a Cancel action that discards saved progress while keeping files already changed.
+- Fixes several causes of interrupted tasks: the repository root argument was rejected as out of scope, Git index-lock contention failed repeatedly, transient progress-save errors aborted a task, and a request not to modify any file was misread as a write action.
+- Lowers the first-click latency of the workspace toolbar.
+- Updates dependencies to i18next 27, react-i18next 18, React 19.3, mermaid 12 and lucide-react 1.73; @napi-rs/canvas is unified on 1.1.1 so installers no longer carry a duplicate native binary.
 
 ## V2.0.31 Workspace Task Continuation and Recovery
 

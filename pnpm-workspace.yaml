@@ -14,6 +14,10 @@ supportedArchitectures:
 
 overrides:
   '@xmldom/xmldom': 0.8.15
+  # pdfjs-dist and pdf-parse pin canvas 0.1.80 for their optional Node renderer.
+  # The app already installs 1.1.1 for the same DOM globals, so keep a single
+  # native binary set instead of shipping two full copies per platform.
+  '@napi-rs/canvas': 1.1.1
   dompurify: 3.4.17
   fast-uri: 3.1.9
   js-yaml: 4.3.2

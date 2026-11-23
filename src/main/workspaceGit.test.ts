@@ -9,7 +9,7 @@ import test from 'node:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { redactGitOutput, runGitRead, runGitWrite, planProjectCheck, discoverWorkspaceRepositories } from './workspaceGit.ts'
+import { redactGitOutput, runGitRead, runGitWrite, planProjectCheck, discoverWorkspaceRepositories, clearStaleIndexLock, gitWriteTimeoutMs, isIndexLockConflict } from './workspaceGit.ts'
 
 test('git output redacts URL credentials and secret assignments', () => {
   assert.match(redactGitOutput('origin https://user:token123@github.com/a/b.git (fetch)'), /\[REDACTED\]@github\.com/)
@@ -99,6 +99,12 @@ test('git tools run inside a selected repo in a multi-repository workspace', asy
     const rootLog = await runGitRead(root, { operation: 'log', limit: 5 })
     assert.match(rootLog.output, /root commit/)
     assert.doesNotMatch(rootLog.output, /nested commit/)
+    // discoverWorkspaceRepositories reports the root repo as ".", so the model
+    // uses repo="." for root-level reads. It must resolve to the root, not be
+    // rejected as an escaping path.
+    const rootDotLog = await runGitRead(root, { operation: 'log', limit: 5, repo: '.' })
+    assert.match(rootDotLog.output, /root commit/)
+    assert.doesNotMatch(rootDotLog.output, /nested commit/)
     const nestedLog = await runGitRead(root, { operation: 'log', limit: 5, repo: 'nested' })
     assert.match(nestedLog.output, /repo: nested/)
     assert.match(nestedLog.output, /nested commit/)
@@ -150,4 +156,68 @@ test('planProjectCheck only accepts known categories and derives an allowlisted 
     const pnpm = await planProjectCheck(root, 'build')
     assert.equal(pnpm.code, 'pnpm build')
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('bulk git writes get a longer timeout than network writes', () => {
+  assert.equal(gitWriteTimeoutMs('reset'), 600_000)
+  assert.equal(gitWriteTimeoutMs('checkout'), 600_000)
+  assert.equal(gitWriteTimeoutMs('clean'), 600_000)
+  assert.equal(gitWriteTimeoutMs('fetch'), 180_000)
+  assert.equal(gitWriteTimeoutMs('pull'), 180_000)
+  assert.equal(gitWriteTimeoutMs('stash'), 180_000)
+})
+
+test('clearStaleIndexLock removes only locks created inside the command window', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-lock-'))
+  try {
+    const gitDir = resolve(root, '.git')
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(gitDir)
+    const lock = resolve(gitDir, 'index.lock')
+    const t0 = Date.now() - 60_000
+
+    // A lock older than the command (someone else's) must be left alone.
+    await writeFile(lock, '')
+    await (await import('node:fs/promises')).utimes(lock, new Date(t0 - 5_000), new Date(t0 - 5_000))
+    assert.equal(await clearStaleIndexLock(root, t0, Date.now()), false)
+    assert.equal(await (await import('node:fs/promises')).access(lock).then(() => true).catch(() => false), true)
+
+    // A lock created during the command is ours and must be cleared.
+    const t1 = Date.now()
+    await writeFile(lock, '')
+    await (await import('node:fs/promises')).utimes(lock, new Date(t1 + 500), new Date(t1 + 500))
+    assert.equal(await clearStaleIndexLock(root, t1, Date.now()), true)
+    assert.equal(await (await import('node:fs/promises')).access(lock).then(() => true).catch(() => false), false)
+
+    // No lock at all is a no-op.
+    assert.equal(await clearStaleIndexLock(root, Date.now()), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('clearStaleIndexLock resolves worktree .git files to the real gitdir', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-wt-'))
+  try {
+    const { mkdir } = await import('node:fs/promises')
+    const realGitDir = resolve(root, 'actual-git')
+    await mkdir(realGitDir)
+    await writeFile(resolve(root, '.git'), `gitdir: ${realGitDir}\n`)
+    const t0 = Date.now()
+    const wtLock = resolve(realGitDir, 'index.lock')
+    await writeFile(wtLock, '')
+    await (await import('node:fs/promises')).utimes(wtLock, new Date(t0 + 100), new Date(t0 + 100))
+    assert.equal(await clearStaleIndexLock(root, t0, Date.now()), true)
+    const exists = (await import('node:fs/promises')).readFile(resolve(realGitDir, 'index.lock'), 'utf8').then(() => true).catch(() => false)
+    assert.equal(await exists, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('isIndexLockConflict matches git stale-lock output but not unrelated failures', () => {
+  assert.equal(isIndexLockConflict("fatal: Unable to create 'C:/repo/.git/index.lock': File exists. Another git process seems to be running"), true)
+  assert.equal(isIndexLockConflict('error: could not lock config file .git/config: File exists'), false)
+  assert.equal(isIndexLockConflict('Exit code: 128 fatal: Cannot do hard reset with paths.'), false)
+  assert.equal(isIndexLockConflict(''), false)
 })

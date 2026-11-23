@@ -27,3 +27,9 @@ test('open window draft paths follow relocation without rewriting external folde
   assert.equal(relocateWorkspaceLocation('C:\\Data-other\\a', 'C:\\Data', 'D:\\Moved', true), 'C:\\Data-other\\a')
   assert.equal(relocateWorkspaceLocation('/Data/a', '/data', '/new', false), '/Data/a')
 })
+test('project workspace carries the selected permission mode instead of a hardcoded ask', () => {
+  const project = { id: 'project', name: 'Contracts', workspacePath: '/contracts', createdAt: 1, updatedAt: 2 }
+  assert.equal(projectWorkspace(project)?.approvalMode, 'ask')
+  assert.equal(projectWorkspace(project, 'full')?.approvalMode, 'full')
+  assert.equal(projectWorkspace(project, 'auto')?.approvalMode, 'auto')
+})

@@ -176,3 +176,22 @@ export function isConversationRunning(states: ConversationRunStates, conversatio
 export function conversationWorkspace(conversation: Pick<Conversation, 'workspace'> | undefined | null, draftWorkspace?: ConversationWorkspace): ConversationWorkspace | undefined {
   return conversation ? conversation.workspace : draftWorkspace
 }
+
+/**
+ * Make the workspace carry the permission mode the user actually selected.
+ *
+ * The permission picker's choice is the single source of truth for a run. A
+ * project-derived workspace defaults to `'ask'`, so without this overlay a
+ * fresh conversation that selected full access silently persisted `'ask'`:
+ * the toolbar flipped back to "request approval" and the agent downgraded too.
+ * Writing the selected mode into the workspace keeps UI, persistence and the
+ * main-process runtime resolver on one value.
+ */
+export function withApprovalMode(
+  workspace: ConversationWorkspace | undefined,
+  mode: NonNullable<ConversationWorkspace['approvalMode']> | undefined
+): ConversationWorkspace | undefined {
+  if (!workspace || !mode) return workspace
+  if (workspace.approvalMode === mode) return workspace
+  return { ...workspace, approvalMode: mode }
+}

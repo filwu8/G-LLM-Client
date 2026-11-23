@@ -24,8 +24,20 @@ export interface WorkspaceMaxTokenSettings {
   maxTokens: number
 }
 
+// A negated action ("do not modify anything", "no need to create files") is a
+// read-only request, not a workspace action. Without this, a read-only check
+// that says "don't modify files" is misclassified as an action and then fails
+// completion verification for lacking write evidence. Keep it tight: only when
+// every action verb in the request is negated.
+const negatedWorkspaceActionPattern = /(?:不要|无需|不用|别|不需要|不可|不能|禁止)(?:[^，,。！？!?\n]{0,3})?(?:压缩|生成|创建|新建|修改|改成|替换|重命名|移动|整理|处理|转换|合并|拆分|写入|保存|编写|实现|修复|批量|开发|制作|做成|构建|搭建|打包|部署|compress|generate|create|modify|replace|rename|move|organize|process|convert|merge|split|write|save|implement|fix|batch|develop|build|package|deploy)/i
+const bareWorkspaceActionPattern = new RegExp(workspaceActionPattern.source, 'i')
+
 export function isWorkspaceActionRequest(request: string): boolean {
-  return workspaceActionPattern.test(request)
+  if (!workspaceActionPattern.test(request)) return false
+  // Remove every negated action phrase; if no bare action verb remains, the
+  // request is read-only despite containing action words.
+  const withoutNegations = request.replace(negatedWorkspaceActionPattern, '')
+  return bareWorkspaceActionPattern.test(withoutNegations)
 }
 
 /** True when the user explicitly asks for a file/document-like deliverable. */

@@ -32,7 +32,7 @@ test('imports every seat folder under one orchestrator', () => {
     for (const seat of plan.seats) {
       assert.equal(seat.workspaceRoot, path.join(root, seat.name))
       assert.equal(seat.parentAssistantId, plan.orchestrator.id)
-      assert.match(seat.systemPrompt, /规则$/)
+      assert.match(seat.systemPrompt, /^你是「.+」席位，工作目录是 .+。人格与记忆以该目录的 AGENTS\.md、MEMORY\.md 为准，开任务前先读它们。$/)
     }
     assert.equal(plan.orchestrator.workspaceRoot, root)
     assert.deepEqual(

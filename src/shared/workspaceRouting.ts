@@ -1,10 +1,13 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1  — Change Date: 2030-08-01 */
 import type { Conversation, ConversationWorkspace, Project } from './types'
 
-export function projectWorkspace(project?: Project | null): ConversationWorkspace | undefined {
+export function projectWorkspace(
+  project?: Project | null,
+  approvalMode: NonNullable<ConversationWorkspace['approvalMode']> = 'ask'
+): ConversationWorkspace | undefined {
   if (!project?.workspacePath) return undefined
   return { projectId: project.id, rootPath: project.workspacePath, displayName: project.name, kind: 'external',
-    permission: 'read-write', approvalMode: 'ask', grantedAt: project.createdAt, lastVerifiedAt: project.updatedAt }
+    permission: 'read-write', approvalMode, grantedAt: project.createdAt, lastVerifiedAt: project.updatedAt }
 }
 
 const fileSubject = /文件|目录|文件夹|工作区|项目|代码|仓库|文档|报告|表格|表单|简历|申报|幻灯片|演示文稿|网页|网站|(?:^|\W)(?:files?|folders?|directories|workspace|code|repository|document|report|spreadsheet|presentation|website|pdf|docx?|xlsx?|pptx?|html)(?:\W|$)|\.(?:pdf|docx?|xlsx?|pptx?|csv|md|txt|json|html?|css|[jt]sx?|py|sh|ps1)\b/i
