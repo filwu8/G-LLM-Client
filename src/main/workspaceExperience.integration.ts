@@ -34,8 +34,10 @@ async function main() {
   assert.equal(storage.getConversations(project.id).length, 2, 'multiple chats may share the project folder')
   const revoked = storage.saveConversation({ ...makeConversation('revoked'), messages: [{ id: 'one', role: 'user', content: 'hello', createdAt: now }], workspace: { ...workspace, computerAccess: true, browserAccess: true } })
   const unbound = storage.saveConversation({ ...revoked, workspace: undefined })
-  assert.equal(unbound.workspace?.computerAccess, false)
-  assert.equal(unbound.workspace?.browserAccess, false)
+  // Undefined means "no explicit choice": the global seat policy decides instead,
+  // so the only thing this must guarantee is that true is not carried over.
+  assert.notEqual(unbound.workspace?.computerAccess, true)
+  assert.notEqual(unbound.workspace?.browserAccess, true)
   const original = await createDocxDocument('采购合同', '采购合同\n供货方：甲公司\n采购方：乙公司\n交付期限：30 天\n付款期限：验收后 15 天', 'Fixture')
   const prepared = await attachments.preparePastedAttachments([{ name: '采购合同.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: original.buffer.length, kind: 'file', dataUrl: `data:application/octet-stream;base64,${original.buffer.toString('base64')}` }])
   const imported = await attachments.prepareWorkspaceAttachments(workspace.rootPath, prepared)

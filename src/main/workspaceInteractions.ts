@@ -121,7 +121,7 @@ export function normalizeInteractionRequest(
 
 export function normalizeInteractionResponse(
   request: WorkspaceInteractionRequest,
-  input: { selectedIds?: unknown; customText?: unknown; cancelled?: unknown; answeredAt?: number }
+  input: { selectedIds?: unknown; customText?: unknown; cancelled?: unknown; pause?: unknown; answeredAt?: number }
 ): WorkspaceInteractionResponse {
   const chosen = Array.isArray(input.selectedIds)
     ? input.selectedIds.filter((id): id is string => typeof id === 'string' && request.options.some((option) => option.id === id))
@@ -134,6 +134,7 @@ export function normalizeInteractionResponse(
     selectedIds: cancelled ? [] : allowed,
     ...(customText && !cancelled ? { customText } : {}),
     cancelled,
+    ...(input.pause === true && !cancelled ? { pause: true } : {}),
     answeredAt: input.answeredAt ?? Date.now()
   }
 }

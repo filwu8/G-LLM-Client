@@ -81,12 +81,15 @@ import {
   shouldRefreshProviderModels
 } from '../shared/providers'
 import { ActiveResponseRegistry } from './activeResponse'
-import { AgentRunLedger } from './agentRunLedger'
+import { AgentRunLedger, bindSharedAgentRunLedger } from './agentRunLedger'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
+import { shouldBookParentRun } from './seatProgressForward'
 import { WorkspaceInteractionStore } from './workspaceInteractions'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
+import { postMeetingMessage, readMeetingRoom, resolveMeetingRoomFile, resolveMeetingScript } from './meetingRoom'
+import { importAssistantsFromDirectory } from './assistantImport'
 import { AutoUpdateManager } from './autoUpdateManager'
 import {
   GLLM_DEEP_LINK_SCHEME,
@@ -476,6 +479,7 @@ function getMainLogDirectory(): string {
 
 function getAgentRunLedger(): AgentRunLedger {
   agentRunLedger ??= new AgentRunLedger(getMainLogDirectory())
+  bindSharedAgentRunLedger(agentRunLedger)
   return agentRunLedger
 }
 
@@ -1800,6 +1804,64 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:get-state', () => getAppStateSnapshot())
+  ipcMain.handle('meeting:read', (_event, input: { workspaceRoot?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    const language = getSettings().language
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', language, { operation: 'meeting:read' }))
+    const script = resolveMeetingScript(root)
+    if (!script) throw new Error(mainT('main.meeting.scriptMissing', language, { root }))
+    const roomPath = resolveMeetingRoomFile(script)
+    return { ...readMeetingRoom(roomPath), scriptPath: script }
+  })
+  ipcMain.handle('meeting:post', async (_event, input: { workspaceRoot?: string; seat?: string; content?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    const language = getSettings().language
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', language, { operation: 'meeting:post' }))
+    const script = resolveMeetingScript(root)
+    if (!script) throw new Error(mainT('main.meeting.scriptMissing', language, { root }))
+    return postMeetingMessage({ scriptPath: script, roomPath: resolveMeetingRoomFile(script), seat: String(input.seat ?? ''), body: String(input.content ?? '') })
+  })
+  ipcMain.handle('meeting:call-seat', async (_event, input: { request?: WorkspaceAgentRequest; seatId?: string; instruction?: string; roomLimit?: number } = {}) => {
+    if (!input?.request) throw new Error(mainT('main.meeting.workspaceRequired', getSettings().language, { operation: 'meeting:call-seat' }))
+    const { runMeetingSeatTurn } = await import('./workspaceAgent')
+    return runMeetingSeatTurn({
+      request: input.request,
+      seatId: String(input.seatId ?? ''),
+      instruction: String(input.instruction ?? ''),
+      roomLimit: input.roomLimit
+    })
+  })
+  ipcMain.handle('assistants:seat-context', async (_event, input: { workspaceRoot?: string; systemPrompt?: string } = {}) => {
+    const root = String(input?.workspaceRoot ?? '').trim()
+    if (!root) throw new Error(mainT('main.meeting.workspaceRequired', getSettings().language, { operation: 'assistants:seat-context' }))
+    const { describeSeatContextFiles } = await import('./workspaceAgent')
+    return describeSeatContextFiles(root, String(input?.systemPrompt ?? ''))
+  })
+  ipcMain.handle('assistants:import-directory', async (event, input: { directory?: string; parentName?: string } = {}) => {
+    let directory = String(input?.directory ?? '').trim()
+    if (!directory) {
+      const owner = BrowserWindow.fromWebContents(event.sender)
+      const language = getSettings().language
+      const options = {
+        title: mainT('native.chooseDirectory', language),
+        buttonLabel: mainT('native.useDirectory', language),
+        properties: ['openDirectory' as const]
+      }
+      const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+      if (picked.canceled || !picked.filePaths[0]) return null
+      directory = picked.filePaths[0]
+    }
+    const result = importAssistantsFromDirectory(directory, { parentName: input?.parentName })
+    const projectId = getActiveProjectId()
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      browserWindow.webContents.send('assistant:capabilities-changed', {
+        projectId,
+        assistants: getAssistants(projectId),
+        skills: getSkills(projectId)
+      })
+    }
+    return result
+  })
   ipcMain.handle('gllm:connection-state', () => gllmConnection.getState())
   ipcMain.handle('gllm:connect', () => gllmConnection.begin())
   ipcMain.handle('gllm:connect-retry', () => gllmConnection.retry())
@@ -2389,11 +2451,19 @@ app.whenReady().then(() => {
       ...result,
       activities: result.activities.map(activity => ({ ...activity, ...(activityStamps.get(activity.id) ?? {}) }))
     })
+    // Seat conversations a delegate run is filling right now. The renderer only shows
+    // live steps on a conversation it believes is running, so a seat view would stay
+    // empty until the run finished and saved its record.
+    const liveSeatConversations = new Set<string>()
     const endActivity = (error?: string) => {
       activeWorkspaceRuns.delete(request.conversationId)
       if (isCurrentActiveResponse(active.key, active.controller)) {
         broadcastChatActivity({ conversationId: request.conversationId, kind: 'workspace', active: false, error })
+        for (const seatConversationId of liveSeatConversations) {
+          broadcastChatActivity({ conversationId: seatConversationId, kind: 'workspace', active: false, error })
+        }
       }
+      liveSeatConversations.clear()
     }
     let powerBlockerId: number | undefined
     writeMainLog(
@@ -2460,15 +2530,31 @@ app.whenReady().then(() => {
         prepared.request,
         (incoming) => {
           const progress = stampProgress(incoming)
+          // A seat's own steps belong to the seat's conversation. Folding them into the
+          // console's snapshot would also overwrite its changedFiles with the seat's.
+          const inParent = progress.conversationId === request.conversationId
           const index = snapshot.activities.findIndex(activity => activity.id === progress.activity.id)
           const previous = snapshot.activities[index]
-          if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
-          else snapshot.activities[index] = progress.activity
-          if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          if (inParent) {
+            if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
+            else snapshot.activities[index] = progress.activity
+            if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          }
           for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
             if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:progress', progress)
           }
+          if (!inParent) {
+            if (!liveSeatConversations.has(progress.conversationId)) {
+              liveSeatConversations.add(progress.conversationId)
+              broadcastChatActivity({ conversationId: progress.conversationId, kind: 'workspace', active: true, startedAt: Date.now() })
+            }
+            return
+          }
           if (progress.activity.tool === 'model_request_retry') return
+          // A delegated seat's step already logs its own tool call under the seat's
+          // conversation id; counting it here again turns one dispatch into dozens
+          // of delegate_assistant entries. Only the seat's final status is recorded.
+          if (!shouldBookParentRun(progress, request.conversationId)) return
           if (previous?.status === progress.activity.status && previous.detail === progress.activity.detail) return
           const type = progress.activity.status === 'running'
             ? 'tool_started'
@@ -2572,7 +2658,15 @@ app.whenReady().then(() => {
         },
         // Read the live mode so a switch in the composer applies to the very
         // next tool call of this running task.
-        () => resolveAgentPermissionMode(request.conversationId)
+        () => resolveAgentPermissionMode(request.conversationId),
+        (proposal) => {
+          const payload: import('../shared/types').WorkspaceGoalProposal = {
+            id: randomUUID(), conversationId: request.conversationId, proposedAt: Date.now(), ...proposal
+          }
+          for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
+            if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:goal-proposed', payload)
+          }
+        }
       )
       active.controller.signal.throwIfAborted()
       } // end harness else-branch

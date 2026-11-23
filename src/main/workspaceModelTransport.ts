@@ -46,6 +46,8 @@ export class WorkspaceModelTransportError extends Error {
 export interface WorkspaceModelFetchOptions {
   url: string
   apiKey?: string
+  /** Extra headers forwarded to the gateway (e.g. session routing headers). */
+  extraHeaders?: Record<string, string>
   body: Record<string, unknown>
   identity: WorkspaceModelRequestIdentity
   signal?: AbortSignal
@@ -53,8 +55,13 @@ export interface WorkspaceModelFetchOptions {
   fetcher?: typeof fetch
 }
 
-export function workspaceModelRequestHeaders(apiKey: string | undefined, identity: WorkspaceModelRequestIdentity): HeadersInit {
+export function workspaceModelRequestHeaders(
+  apiKey: string | undefined,
+  identity: WorkspaceModelRequestIdentity,
+  extraHeaders?: Record<string, string>
+): HeadersInit {
   return {
+    ...extraHeaders,
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     'Content-Type': 'application/json',
     'X-G-LLM-Run-ID': identity.runId,
@@ -90,7 +97,7 @@ export async function fetchWorkspaceModelResponse(options: WorkspaceModelFetchOp
   try {
     return await raceWithAbort(fetcher(options.url, {
         method: 'POST',
-        headers: workspaceModelRequestHeaders(options.apiKey, options.identity),
+        headers: workspaceModelRequestHeaders(options.apiKey, options.identity, options.extraHeaders),
         body: JSON.stringify(options.body),
         signal: requestSignal
       }), requestSignal)

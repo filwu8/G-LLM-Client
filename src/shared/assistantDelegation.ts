@@ -35,7 +35,8 @@ export function filterAvailableAssistantDelegations(assistants: Assistant[]): As
 }
 
 export function createDelegationContext(assistantId: string): AssistantDelegationContext {
-  return { path: [assistantId], depth: 0, maxDepth: 2, remainingCalls: 4 }
+  // One orchestrator run may dispatch every seat it owns plus a few follow-ups.
+  return { path: [assistantId], depth: 0, maxDepth: 2, remainingCalls: 12 }
 }
 
 export function authorizeAssistantDelegation(

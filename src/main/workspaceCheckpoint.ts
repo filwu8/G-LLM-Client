@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
+import type { AgentPlanStep, WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
 import { withStoreWriteRetry } from './storageWriteRetry.ts'
 
 export const WORKSPACE_EVIDENCE_HISTORY = 128
@@ -26,6 +26,8 @@ export interface WorkspaceCheckpoint {
   stalledTurns: number
   hasExecutionEvidence: boolean
   pendingTool?: string
+  /** Model-owned todo steps, so a resumed run keeps its checklist. */
+  todoSteps?: AgentPlanStep[]
   /**
    * A question the agent asked and is still waiting on. Unlike pendingTool this
    * is a safe resume point: the run can continue once an answer exists, and the
@@ -71,6 +73,18 @@ export class WorkspaceCheckpointStore {
   load(taskId: string, root: string, resolveStoredRoot = (path: string) => path): WorkspaceCheckpoint | undefined {
     const checkpoint = this.read()
     return checkpoint?.taskId === taskId && resolveStoredRoot(checkpoint.root) === root ? checkpoint : undefined
+  }
+
+  /**
+   * The model's checklist outlives a task boundary: every user message starts a
+   * new taskId, so `load` never matches and the todo list was rebuilt from
+   * scratch each turn. Read the steps alone, without the single-turn state
+   * (pendingTool, call ids, denials) that must not cross tasks.
+   */
+  loadTodoSteps(root: string, resolveStoredRoot = (path: string) => path): AgentPlanStep[] {
+    const checkpoint = this.read()
+    if (!checkpoint || resolveStoredRoot(checkpoint.root) !== root) return []
+    return Array.isArray(checkpoint.todoSteps) ? checkpoint.todoSteps : []
   }
 
   save(checkpoint: WorkspaceCheckpoint): void {

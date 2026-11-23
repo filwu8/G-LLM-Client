@@ -251,6 +251,10 @@ export interface Assistant {
   skillIds?: string[]
   toolIds?: string[]
   delegateAssistantIds?: string[]
+  /** Parent orchestrator seat when assistants are nested; empty for a top-level seat. */
+  parentAssistantId?: string
+  /** Absolute directory this seat owns. Falls back to the conversation workspace when unset. */
+  workspaceRoot?: string
   modelProviderId?: string
   modelId?: string
   builtIn?: boolean
@@ -258,6 +262,17 @@ export interface Assistant {
   pinnedAt?: number
   createdAt?: number
   updatedAt?: number
+}
+
+export interface AssistantImportSkipped {
+  name: string
+  reason: string
+}
+
+export interface AssistantImportResult {
+  orchestrator: Assistant
+  seats: Assistant[]
+  skipped: AssistantImportSkipped[]
 }
 
 export interface Conversation {
@@ -272,6 +287,8 @@ export interface Conversation {
   webSearchMode?: WebSearchMode
   workspace?: ConversationWorkspace
   goalTask?: GoalTask
+  /** Set on a seat conversation: the console that dispatched the work. */
+  delegatedFrom?: { assistantId: string; conversationId: string }
   /** Lightweight conversational goal-draft state, used before a GoalTask is created. */
   goalDraft?: GoalDraft
   /**
@@ -572,6 +589,7 @@ export type ProviderTemplateId =
   | 'volcengine-ark'
   | 'siliconflow'
   | 'openrouter'
+  | 'opencode-go'
   | 'groq'
   | 'mistral'
   | 'xai'
@@ -594,6 +612,8 @@ export interface ProviderTemplate {
   chatCompletionsPath?: string
   imageGenerationsPath?: string
   modelsPath?: string
+  /** Extra request headers; `{{session}}` is replaced with the provider id. */
+  extraHeaders?: Record<string, string>
   defaultModel: string
   suggestedModels: string[]
   requiresApiKey: boolean
@@ -617,6 +637,8 @@ export interface ApiProvider {
   modelsPath?: string
   apiKey: string
   credentialUnavailable?: boolean
+  /** Extra request headers; `{{session}}` is replaced with the provider id. */
+  extraHeaders?: Record<string, string>
   defaultModel: string
   models: ProviderModel[]
   modelsUpdatedAt?: number
@@ -718,6 +740,22 @@ export interface ConversationWorkspace {
   lastVerifiedAt: number
 }
 
+/** Execution policy a workspace inherits until it is configured explicitly on that workspace. */
+export interface AgentWorkspaceDefaults {
+  permission?: 'read' | 'read-write'
+  approvalMode?: AgentPermissionMode
+  executionMode?: 'sandbox' | 'host'
+  sandboxNetwork?: boolean
+  nativeExecution?: boolean
+  computerAccess?: boolean
+  browserAccess?: boolean
+  computerWindowAccess?: boolean
+  browserWindowAccess?: boolean
+  loadAgentsMd?: boolean
+  envNames?: string[]
+  harness?: WorkspaceHarnessConfig
+}
+
 /** Status of the embedded DeepSeek Harness runtime, surfaced to the UI. */
 export interface HarnessRuntimeStatus {
   installed: boolean
@@ -726,18 +764,53 @@ export interface HarnessRuntimeStatus {
   bridgeVersion?: string
 }
 
+export interface SeatContextFileInfo {
+  label: string
+  path: string
+  bytes: number
+}
+
+/** What a seat actually loads from its own folder at run time — the folder is the source of truth. */
+export interface SeatContextFiles {
+  rootPath: string
+  files: SeatContextFileInfo[]
+  /** True when the assistant's stored prompt is just a copy of AGENTS.md, so it is injected twice. */
+  duplicatedPrompt: boolean
+}
+
+export interface MeetingSeatTurnResult {
+  seat: string
+  ok: boolean
+  error?: string
+}
+
 export interface WorkspaceToolActivity {
   id: string
   tool: string
   label: string
   status: 'running' | 'completed' | 'failed'
   detail?: string
+  /** Full command, code or arguments that this step ran, shown when the step is expanded. */
+  input?: string
+  /** Full output of the step, so the panel can show what happened instead of a 240-char teaser. */
+  output?: string
   /** Wall-clock start time, stamped by the main process when the activity appears. */
   startedAt?: number
   /** Wall-clock finish time, stamped when the activity leaves the running state. */
   endedAt?: number
   /** Files touched by this activity, used by the activity panel timeline. */
   files?: string[]
+  /** Set when this entry is a delegated seat's run instead of this conversation's own step. */
+  seat?: string
+  /** Lets the console jump into the seat's own conversation for this entry. */
+  seatAssistantId?: string
+  seatConversationId?: string
+  /** Marks a console-side snapshot of a seat's progress. The step itself is a real
+   *  tool call on the seat's conversation; counting it again here would log one
+   *  “delegate_assistant” call per seat step instead of one per dispatch. */
+  delegatedStep?: boolean
+  /** The delegated seat's own checklist, rendered under the seat entry. */
+  steps?: AgentPlanStep[]
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
@@ -747,6 +820,10 @@ export interface AgentPlanStep {
   title: string
   status: AgentPlanStepStatus
   detail?: string
+  /** Set on steps the model owns through the todo tool; runtime phases omit it. */
+  managedBy?: 'model'
+  /** Present-continuous label shown while the step is running. */
+  activeForm?: string
 }
 
 export interface AgentExecutionPlan {
@@ -797,6 +874,8 @@ export interface WorkspaceInteractionResponse {
   selectedIds: string[]
   customText?: string
   cancelled: boolean
+  /** Record the answer, then stop the run and wait for the user instead of continuing. */
+  pause?: boolean
   answeredAt: number
 }
 
@@ -854,6 +933,9 @@ export interface WorkspaceAgentRequest {
   assistantTools?: ToolConfig[]
   availableAssistants?: Assistant[]
   delegationContext?: AssistantDelegationContext
+  /** Set on a delegated seat run: who dispatched it, so the run ledger and the
+   *  seat's own conversation can point back at the console that handed out the work. */
+  delegatedFrom?: { assistantId: string; conversationId: string }
   workspace: ConversationWorkspace
   provider: ApiProvider
   messages: ChatMessage[]
@@ -874,6 +956,18 @@ export interface WorkspaceAgentProgress {
   conversationId: string
   activity: WorkspaceToolActivity
   changedFiles?: string[]
+  /** Present when the model rebuilt its todo checklist mid-run. */
+  plan?: AgentExecutionPlan
+}
+
+/** A goal the agent suggests during a run. The user decides whether to start it. */
+export interface WorkspaceGoalProposal {
+  id: string
+  conversationId: string
+  goal: string
+  acceptanceCriteria: string
+  reason?: string
+  proposedAt: number
 }
 
 export interface WorkspaceRunSnapshot {
@@ -1001,6 +1095,8 @@ export interface AppSettings {
   webSearchMode: WebSearchMode
   /** Default global permission mode applied to new agent tasks. */
   agentPermissionMode: AgentPermissionMode
+  /** Execution policy inherited by every seat and newly created workspace. */
+  agentWorkspaceDefaults?: AgentWorkspaceDefaults
   /** When true the permission choice follows the user across sessions. */
   rememberAgentPermission: boolean
   /** Set once the user accepted the full-access warning. */

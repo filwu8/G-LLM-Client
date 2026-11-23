@@ -51,7 +51,7 @@ import {
   inferModelTypeFromMetadata
 } from '../shared/modelCapabilities'
 import { supportsReasoningEffort } from '../shared/featureFlags'
-import { isProviderApiKeyMissing } from '../shared/providers'
+import { isProviderApiKeyMissing, resolveProviderExtraHeaders } from '../shared/providers'
 import { saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
 import {
@@ -393,6 +393,7 @@ function hasSendableImageAttachments(messages: ChatMessage[]): boolean {
 
 function getProviderHeaders(provider: ApiProvider): Record<string, string> {
   return {
+    ...resolveProviderExtraHeaders(provider),
     ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
     'Content-Type': 'application/json'
   }

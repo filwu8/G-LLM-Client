@@ -48,6 +48,7 @@ import type {
   ThemeEntitlementResult,
   ToolConfig,
   WorkspaceAgentProgress,
+  WorkspaceGoalProposal,
   WorkspaceAgentRequest,
   WorkspaceApprovalPrompt
 } from '../shared/types'
@@ -96,6 +97,16 @@ ipcRenderer.on('composer:open-in-main', (_event, target: ComposerSessionTarget) 
 const api = {
   platform: process.platform,
   getState: (): Promise<AppStateSnapshot> => ipcRenderer.invoke('app:get-state'),
+  readMeetingRoom: (workspaceRoot: string): Promise<{ path: string; bytes: number; tailComplete: boolean; skipped: number; scriptPath: string; posts: { floor: number; seat: string; at: string; body: string }[] }> =>
+    ipcRenderer.invoke('meeting:read', { workspaceRoot }),
+  postMeetingMessage: (input: { workspaceRoot: string; seat: string; content: string }): Promise<{ at: string; seat: string; bytes: number; appendBytes: number }> =>
+    ipcRenderer.invoke('meeting:post', input),
+  callMeetingSeat: (input: { request: WorkspaceAgentRequest; seatId: string; instruction: string; roomLimit?: number }): Promise<import('../shared/types').MeetingSeatTurnResult> =>
+    ipcRenderer.invoke('meeting:call-seat', input),
+  describeSeatContext: (input: { workspaceRoot: string; systemPrompt?: string }): Promise<import('../shared/types').SeatContextFiles> =>
+    ipcRenderer.invoke('assistants:seat-context', input),
+  importAssistantsFromDirectory: (input: { directory: string; parentName?: string }): Promise<import('../shared/types').AssistantImportResult | null> =>
+    ipcRenderer.invoke('assistants:import-directory', input),
   getGllmConnectionState: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connection-state'),
   connectGllm: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect'),
   retryGllmConnection: (): Promise<DeepLinkHandoffStatusEvent> => ipcRenderer.invoke('gllm:connect-retry'),
@@ -334,6 +345,11 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, progress: WorkspaceAgentProgress) => listener(progress)
     ipcRenderer.on('workspace-agent:progress', handler)
     return () => ipcRenderer.removeListener('workspace-agent:progress', handler)
+  },
+  onWorkspaceGoalProposal: (listener: (proposal: WorkspaceGoalProposal) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, proposal: WorkspaceGoalProposal) => listener(proposal)
+    ipcRenderer.on('workspace-agent:goal-proposed', handler)
+    return () => ipcRenderer.removeListener('workspace-agent:goal-proposed', handler)
   },
   onWorkspaceApprovalRequested: (listener: (prompt: WorkspaceApprovalPrompt) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, prompt: WorkspaceApprovalPrompt) => listener(prompt)

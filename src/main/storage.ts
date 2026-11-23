@@ -24,11 +24,13 @@ import { inferModelType, normalizeModelCapabilities } from '../shared/modelCapab
 import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID } from '../shared/providers'
 import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../shared/assistantPromptPolicy'
 import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
+import { sanitizeWorkspaceActivity } from '../shared/workspaceActivitySanitize'
 import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import { estimateTokenCount } from '../shared/tokenEstimate'
 import type {
   AgentExecutionPlan,
   AgentPermissionMode,
+  AgentWorkspaceDefaults,
   ApiProvider,
   AppSettings,
   AppTheme,
@@ -358,7 +360,10 @@ function resolveCurrentConversation(conversation: Conversation): Conversation {
 
 export function ensureConversationWorkspace(conversationId: string, projectId = getActiveProjectId()) {
   const conversation = getAllConversations().find(item => item.id === conversationId)
-  if (conversation?.workspace) return conversation.workspace
+  const policy = sanitizeAgentWorkspaceDefaults(getSettings().agentWorkspaceDefaults)
+  // The seat policy is global: the stored conversation keeps its directory but
+  // picks up whatever execution switches were last saved anywhere.
+  if (conversation?.workspace) return { ...conversation.workspace, ...policy }
   return createDefaultConversationWorkspace(conversationId, conversation?.projectId ?? projectId)
 }
 
@@ -366,15 +371,36 @@ function createDefaultConversationWorkspace(conversationId: string, projectId = 
   // New tasks start from the user's configured default mode. When the user
   // disabled cross-session memory the safe default is always "ask".
   const settings = getSettings()
-  const approvalMode: AgentPermissionMode = settings.rememberAgentPermission ? settings.agentPermissionMode : 'ask'
+  const fallbackApproval: AgentPermissionMode = settings.rememberAgentPermission ? settings.agentPermissionMode : 'ask'
+  const policy = sanitizeAgentWorkspaceDefaults(settings.agentWorkspaceDefaults)
+  const approvalMode = policy.approvalMode ?? fallbackApproval
+  const permission = policy.permission ?? 'read-write'
   const project = getProjects().find(item => item.id === projectId)
   if (project?.workspacePath) {
     return { rootPath: project.workspacePath, displayName: project.name, projectId: project.id,
       kind: isPathInside(project.workspacePath, join(activeDataRoot, 'agent-workspaces')) ? 'managed' as const : 'external' as const,
-      permission: 'read-write' as const, approvalMode, nativeExecution: false, computerAccess: false, browserAccess: false,
+      ...policy, permission, approvalMode,
       grantedAt: Date.now(), lastVerifiedAt: Date.now() }
   }
-  return { ...createManagedWorkspace(activeDataRoot, conversationId, storageT('workspace.managedDirectory')), approvalMode }
+  return {
+    ...createManagedWorkspace(activeDataRoot, conversationId, storageT('workspace.managedDirectory')),
+    ...policy, permission, approvalMode
+  }
+}
+
+function sanitizeAgentWorkspaceDefaults(value: unknown): AgentWorkspaceDefaults {
+  if (!value || typeof value !== 'object') return {}
+  const raw = value as Record<string, unknown>
+  const policy: AgentWorkspaceDefaults = {}
+  if (raw.permission === 'read' || raw.permission === 'read-write') policy.permission = raw.permission
+  if (['ask', 'auto', 'full'].includes(raw.approvalMode as string)) policy.approvalMode = raw.approvalMode as AgentPermissionMode
+  if (raw.executionMode === 'sandbox' || raw.executionMode === 'host') policy.executionMode = raw.executionMode
+  for (const key of ['sandboxNetwork', 'nativeExecution', 'computerAccess', 'browserAccess', 'computerWindowAccess', 'browserWindowAccess', 'loadAgentsMd'] as const) {
+    if (typeof raw[key] === 'boolean') policy[key] = raw[key] as boolean
+  }
+  if (Array.isArray(raw.envNames)) policy.envNames = normalizeEnvNames(raw.envNames as string[])
+  if (raw.harness && typeof raw.harness === 'object') policy.harness = raw.harness as AgentWorkspaceDefaults['harness']
+  return policy
 }
 
 function switchDataRoot(targetPath: string, customRoot?: string): void {
@@ -706,6 +732,7 @@ export const defaultSettings: AppSettings = {
   theme: 'auto',
   webSearchMode: 'off',
   agentPermissionMode: 'ask',
+  agentWorkspaceDefaults: {},
   rememberAgentPermission: true,
   fullAccessAcknowledged: false,
   temperature: 1,
@@ -851,6 +878,17 @@ export function deleteProject(projectId: string): void {
   }
 }
 
+function sanitizeProviderExtraHeaders(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const headers: Record<string, string> = {}
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+    const key = name.trim()
+    if (!key || typeof raw !== 'string') continue
+    headers[key] = raw.slice(0, 500)
+  }
+  return Object.keys(headers).length ? headers : undefined
+}
+
 function sanitizeProvider(provider: ApiProvider): ApiProvider {
   const now = Date.now()
   const fallbackModel = provider.defaultModel?.trim() || DEFAULT_PROVIDER.defaultModel
@@ -869,6 +907,7 @@ function sanitizeProvider(provider: ApiProvider): ApiProvider {
     imageGenerationsPath,
     modelsPath,
     apiKey: provider.apiKey.trim(),
+    extraHeaders: sanitizeProviderExtraHeaders(provider.extraHeaders),
     defaultModel: provider.defaultModel.trim() || models[0]?.id || DEFAULT_PROVIDER.defaultModel,
     models,
     modelsUpdatedAt: provider.modelsUpdatedAt,
@@ -1197,26 +1236,14 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     attachments: attachments.length > 0 ? attachments : undefined,
     knowledgeRefs: knowledgeRefs.length > 0 ? knowledgeRefs : undefined,
     webSearch: sanitizeWebSearchActivity(message.webSearch),
-    workspaceActivities: (message.workspaceActivities ?? []).slice(-80).map((activity) => ({
-      id: String(activity.id ?? '').trim() || `activity_${Date.now()}`,
-      tool: String(activity.tool ?? '').trim(),
-      label: String(activity.label ?? '').trim() || '工作区操作',
-      status: activity.status === 'running' || activity.status === 'failed' ? activity.status : 'completed',
-      detail: activity.detail ? String(activity.detail).slice(0, 500) : undefined
-    })),
+    workspaceActivities: (message.workspaceActivities ?? []).slice(-80).map(activity => sanitizeWorkspaceActivity(activity)),
     workspaceChangedFiles: (message.workspaceChangedFiles ?? []).map(String).filter(Boolean).slice(0, 100),
     workspaceArtifactRoot: message.workspaceArtifactRoot?.trim() || undefined,
     agentPlan: sanitizeAgentPlan(message.agentPlan),
     retryAttempts: (message.retryAttempts ?? []).slice(-12).map((attempt) => ({
       attemptedAt: Number.isFinite(attempt.attemptedAt) ? Number(attempt.attemptedAt) : Date.now(),
       error: String(attempt.error ?? '').trim().slice(0, 500) || '工作区任务失败',
-      activities: (attempt.activities ?? []).slice(0, 80).map((activity) => ({
-        id: String(activity.id ?? '').trim() || `activity_${Date.now()}`,
-        tool: String(activity.tool ?? '').trim(),
-        label: String(activity.label ?? '').trim() || '工作区操作',
-        status: activity.status === 'running' || activity.status === 'failed' ? activity.status : 'completed',
-        detail: activity.detail ? String(activity.detail).slice(0, 500) : undefined
-      }))
+      activities: (attempt.activities ?? []).slice(0, 80).map(activity => sanitizeWorkspaceActivity(activity))
     })),
     translation: translation || undefined,
     tokenCount: sanitizeTokenCount(message.tokenCount),
@@ -1242,15 +1269,19 @@ function sanitizeConversation(conversation: Conversation, fallbackProjectId = ge
           permission: conversation.workspace.permission === 'read' ? 'read' as const : 'read-write' as const,
           approvalMode: ['ask', 'auto', 'full'].includes(conversation.workspace.approvalMode ?? '')
             ? conversation.workspace.approvalMode
-            : 'ask' as const,
-          executionMode: conversation.workspace.executionMode === 'host' ? 'host' as const : 'sandbox' as const,
-          sandboxNetwork: conversation.workspace.sandboxNetwork === true,
-          nativeExecution: conversation.workspace.nativeExecution === true,
-          computerAccess: conversation.workspace.computerAccess === true,
-          browserAccess: conversation.workspace.browserAccess === true,
-          computerWindowAccess: conversation.workspace.computerWindowAccess === true,
-          browserWindowAccess: conversation.workspace.browserWindowAccess === true,
-          loadAgentsMd: conversation.workspace.loadAgentsMd !== false,
+            : undefined,
+          executionMode: conversation.workspace.executionMode === 'host'
+            ? 'host' as const
+            : conversation.workspace.executionMode === 'sandbox'
+              ? 'sandbox' as const
+              : undefined,
+          sandboxNetwork: typeof conversation.workspace.sandboxNetwork === 'boolean' ? conversation.workspace.sandboxNetwork : undefined,
+          nativeExecution: typeof conversation.workspace.nativeExecution === 'boolean' ? conversation.workspace.nativeExecution : undefined,
+          computerAccess: typeof conversation.workspace.computerAccess === 'boolean' ? conversation.workspace.computerAccess : undefined,
+          browserAccess: typeof conversation.workspace.browserAccess === 'boolean' ? conversation.workspace.browserAccess : undefined,
+          computerWindowAccess: typeof conversation.workspace.computerWindowAccess === 'boolean' ? conversation.workspace.computerWindowAccess : undefined,
+          browserWindowAccess: typeof conversation.workspace.browserWindowAccess === 'boolean' ? conversation.workspace.browserWindowAccess : undefined,
+          loadAgentsMd: typeof conversation.workspace.loadAgentsMd === 'boolean' ? conversation.workspace.loadAgentsMd : undefined,
           envNames: normalizeEnvNames(conversation.workspace.envNames),
           grantedAt: Number.isFinite(conversation.workspace.grantedAt) ? conversation.workspace.grantedAt : now,
           lastVerifiedAt: Number.isFinite(conversation.workspace.lastVerifiedAt) ? conversation.workspace.lastVerifiedAt : now
@@ -1534,6 +1565,10 @@ function sanitizeAssistant(assistant: Assistant, fallbackProjectId = getActivePr
       .map(String)
       .map((id) => id.trim())
       .filter((id) => id && id !== assistant.id))).slice(0, 50),
+    parentAssistantId: assistant.parentAssistantId?.trim() && assistant.parentAssistantId.trim() !== assistant.id
+      ? assistant.parentAssistantId.trim()
+      : undefined,
+    workspaceRoot: assistant.workspaceRoot?.trim() || undefined,
     createdAt: assistant.createdAt ?? now,
     updatedAt: now
   }
@@ -1558,6 +1593,7 @@ export function getSettings(): AppSettings {
         ? saved.webSearchMode
         : defaultSettings.webSearchMode,
     agentPermissionMode: sanitizeAgentPermissionMode(saved.agentPermissionMode),
+    agentWorkspaceDefaults: sanitizeAgentWorkspaceDefaults(saved.agentWorkspaceDefaults),
     rememberAgentPermission:
       saved.rememberAgentPermission === undefined
         ? defaultSettings.rememberAgentPermission

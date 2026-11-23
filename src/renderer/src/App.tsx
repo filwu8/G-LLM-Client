@@ -15,6 +15,8 @@ import {
   Copy,
   Crown,
   Database,
+  ChevronDown,
+  ChevronRight,
   Download,
   Eye,
   EyeOff,
@@ -25,6 +27,7 @@ import {
   ImagePlus,
   KeyRound,
   Languages,
+  MessageSquare,
   MessageSquarePlus,
   MonitorCog,
   Moon,
@@ -55,6 +58,8 @@ import {
   AtSign,
   Trash2,
   Upload,
+  FolderInput,
+  History,
   Wrench,
   X,
   type LucideIcon
@@ -122,7 +127,6 @@ import { MarkdownMessage } from './MarkdownMessage'
 import { ResponseDuration } from './ResponseDuration'
 import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
 import { GoalChoiceCards } from './GoalChoiceCards'
-import { AgentActivityPanel, type OutlineEntry } from './AgentActivityPanel'
 import { UsageAnalyticsPanel } from './UsageAnalytics'
 import { calculateLocalUsageStats } from './localUsageStats'
 import { LocalTaskPanel } from './LocalTaskPanel'
@@ -134,9 +138,11 @@ import {
 } from './localizedContent'
 import { ModelResponseWait, WorkspaceActivityLog, WorkspaceApprovalDialog, WorkspaceBar, WorkspaceOperationApprovalDialog, WorkspaceResumeNotice } from './WorkspaceBar'
 import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
-import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { DesktopAccessSetupDialog, prefetchWorkspaceAgentSettings, prefetchWorkspaceExecutionCheck, type WorkspaceAgentSettings, type WorkspaceApplyScope } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
 import { WorkspaceFilesPanel } from './WorkspaceFilesPanel'
+import { MeetingRoomDialog } from './MeetingRoom'
+import { SeatDrawer } from './SeatDrawer'
 import { droppedFileInputs } from './droppedFiles'
 import { getModelDisplayLabel, getModelOptions, ModelAccessTierBadge, ModelPickerMenu } from './ModelPicker'
 import { WebSearchModePicker } from './WebSearchModePicker'
@@ -216,10 +222,14 @@ import type {
   WorkspaceAgentRequest,
   ConversationWorkspace,
   AgentPermissionMode,
+  AgentWorkspaceDefaults,
   WorkspaceApprovalPrompt,
   WorkspaceInteractionRequest,
   WorkspaceInteractionResponse,
-  WorkspaceToolActivity
+  WorkspaceToolActivity,
+  AgentExecutionPlan,
+  WorkspaceGoalProposal,
+  MeetingSeatTurnResult
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
 import { estimateTokenCount } from '@shared/tokenEstimate'
@@ -774,7 +784,7 @@ function withPendingChoice(conversation: Conversation): Conversation {
   }
 }
 
-function AssistantAvatar({ assistant, className = '' }: { assistant: Assistant; className?: string }) {
+export function AssistantAvatar({ assistant, className = '' }: { assistant: Assistant; className?: string }) {
   const Icon = iconMap[assistant.icon] ?? Sparkles
   const classes = ['assistant-icon', assistant.color, assistant.avatarDataUrl ? 'custom-avatar' : '', className].filter(Boolean).join(' ')
 
@@ -870,6 +880,8 @@ export default function App() {
   const [dataLocation, setDataLocation] = useState<DataLocationInfo | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [activeAssistantId, setActiveAssistantId] = useState(DEFAULT_ASSISTANTS[0].id)
+  const [collapsedAssistants, setCollapsedAssistants] = useState<Set<string>>(new Set())
+  const [seatDrawer, setSeatDrawer] = useState<Assistant | null>(null)
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({})
   const [composerAttachments, setComposerAttachments] = useState<Record<string, PreparedAttachment[]>>({})
   const [composerQuoteRefs, setComposerQuoteRefs] = useState<Record<string, KnowledgeReference[]>>({})
@@ -889,6 +901,11 @@ export default function App() {
   const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false)
   const [workspaceInteractions, setWorkspaceInteractions] = useState<WorkspaceInteractionRequest[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
+  // Live todo checklist while a run is in flight; the persisted plan lands on the
+  // message only when the run finishes.
+  const [workspacePlanByConversation, setWorkspacePlanByConversation] = useState<Record<string, AgentExecutionPlan>>({})
+  // A goal the agent suggested mid-run; seeds the setup dialog the user confirms.
+  const [goalProposalSeed, setGoalProposalSeed] = useState<{ goal: string; acceptanceCriteria: string } | null>(null)
   const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
@@ -897,15 +914,12 @@ export default function App() {
   const [conversationModelOpen, setConversationModelOpen] = useState(false)
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(true)
+  const [meetingOpen, setMeetingOpen] = useState(false)
   const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [goalModeArmed, setGoalModeArmed] = useState(false)
   const [goalAssessing, setGoalAssessing] = useState(false)
   const goalAssessingRef = useRef(false)
   const goalFlowTokenRef = useRef(0)
-  const [outlineActiveId, setOutlineActiveId] = useState<string | null>(null)
-  // The activity panel starts collapsed: a quiet reading layout by default,
-  // expanded on demand or when the agent genuinely needs the user.
-  const [outlineOpen, setOutlineOpen] = useState(false)
   const [spaceCenterOpen, setSpaceCenterOpen] = useState(false)
   const [agreementOpen, setAgreementOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
@@ -1083,6 +1097,14 @@ export default function App() {
     () => localizeAssistant(activeAssistant),
     [activeAssistant, i18n.resolvedLanguage]
   )
+  // A seat can only answer in the room when it has its own directory; without one the
+  // main process refuses the turn, so it never shows up as a choice.
+  const meetingSeats = useMemo(
+    () => assistants
+      .filter(seat => Boolean(seat.workspaceRoot?.trim()))
+      .map(seat => ({ id: seat.id, name: localizeAssistant(seat).name })),
+    [assistants, i18n.resolvedLanguage]
+  )
   const activeProvider = useMemo(
     () => getProviderById(settings?.activeProviderId ?? DEFAULT_PROVIDER_ID, providers),
     [providers, settings?.activeProviderId]
@@ -1106,7 +1128,27 @@ export default function App() {
     streamingConversationDraftsRef.current
   )
   const webSearchMode: WebSearchMode = settings?.webSearchMode ?? 'off'
-  const currentWorkspace = conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace, agentPermissionMode)
+  const currentWorkspace = useMemo(() => {
+    const base =
+      conversationWorkspace(activeConversation, draftWorkspace) ?? projectWorkspace(activeSpace, agentPermissionMode)
+    const policy = settings?.agentWorkspaceDefaults
+    if (!base || !policy) return base
+    // Seat-level switches are global: a conversation only overrides a field once
+    // that field was configured explicitly for this conversation.
+    const explicit = Object.fromEntries(Object.entries(base).filter(([, value]) => value !== undefined))
+    // The saved policy wins over per-conversation values: one switch flip in any
+    // seat has to reach the other seats and the older conversations too.
+    return {
+      ...explicit,
+      ...policy,
+      rootPath: base.rootPath,
+      displayName: base.displayName,
+      projectId: base.projectId,
+      kind: base.kind,
+      grantedAt: base.grantedAt,
+      lastVerifiedAt: base.lastVerifiedAt
+    } as ConversationWorkspace
+  }, [activeConversation, draftWorkspace, activeSpace, agentPermissionMode, settings?.agentWorkspaceDefaults])
 
   // Fetch the workspace-agent settings before the user opens the dialog, so the
   // first paint there carries real data instead of repainting ~120ms later.
@@ -1124,53 +1166,10 @@ export default function App() {
     }, 800)
     return () => window.clearTimeout(timer)
   }, [currentWorkspaceRoot, currentWorkspaceNative, currentWorkspaceMode, currentWorkspaceNetwork])
-  const outlineEntries = useMemo<OutlineEntry[]>(() => {
-    if (!activeConversation) return []
-    return activeConversation.messages
-      .filter((message) => message.role === 'user' && message.content.trim())
-      .map((message) => ({
-        id: message.id,
-        label: message.content.trim().replace(/\s+/g, ' ').slice(0, 40)
-      }))
-  }, [activeConversation])
-  const outlinePlan = activeConversation?.goalTask?.lastPlan
-  const panelActivities = useMemo<WorkspaceToolActivity[]>(() => {
-    const merged = new Map<string, WorkspaceToolActivity>()
-    for (const message of activeConversation?.messages ?? []) {
-      for (const activity of message.workspaceActivities ?? []) merged.set(activity.id, activity)
-    }
-    for (const activity of workspaceActivities) merged.set(activity.id, activity)
-    return [...merged.values()]
-  }, [activeConversation, workspaceActivities])
-  const panelChangedFiles = useMemo(() => {
-    if (workspaceChangedFiles.length > 0) return workspaceChangedFiles
-    const latest = [...(activeConversation?.messages ?? [])]
-      .reverse()
-      .find((message) => (message.workspaceChangedFiles?.length ?? 0) > 0)
-    return latest?.workspaceChangedFiles ?? []
-  }, [activeConversation, workspaceChangedFiles])
-  const panelGoal = outlinePlan?.goal ?? activeConversation?.goalTask?.goal ?? outlineEntries.at(-1)?.label
   const workspaceApprovalPrompt = currentWorkspace ? workspaceApprovalPrompts.find(prompt => prompt.conversationId === activeConversation?.id) ?? null : null
   const activeInteraction = activeConversation
     ? workspaceInteractions.find((request) => request.conversationId === activeConversation.id) ?? null
     : null
-  const showActivityPanel = Boolean(activeConversation) && outlineOpen
-  // The collapsed handle only exists when there is something to look at, so an
-  // ordinary chat leaves the right edge completely empty.
-  const hasPanelContent = Boolean(activeConversation) && (
-    isStreaming ||
-    outlineOpen ||
-    panelActivities.length > 0 ||
-    panelChangedFiles.length > 0 ||
-    Boolean(outlinePlan) ||
-    Boolean(workspaceApprovalPrompt) ||
-    Boolean(activeInteraction)
-  )
-  // Runs no longer force the panel open: the collapsed handle already reports
-  // progress. Only a request that blocks on the user justifies interrupting.
-  useEffect(() => {
-    if (workspaceApprovalPrompt || activeInteraction) setOutlineOpen(true)
-  }, [workspaceApprovalPrompt?.id, activeInteraction?.id])
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
     [activeConversation, assistantDefaultProvider, providers]
@@ -1249,6 +1248,39 @@ export default function App() {
       return searchable.includes(keyword)
     })
   }, [assistantSearchQuery, visibleAssistants, i18n.resolvedLanguage])
+  const layeredAssistants = useMemo(() => {
+    const known = new Set(assistants.map((item) => item.id))
+    const children = new Map<string, Assistant[]>()
+    for (const item of assistants) {
+      const parentId = item.parentAssistantId
+      if (!parentId || !known.has(parentId)) continue
+      const bucket = children.get(parentId) ?? []
+      bucket.push(item)
+      children.set(parentId, bucket)
+    }
+    const rows: { assistant: Assistant; depth: number; childCount: number }[] = []
+    const placed = new Set<string>()
+    for (const item of filteredAssistants) {
+      if (item.parentAssistantId && known.has(item.parentAssistantId)) continue
+      const visibleChildren = (children.get(item.id) ?? [])
+        .filter((entry) => filteredAssistants.some((candidate) => candidate.id === entry.id))
+      rows.push({ assistant: item, depth: 0, childCount: visibleChildren.length })
+      placed.add(item.id)
+      // Keep the parent's row but hide its seats while the group is collapsed.
+      if (collapsedAssistants.has(item.id)) {
+        for (const child of visibleChildren) placed.add(child.id)
+        continue
+      }
+      for (const child of visibleChildren) {
+        rows.push({ assistant: child, depth: 1, childCount: 0 })
+        placed.add(child.id)
+      }
+    }
+    for (const item of filteredAssistants) {
+      if (!placed.has(item.id)) rows.push({ assistant: item, depth: 0, childCount: 0 })
+    }
+    return rows
+  }, [assistants, filteredAssistants, collapsedAssistants])
 
   useEffect(() => window.gllm.onStorageLocationChanged?.((state, previousRoot) => {
     applyAppState(state)
@@ -1646,6 +1678,17 @@ export default function App() {
           [progress.conversationId]: progress.changedFiles ?? []
         }))
       }
+      if (progress.plan) setWorkspacePlanByConversation((current) => ({ ...current, [progress.conversationId]: progress.plan as AgentExecutionPlan }))
+    }),
+    []
+  )
+
+  useEffect(
+    () => window.gllm.onWorkspaceGoalProposal((proposal: WorkspaceGoalProposal) => {
+      if (proposal.conversationId !== activeConversationIdRef.current) return
+      setGoalProposalSeed({ goal: proposal.goal, acceptanceCriteria: proposal.acceptanceCriteria })
+      setDraft(proposal.goal)
+      setGoalSetupOpen(true)
     }),
     []
   )
@@ -1896,7 +1939,6 @@ export default function App() {
 
   function updateMessageScrollState() {
     setSelectionMenu(null)
-    updateOutlineActive()
     const distanceToBottom = getDistanceToMessageBottom()
     const isAtBottom = distanceToBottom <= 4
     const isNearBottom = distanceToBottom <= bottomFollowThreshold
@@ -1909,26 +1951,6 @@ export default function App() {
 
     setIsNearMessageBottom(isNearBottom)
     setMessageAutoFollow(isNearBottom)
-  }
-
-  function updateOutlineActive() {
-    const list = listRef.current
-    if (!list) return
-    const threshold = list.getBoundingClientRect().top + 96
-    const nodes = list.querySelectorAll<HTMLElement>('[data-message-id]')
-    let active: string | null = null
-    for (const node of nodes) {
-      if (node.getBoundingClientRect().top <= threshold) active = node.dataset.messageId ?? active
-      else break
-    }
-    setOutlineActiveId(active)
-  }
-
-  function jumpToMessage(messageId: string) {
-    const node = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
-    if (!node) return
-    setMessageAutoFollow(false)
-    node.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   function scrollToLatest(
@@ -2203,6 +2225,15 @@ export default function App() {
     }
   }
 
+  function toggleAssistantSeats(assistantId: string) {
+    setCollapsedAssistants((current) => {
+      const next = new Set(current)
+      if (next.has(assistantId)) next.delete(assistantId)
+      else next.add(assistantId)
+      return next
+    })
+  }
+
   function openAssistant(assistant: Assistant) {
     setDraftWorkspace(undefined)
     setActiveAssistantId(assistant.id)
@@ -2215,7 +2246,7 @@ export default function App() {
   function openAssistantContextMenu(event: ReactMouseEvent, assistant: Assistant) {
     event.preventDefault()
     event.stopPropagation()
-    const menuHeight = 126
+    const menuHeight = 168
     setAssistantContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 190),
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
@@ -2668,9 +2699,34 @@ export default function App() {
     })
   }
 
+  /** 叫一个席位去会议室读帖并回帖；主进程跑它自己的对话循环，回帖由主进程落地。 */
+  async function callMeetingSeat(seatId: string): Promise<MeetingSeatTurnResult> {
+    if (!settings || !currentWorkspace) return { seat: seatId, ok: false, error: t('meeting.pickWorkspace') }
+    try {
+      return await window.gllm.callMeetingSeat({
+        request: {
+          conversationId: `${activeConversation?.id ?? 'meeting'}::meeting`,
+          assistant: activeAssistant,
+          assistantSkills: activeAssistantSkills,
+          assistantTools: activeAssistantTools,
+          availableAssistants: assistants,
+          workspace: currentWorkspace,
+          provider: conversationProvider,
+          messages: [],
+          settings,
+          reasoningEffort: activeConversation?.reasoningEffort
+        },
+        seatId,
+        instruction: t('meeting.callSeatsInstruction'),
+        roomLimit: 12
+      })
+    } catch (error) {
+      return { seat: seatId, ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
   function deleteMessage(messageId: string) {
     if (!activeConversation) return
-
     const messages = activeConversation.messages.filter((message) => message.id !== messageId)
     const firstUserMessage = messages.find((message) => message.role === 'user')
     const nextConversation: Conversation = {
@@ -3059,20 +3115,83 @@ export default function App() {
   }
 
   async function saveDesktopWorkspace(workspace: ConversationWorkspace) {
-    if (!activeConversation) { setDraftWorkspace(workspace); return }
+    if (!activeConversation) { setDraftWorkspace(workspace); return undefined }
     const saved = await window.gllm.saveConversation({ ...activeConversation, workspace, updatedAt: Date.now() })
     setConversations(current => [saved, ...current.filter(item => item.id !== saved.id)])
     if (!workspace.browserAccess) await window.gllm.closeAgentBrowser(activeConversation.id)
+    return saved
   }
 
-  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings) {
+  /** Extract the seat-level switches so they can be stored as the global default. */
+  function workspacePolicyOf(source: ConversationWorkspace): AgentWorkspaceDefaults {
+    return {
+      permission: source.permission,
+      approvalMode: source.approvalMode,
+      executionMode: source.executionMode,
+      sandboxNetwork: source.sandboxNetwork,
+      nativeExecution: source.nativeExecution,
+      computerAccess: source.computerAccess,
+      browserAccess: source.browserAccess,
+      computerWindowAccess: source.computerWindowAccess,
+      browserWindowAccess: source.browserWindowAccess,
+      loadAgentsMd: source.loadAgentsMd,
+      envNames: source.envNames,
+      harness: source.harness
+    }
+  }
+
+  /** Persist the switches as the default every seat and new conversation inherits. */
+  async function persistAgentWorkspaceDefaults(workspace: ConversationWorkspace): Promise<boolean> {
+    if (!settings) return false
+    try {
+      await window.gllm.saveSettings({ ...settings, agentWorkspaceDefaults: workspacePolicyOf(workspace) })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function changeConversationWorkspaceApproval(approvalMode: NonNullable<ConversationWorkspace['approvalMode']>, agentSettings?: WorkspaceAgentSettings, scope: WorkspaceApplyScope = 'conversation') {
     if (!currentWorkspace) return
     const workspace = { ...currentWorkspace, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }
+    // Whatever is saved here becomes the policy every other seat and every new
+    // conversation starts from, so the switches are flipped once, not per seat.
+    const inherited = await persistAgentWorkspaceDefaults(workspace)
     if (!activeConversation) {
       setDraftWorkspace(workspace)
+      showToolNotice(t(inherited ? 'workspace.applyScopeDefaults' : 'workspace.applyScopeDraft'))
       return
     }
-    await saveDesktopWorkspace(workspace)
+    if (scope === 'conversation') {
+      const saved = await saveDesktopWorkspace(workspace)
+      if (!saved) {
+        showToolNotice(t('workspace.applyScopeDraft'))
+        return
+      }
+      // Read back what the main process actually persisted: a silent sanitize or
+      // an unsaved patch looks exactly like "the toggle reverted itself" from the UI.
+      if ((saved.workspace?.nativeExecution === true) !== (workspace.nativeExecution === true)
+        || (saved.workspace?.executionMode ?? 'sandbox') !== (workspace.executionMode ?? 'sandbox')) {
+        showToolNotice(t('workspace.applyScopeMismatch'))
+        return
+      }
+      showToolNotice(t('workspace.applyScopeDone', { count: 1, name: workspace.displayName ?? '' }))
+      return
+    }
+    // Fan the saved profile out to sibling conversations so the user does not
+    // have to flip the same switches once per seat.
+    const assistantIds = new Set([activeAssistantId])
+    if (scope === 'children') {
+      for (const id of activeAssistant?.delegateAssistantIds ?? []) assistantIds.add(id)
+    }
+    const targets = conversations.filter(item => item.workspace && assistantIds.has(item.assistantId))
+    for (const target of targets) {
+      await window.gllm.saveConversation({ ...target, workspace: { ...target.workspace!, ...agentSettings, approvalMode, lastVerifiedAt: Date.now() }, updatedAt: Date.now() })
+    }
+    const updated = await window.gllm.saveConversation({ ...activeConversation, workspace, updatedAt: Date.now() })
+    const state = await window.gllm.getState()
+    setConversations(state.conversations)
+    showToolNotice(t('workspace.applyScopeDone', { count: Math.max(1, targets.length), name: updated.workspace?.displayName ?? workspace.displayName }))
   }
 
   /**
@@ -3840,7 +3959,7 @@ export default function App() {
           </label>
 
           <div className="assistant-list">
-            {filteredAssistants.map((assistant) => {
+            {layeredAssistants.map(({ assistant, depth, childCount }) => {
               const active = assistant.id === activeAssistantId
               const displayAssistant = localizeAssistant(assistant)
               const assistantRunStatuses = conversations
@@ -3860,13 +3979,46 @@ export default function App() {
               return (
                 <button
                   key={assistant.id}
-                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}`}
+                  className={`assistant-card ${assistant.color} ${active ? 'active' : ''} ${assistant.pinnedAt ? 'pinned' : ''} ${assistantRunStatus ?? ''}${depth > 0 ? ' assistant-card-child' : ''}`}
                   onClick={() => openAssistant(assistant)}
                   onContextMenu={(event) => openAssistantContextMenu(event, assistant)}
                   title={`${displayAssistant.name}\n${t(`assistantSettings.statuses.${assistant.status ?? 'active'}`)} · ${assistant.configSource?.type ?? (assistant.builtIn ? 'built-in' : 'local')} · v${assistant.configSource?.version ?? '1.0.0'}`}
                   type="button"
                 >
                   <AssistantAvatar assistant={assistant} />
+                  <span
+                    className="assistant-card-history"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('seatDrawer.conversations')}
+                    title={t('seatDrawer.conversations')}
+                    onClick={(event) => { event.stopPropagation(); setSeatDrawer(assistant) }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setSeatDrawer(assistant)
+                    }}
+                  >
+                    <History size={12} />
+                  </span>
+                  {childCount > 0 && <span
+                    className="assistant-card-toggle"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!collapsedAssistants.has(assistant.id)}
+                    aria-label={t('app.toggleAssistantSeats', { count: childCount })}
+                    title={t('app.toggleAssistantSeats', { count: childCount })}
+                    onClick={(event) => { event.stopPropagation(); toggleAssistantSeats(assistant.id) }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      toggleAssistantSeats(assistant.id)
+                    }}
+                  >
+                    {collapsedAssistants.has(assistant.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                  </span>}
                   <span className="assistant-card-copy">
                     <span className="assistant-card-heading">
                       <strong>{displayAssistant.name}</strong>
@@ -3900,6 +4052,9 @@ export default function App() {
           </div>
 
           <div className="rail-actions">
+            <button className={meetingOpen ? 'icon-button active' : 'icon-button'} onClick={() => setMeetingOpen(value => !value)} title={t('meeting.title')} type="button">
+              <MessageSquare size={18} />
+            </button>
             <button className="icon-button" onClick={() => setAssistantCenterOpen(true)} title={t('app.addAssistant')}>
               <Plus size={18} />
             </button>
@@ -3931,6 +4086,10 @@ export default function App() {
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.preventDefault()}
           >
+            <button type="button" onClick={() => { setAssistantContextMenu(null); setSeatDrawer(assistant) }}>
+              <History size={15} />
+              {t('seatDrawer.conversations')}
+            </button>
             <button
               type="button"
               onClick={() => void toggleAssistantPin(assistant)}
@@ -4008,6 +4167,24 @@ export default function App() {
                 <Brain size={16} />
               </button>
             )}
+            <button
+              className="icon-button compact"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const result = await window.gllm.importAssistantsFromDirectory({ directory: '' })
+                    if (!result) return
+                    showToolNotice(t('addAssistant.imported', { orchestrator: result.orchestrator.name, count: result.seats.length }), 8000)
+                  } catch (error) {
+                    showToolNotice(error instanceof Error ? error.message : String(error), 8000)
+                  }
+                })()
+              }}
+              title={t('addAssistant.importDirectory')}
+              type="button"
+            >
+              <FolderInput size={16} />
+            </button>
             <button className="icon-button compact" onClick={() => setAssistantSettingsOpen(true)} title={t('app.assistantSettings')} type="button">
               <Pencil size={16} />
             </button>
@@ -4031,7 +4208,7 @@ export default function App() {
           {filesOpen && <WorkspaceFilesPanel workspace={currentWorkspace} busy={isPickingAttachment || isStreaming}
             refreshKey={`${activeConversation?.updatedAt ?? 0}:${pendingAttachments.length}:${workspaceChangedFiles.length}`}
             onPick={() => void pickComposerAttachments('file')} onAttach={path => void referenceWorkspaceFile(path)} onManage={() => setSpaceCenterOpen(true)} />}
-          <div className={`message-viewport${showActivityPanel ? ' has-activity-panel' : ''}`}>
+          <div className="message-viewport">
           <div className="messages" ref={listRef} onScroll={updateMessageScrollState} onWheel={handleMessageWheel}>
             {isManagedGllmProvider(conversationProvider) && <GllmAccountPanel provider={conversationProvider} onManualConfiguration={() => setSettingsOpen(true)} />}
             {needsApiKey && !isManagedGllmProvider(conversationProvider) && (
@@ -4087,14 +4264,18 @@ export default function App() {
                             startedAt={activeRunStartedAt}
                           />
                         )}
-                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan) && (
+                        {((message.workspaceActivities?.length ?? 0) > 0 || (message.workspaceChangedFiles?.length ?? 0) > 0 || message.agentPlan || (activeConversationId ? workspacePlanByConversation[activeConversationId] : undefined)) && (
                           <WorkspaceActivityLog
                             activities={message.workspaceActivities ?? []}
-                            plan={message.agentPlan}
+                            plan={message.agentPlan ?? (activeConversationId ? workspacePlanByConversation[activeConversationId] : undefined)}
                             changedFiles={message.workspaceChangedFiles}
                             artifactRoot={message.workspaceArtifactRoot}
                             onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
                             onArtifactContextMenu={openWorkspaceArtifactMenu}
+                            onSeatOpen={(assistantId, conversationId) => {
+                              setActiveAssistantId(assistantId)
+                              selectConversation(conversationId)
+                            }}
                           />
                         )}
                         {message.reasoningContent && (
@@ -4331,6 +4512,10 @@ export default function App() {
                           model={conversationProvider.defaultModel}
                           onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
                           onArtifactContextMenu={openWorkspaceArtifactMenu}
+                          onSeatOpen={(assistantId, conversationId) => {
+                            setActiveAssistantId(assistantId)
+                            selectConversation(conversationId)
+                          }}
                           running
                           startedAt={activeRunStartedAt}
                         />
@@ -4344,41 +4529,6 @@ export default function App() {
               </>
             )}
           </div>
-          {showActivityPanel && (
-            <AgentActivityPanel
-              activities={panelActivities}
-              changedFiles={panelChangedFiles}
-              plan={outlinePlan}
-              running={Boolean(isStreaming)}
-              startedAt={activeRunStartedAt}
-              goal={panelGoal}
-              pendingApproval={workspaceApprovalPrompt
-                ? { id: workspaceApprovalPrompt.id, purpose: workspaceApprovalPrompt.purpose, tool: workspaceApprovalPrompt.tool }
-                : null}
-              pendingQuestion={activeInteraction
-                ? { id: activeInteraction.id, title: activeInteraction.title, kind: activeInteraction.kind }
-                : null}
-              entries={outlineEntries}
-              activeId={outlineActiveId}
-              onJump={jumpToMessage}
-              onCollapse={() => setOutlineOpen(false)}
-              onOpenFile={(relativePath) => {
-                if (currentWorkspace) void openWorkspaceArtifact(currentWorkspace.rootPath, relativePath)
-              }}
-            />
-          )}
-          {!outlineOpen && hasPanelContent && (
-            <button
-              type="button"
-              className={`conversation-outline-expand${isStreaming ? ' is-running' : ''}`}
-              title={t('activityPanel.expand')}
-              onClick={() => setOutlineOpen(true)}
-            >
-              <span className="coe-dot" />
-              <span className="coe-label">{t('activityPanel.title')}</span>
-              <span className="coe-chevron" aria-hidden>‹</span>
-            </button>
-          )}
           {selectionMenu && (
             <div
               className="selection-context-menu"
@@ -4507,7 +4657,9 @@ export default function App() {
                 <RefreshCw className="spin" size={14} />
                 <span className="model-wait-shimmer">
                   {currentWorkspace
-                    ? t(workspaceActivities.length > 0 ? 'workspace.operating' : 'workspace.understanding')
+                    ? workspaceActivities.length > 0
+                      ? `#${workspaceActivities.length} ${workspaceActivities.at(-1)?.label ?? ''}${workspaceActivities.at(-1)?.detail ? ` · ${workspaceActivities.at(-1)!.detail!.slice(0, 90)}` : ''}`
+                      : t('workspace.understanding')
                     : t('app.waitingForModel', { model: conversationProvider.defaultModel })}
                 </span>
                 <ResponseDuration running startedAt={activeRunStartedAt} />
@@ -4529,7 +4681,7 @@ export default function App() {
                 workspace={currentWorkspace}
                 conversationId={activeConversationId}
                 onOpen={() => void openWorkspaceDirectory(currentWorkspace.rootPath)}
-                onAgentSettingsChange={(settings) => changeConversationWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings)}
+                onAgentSettingsChange={(settings, scope) => changeConversationWorkspaceApproval(currentWorkspace.approvalMode ?? 'ask', settings, scope)}
                 running={isStreaming}
                 onUnbind={() => void unbindConversationWorkspace()}
               />
@@ -4677,6 +4829,14 @@ export default function App() {
                   onClick={() => setFilesOpen(value => !value)}
                 >
                   <FolderOpen size={16} />
+                </button>
+                <button
+                  className={meetingOpen ? 'active' : ''}
+                  title={t('meeting.title')}
+                  type="button"
+                  onClick={() => setMeetingOpen(value => !value)}
+                >
+                  <MessageSquare size={16} />
                 </button>
                 <button aria-label={t('workspace.desktopAccess')} title={t('workspace.desktopAccess')} disabled={isStreaming} className={currentWorkspace?.computerAccess || currentWorkspace?.browserAccess || currentWorkspace?.computerWindowAccess || currentWorkspace?.browserWindowAccess ? 'active' : ''} type="button" onClick={() => setDesktopSetupOpen(true)}><MonitorCog size={16} /></button>
                 <button
@@ -4863,7 +5023,19 @@ export default function App() {
           onImport={importAssistantTemplate}
         />
       )}
-      {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={saveDesktopWorkspace} />}
+      {meetingOpen && <MeetingRoomDialog open onClose={() => setMeetingOpen(false)} workspace={currentWorkspace}
+        assistantName={activeAssistantDisplay.name} seats={meetingSeats} onCallSeat={callMeetingSeat}
+        refreshKey={`${activeConversation?.updatedAt ?? 0}:${workspaceChangedFiles.length}`} />}
+      <SeatDrawer seat={seatDrawer} conversations={conversations}
+        onClose={() => setSeatDrawer(null)}
+        onOpenConversation={(conversationId, assistantId) => { setActiveAssistantId(assistantId); selectConversation(conversationId); setSeatDrawer(null) }}
+        onEnterSeat={(seat) => { setSeatDrawer(null); openAssistant(seat) }}
+        onClearPrompt={async (seat) => {
+          const saved = await window.gllm.saveAssistant({ ...seat, systemPrompt: '', projectId: seat.projectId ?? activeProjectId })
+          setAssistants((current) => current.map((item) => (item.id === saved.id ? saved : item)))
+          setSeatDrawer(saved)
+        }} />
+      {desktopSetupOpen && <DesktopAccessSetupDialog workspace={currentWorkspace} onClose={() => setDesktopSetupOpen(false)} onSave={(workspace) => saveDesktopWorkspace(workspace).then(() => {})} />}
       {pendingWorkspaceRoot && (
         <WorkspaceApprovalDialog
           rootPath={pendingWorkspaceRoot}
@@ -4897,9 +5069,13 @@ export default function App() {
         <GoalSetupDialog
           currentWorkspace={currentWorkspace}
           defaultWebSearchMode={webSearchMode}
-          initialGoal={draft}
+          initialGoal={goalProposalSeed?.goal ?? draft}
+          initialAcceptanceCriteria={goalProposalSeed?.acceptanceCriteria}
           onChooseDirectory={chooseGoalWorkspaceDirectory}
-          onClose={() => setGoalSetupOpen(false)}
+          onClose={() => {
+            setGoalSetupOpen(false)
+            setGoalProposalSeed(null)
+          }}
           onStart={(value) => void startGoalMode(value)}
         />
       )}
@@ -5786,6 +5962,7 @@ function AssistantSettingsDialog({
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>(assistant.skillIds ?? [])
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>(assistant.toolIds ?? [])
   const [delegateAssistantIds, setDelegateAssistantIds] = useState<string[]>(assistant.delegateAssistantIds ?? [])
+  const [workspaceRoot, setWorkspaceRoot] = useState(assistant.workspaceRoot ?? '')
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -5807,7 +5984,8 @@ function AssistantSettingsDialog({
     configVersion.trim() !== (assistant.configSource?.version ?? '1.0.0') ||
     selectedSkillIds.join('|') !== (assistant.skillIds ?? []).join('|') ||
     selectedToolIds.join('|') !== (assistant.toolIds ?? []).join('|') ||
-    delegateAssistantIds.join('|') !== (assistant.delegateAssistantIds ?? []).join('|')
+    delegateAssistantIds.join('|') !== (assistant.delegateAssistantIds ?? []).join('|') ||
+    workspaceRoot.trim() !== (assistant.workspaceRoot ?? '')
 
   useEffect(() => {
     if (!avatarSourceDataUrl) return
@@ -5887,6 +6065,7 @@ function AssistantSettingsDialog({
         skillIds: selectedSkillIds,
         toolIds: selectedToolIds,
         delegateAssistantIds,
+        workspaceRoot: workspaceRoot.trim() || undefined,
         updatedAt: Date.now()
       })
       setStatus(t('assistantSettings.saved'))
@@ -6018,6 +6197,16 @@ function AssistantSettingsDialog({
             selectedIds={delegateAssistantIds}
             onChange={setDelegateAssistantIds}
           />
+
+          <label>
+            <span>{t('assistantSettings.workspaceRoot')}</span>
+            <input
+              placeholder={t('assistantSettings.workspaceRootPlaceholder')}
+              value={workspaceRoot}
+              onChange={(event) => setWorkspaceRoot(event.target.value)}
+            />
+            <small className="assistant-settings-hint">{t('assistantSettings.workspaceRootHint')}</small>
+          </label>
 
           <label>
             <span>{t('assistantSettings.systemPrompt')}</span>
