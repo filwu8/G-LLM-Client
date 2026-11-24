@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.32](docs/releases/v2.0.32.md)
+Current code version: [V2.0.33](docs/releases/v2.0.33.md)
 
-Current public Microsoft Store version: [V2.0.31](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-13. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
+Current public Microsoft Store version: [V2.0.32](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-20. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
@@ -23,6 +23,15 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.33 File Deletion, Always Allow and Stricter Approval
+
+- The workspace agent can delete a single file by moving it to the system recycle bin, so it can be restored; directories, symbolic links, out-of-scope paths and protected locations such as .env, .git and .ssh are refused.
+- The approval dialog gains an "Always allow" answer that saves a durable rule, so similar operations in the same folder stop asking. Script execution, Git writes and desktop control never offer it, and a hand-written deny outranks any saved grant.
+- Fixes repeated prompting after a refusal: denying one command used to make every later command in the same task ask again, including a read-only ls. Refusals are now keyed by the specific command.
+- Approval is driven by two independent dimensions: the sandbox confinement an operation actually has, and how it is approved. Full access does not mean no sandbox, and an unconfined operation always needs an explicit approval.
+- Tasks delegated to the Harness engine are treated as code execution and now require approval.
+- The agent can no longer read or rewrite the client own approval configuration files.
 
 ## V2.0.32 Agent Permission Modes and Task Reliability
 

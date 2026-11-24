@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-当前代码版本：[V2.0.32](docs/releases/v2.0.32.md)
+当前代码版本：[V2.0.33](docs/releases/v2.0.33.md)
 
-Microsoft Store 当前公开版：[V2.0.31](https://apps.microsoft.com/detail/9MVD547V4ZN9)，发布于 2026-11-13。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
+Microsoft Store 当前公开版：[V2.0.32](https://apps.microsoft.com/detail/9MVD547V4ZN9)，发布于 2026-11-20。最近 GitHub 稳定发布：[V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23)，发布于 2026-10-09。
 
 > V1.1.0 起采用 BUSL-1.1，允许个人和企业免费内部使用；各版本的转换日期以对应发布版本中附带的 `LICENSE` 为准。V1.0.10 及以前版本继续适用其发布标签中的 AGPL-3.0-only。
 
@@ -23,6 +23,15 @@ Microsoft Store 当前公开版：[V2.0.31](https://apps.microsoft.com/detail/9M
 | 暗色主题 | 亮色主题 |
 | --- | --- |
 | ![暗色主题中的 PDF 压缩任务](./docs/images/gllm-dark-file-tools.png) | ![亮色主题中的 PDF 压缩任务](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.33 文件删除、总是允许与审批策略收紧
+
+- 工作区 Agent 新增删除文件能力：删除单个文件时移入系统回收站，可从回收站还原；目录、符号链接、工作区外路径和 .env、.git、.ssh 一类受保护位置一律拒绝。
+- 审批弹窗新增「总是允许」：把这次批准保存成一条持久规则，同一文件夹内同类操作不再逐次询问。脚本执行、Git 写操作和桌面控制不提供该选项；手写的禁止规则优先于任何已保存的授权。
+- 修复拒绝后反复询问：此前拒绝一条命令，同一任务内后续每条命令（包括只读的 ls）都会重新弹窗，现在按具体命令区分。
+- 审批改为两个独立维度：操作实际受到的沙箱约束，以及批准方式。完全访问不等于没有沙箱，未隔离的操作在任何模式下都需要明确批准。
+- 委派给 Harness 引擎的任务按代码执行对待，开始弹窗确认。
+- Agent 不能再读取或改写客户端自己的审批配置文件。
 
 ## V2.0.32 Agent 权限模式与任务可靠性
 
