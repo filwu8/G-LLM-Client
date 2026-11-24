@@ -86,3 +86,9 @@ desktop.ini
 
 # Local performance diagnostics (machine-specific paths)
 .perf/
+
+# Local end-to-end probe: it decrypts the provider credential from this
+# machine's data directory and drives a real model call. Useful to re-run
+# after a Harness runtime upgrade, but it must never be committed or run by
+# anyone whose credential store it does not own.
+.e2e-probe/
