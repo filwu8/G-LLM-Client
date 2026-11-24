@@ -5,21 +5,25 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
 
 import { AgentRunLedger } from './agentRunLedger.ts'
 
-function createLedger(): { directory: string; ledger: AgentRunLedger } {
+function createLedger(t: TestContext): { directory: string; ledger: AgentRunLedger } {
   const directory = mkdtempSync(join(tmpdir(), 'gllm-agent-runs-'))
+  // Without this every suite run leaves a directory behind: several hundred
+  // had accumulated in the OS temp folder before anyone noticed, because a
+  // leaked temp directory is invisible to a passing test.
+  t.after(() => { rmSync(directory, { recursive: true, force: true }) })
   let now = 1_000
   return { directory, ledger: new AgentRunLedger(directory, () => now += 10) }
 }
 
-test('persists a typed agent run without request content or credentials', () => {
-  const { directory, ledger } = createLedger()
+test('persists a typed agent run without request content or credentials', (t) => {
+  const { directory, ledger } = createLedger(t)
   const run = ledger.start({
     kind: 'workspace',
     conversationId: 'conversation-a',
@@ -40,8 +44,8 @@ test('persists a typed agent run without request content or credentials', () => 
   assert.match(events, /REDACTED/)
 })
 
-test('marks non-terminal runs interrupted after restart', () => {
-  const { directory, ledger } = createLedger()
+test('marks non-terminal runs interrupted after restart', (t) => {
+  const { directory, ledger } = createLedger(t)
   const active = ledger.start({
     kind: 'chat',
     conversationId: 'conversation-active',
@@ -64,8 +68,8 @@ test('marks non-terminal runs interrupted after restart', () => {
   assert.equal(restarted.get(completed.id)?.status, 'succeeded')
 })
 
-test('does not reopen a terminal run', () => {
-  const { ledger } = createLedger()
+test('does not reopen a terminal run', (t) => {
+  const { ledger } = createLedger(t)
   const run = ledger.start({
     kind: 'workspace',
     conversationId: 'conversation-a',
@@ -78,8 +82,8 @@ test('does not reopen a terminal run', () => {
   assert.equal(unchanged.eventCount, 2)
 })
 
-test('keeps an older active task while newer finished runs roll out of the log', () => {
-  const { directory, ledger } = createLedger()
+test('keeps an older active task while newer finished runs roll out of the log', (t) => {
+  const { directory, ledger } = createLedger(t)
   const task = { kind: 'workspace' as const, conversationId: 'long-task', providerId: 'provider', modelId: 'model' }
   const active = ledger.start(task)
   for (let index = 0; index < 100; index += 1) {
