@@ -10,6 +10,10 @@ import { createHash, randomUUID } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
 import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceInstructions, loadWorkspaceEnvironment, normalizeEnvNames, redactWorkspaceSecrets, selectWorkspaceEnvironment, needsWorkspaceApproval, approvalSignature, isRejectedOperation, resolveApprovalTarget, workspaceApprovalInstructions, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning, type WorkspaceFailureHint } from './workspaceAgentPolicy'
 import { hasGitWriteGrant, rememberGitWriteGrant } from './workspaceGitApproval'
+import { decidePermission } from './approvalRules'
+import { describeToolPermission, proposeApprovalRule } from './approvalProposal'
+import { evaluateApprovalRules, loadConfiguredApprovalRules, rememberApprovalGrant } from './approvalGrantStore'
+import { boundaryFromTool } from './executionPolicy'
 import { readRepositoryFiles, searchRepository, repositoryText } from './workspaceRepository'
 import { createOutputTokenBudget } from './workspaceTokenBudget'
 import { WorkspaceJobs } from './workspaceJobs'
@@ -149,9 +153,26 @@ export interface WorkspaceToolApprovalRequest {
   workspaceName: string
   canWrite: boolean
   isScript: boolean
+  /**
+   * The rule an "always allow" answer would save, e.g. `git status *`. Absent
+   * when no safe rule exists (desktop control, host execution, scripts, git),
+   * which is what hides the button instead of offering a rule that would be
+   * refused later.
+   */
+  allowAlways?: string
 }
 
-type WorkspaceToolApprovalHandler = (request: WorkspaceToolApprovalRequest, signal?: AbortSignal) => Promise<boolean>
+/**
+ * The user decision, not just a boolean: "always allow" carries the durable
+ * grant that turns one click into a saved rule.
+ */
+export interface WorkspaceToolApprovalOutcome {
+  approved: boolean
+  /** True only when the user chose to save the proposed rule. */
+  remember?: boolean
+}
+
+type WorkspaceToolApprovalHandler = (request: WorkspaceToolApprovalRequest, signal?: AbortSignal) => Promise<WorkspaceToolApprovalOutcome>
 
 /**
  * Asks the user a structured question and resolves with their answer.
@@ -776,7 +797,9 @@ async function executeHarnessDelegation(
     onApproval: async (prompt, approvalSignal) => {
       const handler = context?.onApproval
       if (!handler) return request.workspace.approvalMode === 'full'
-      return await handler({
+      // The Harness engine speaks booleans; a durable grant cannot be
+      // expressed for a delegated task, so "always" is dropped here.
+      const outcome = await handler({
         purpose: prompt.purpose,
         tool: prompt.tool ?? 'harness_tool',
         preview: prompt.preview,
@@ -784,6 +807,7 @@ async function executeHarnessDelegation(
         canWrite: prompt.canWrite,
         isScript: false
       }, approvalSignal)
+      return outcome.approved
     },
     onRuntimeEvent: () => {},
     runId: context?.runId
@@ -1340,6 +1364,11 @@ async function runWorkspaceAgentUnlocked(
   // after a resume or a permission-mode change. Only an explicit new approval
   // releases them.
   const deniedApprovals = new Set(restored?.deniedApprovals ?? [])
+  // Hand-written rules are the only durable *block*, so they are read once per
+  // task. A malformed file throws here instead of degrading to "no rules":
+  // silently dropping a deny would turn it into an automatic approval under
+  // the auto and full modes.
+  const configuredApprovalRules = loadConfiguredApprovalRules()
   let liveApprovalMode: string = request.workspace.approvalMode ?? 'ask'
   let executionPlan = createWorkspacePlan(latestUserRequest)
   const saveCheckpoint = () => {
@@ -2133,6 +2162,49 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         const gitRepo = gitOperation ? String(args.repo ?? '').trim() : ''
         const gitReuseApproval = Boolean(gitOperation) && hasGitWriteGrant(request.conversationId, root, gitOperation, { approvalMode, repo: gitRepo })
         let needsApproval = Boolean(applicationChange) || needsWorkspaceApproval(approvalMode, isScript || isHarnessDelegation, canWrite, isNative, { executionMode: nativeCommand?.executionMode, external: Boolean(extensionTool), desktop: Boolean(capability) })
+        // Durable rules sit between the mode baseline and the rejection ledger:
+        // a saved grant can remove a prompt, but it never revives an operation
+        // the user already refused during this task.
+        const toolPermission = describeToolPermission({
+          tool: call.function.name,
+          args,
+          executedCode: isNative ? nativeCommand?.code : undefined,
+          relativePath: approvalTarget
+        })
+        const operationConfinement = boundaryFromTool({
+          isScript: isScript || isHarnessDelegation,
+          canWrite,
+          isNative,
+          executionMode: nativeCommand?.executionMode,
+          external: Boolean(extensionTool),
+          desktop: Boolean(capability)
+        }).confinement
+        const confinedOperation = operationConfinement !== 'danger-full-access'
+        const approvalProposal = proposeApprovalRule(toolPermission, {
+          tool: call.function.name,
+          capability,
+          confined: confinedOperation,
+          executionMode: nativeCommand?.executionMode
+        })
+        const ruleVerdict = toolPermission ? evaluateApprovalRules({
+          root,
+          request: { action: toolPermission.action, resources: [toolPermission.resource] },
+          configured: configuredApprovalRules
+        }) : undefined
+        const ruleDecision = decidePermission({
+          baselineNeedsApproval: needsApproval,
+          effect: ruleVerdict,
+          confined: confinedOperation
+        })
+        if (ruleDecision.blocked) {
+          // A configured deny is not a prompt: there is nothing to approve, so
+          // say so instead of letting the model retry.
+          const deniedByRule = `${toolPermission?.action ?? ''}:${toolPermission?.resource ?? ''}`
+          throw new Error(isEnglish
+            ? `A rule in approval-rules.json forbids this operation (${deniedByRule}). Do not retry it; finish the task another way or tell the user.`
+            : `该操作已被 approval-rules.json 中的规则禁止（${deniedByRule}）。不要重试，改用其他方式完成任务，或告知用户。`)
+        }
+        needsApproval = ruleDecision.needsApproval
         if (!needsApproval && isRejectedOperation(deniedApprovals, call.function.name, approvalTarget)) {
           // A rejected operation cannot be revived by relaxing the mode.
           needsApproval = true
@@ -2159,7 +2231,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           activity.detail = isEnglish ? 'Waiting for your approval' : '等待你确认是否允许运行'
           onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
           const preview = applicationChange?.preview ?? windowAction?.preview ?? (call.function.name === 'browser_action' ? browserApprovalPreview(request.conversationId, args) : replacementPreview)
-          const approved = await onToolApproval({
+          const approvalOutcome = await onToolApproval({
             capability,
             risk: describeApprovalRisk({
               tool: call.function.name,
@@ -2171,6 +2243,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
               executionMode: request.workspace.executionMode === 'host' ? 'host' : 'sandbox'
             }),
             tool: call.function.name,
+            allowAlways: approvalProposal?.label,
             preview: preview === undefined ? undefined : redactWorkspaceSecrets(preview, environmentValues),
             backgroundTimeoutMs,
             purpose,
@@ -2185,7 +2258,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
             envNames: isComputerCommand ? normalizeEnvNames(args.envNames) : nativeCommand?.envNames
           }, signal)
           ensureWithinExecutionTime()
-          if (!approved) {
+          if (!approvalOutcome.approved) {
             activity.status = 'failed'
             activity.detail = mainT('main.workspace.approvalDeclined', language)
             deniedApprovals.add(operationSignature)
@@ -2195,6 +2268,16 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           }
           if (deniedApprovals.delete(operationSignature)) {
             try { saveCheckpoint() } catch { /* the explicit approval already unblocked the call */ }
+          }
+          // Saved only after an explicit "always allow"; the dialog never sends
+          // this flag on its own, and no proposal means nothing is remembered.
+          if (approvalOutcome.remember && approvalProposal) {
+            try {
+              rememberApprovalGrant(root, approvalProposal.rule)
+            } catch {
+              // A failed write must not fail the operation the user just approved;
+              // the click still applies to this call.
+            }
           }
           activity.detail = isNative ? (request.workspace.executionMode === 'host' ? (isEnglish ? 'Approved; running on the host' : '已获批准，正在本机执行') : (isEnglish ? 'Approved; running in OS sandbox' : '已获批准，正在系统沙箱执行')) : (isEnglish ? 'Approved; running workspace tool' : '已获批准，正在运行工作区工具')
           if (gitOperation) rememberGitWriteGrant(request.conversationId, root, gitOperation, { approvalMode, repo: gitRepo })

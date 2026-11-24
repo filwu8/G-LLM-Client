@@ -17,6 +17,8 @@ resources/harness-runtime/
 .electron-vite/
 .cache/
 .turbo/
+# Transpiled copy of electron.vite.config.ts emitted next to it during builds
+electron.vite.config.*.mjs
 
 # Packaged artifacts
 *.exe

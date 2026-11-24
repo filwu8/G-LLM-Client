@@ -229,12 +229,19 @@ export function evaluatePermissionRules(
     throw new Error('权限判定必须指明至少一个 resource；没有资源就无法判定，也不该默认放行')
   }
   const caseInsensitive = options.caseInsensitive ?? defaultCaseInsensitive()
+  // For command text, `git status *` also covers a bare `git status`. This is
+  // resolved from the action rather than left to the caller because a
+  // proposal and its evaluation must agree: a saved rule written as
+  // `git status *` would otherwise never match the bare form it was offered
+  // for. Paths deliberately keep the strict reading, where `src/*` must not
+  // match `src` itself.
+  const optionalTrailingArguments = options.optionalTrailingArguments ?? COMMAND_ACTIONS.has(action)
   const effects = resources.map((rawResource) => {
     const resource = normalizeForAction(action, rawResource)
     let matched: PermissionEffect | undefined
     for (const rule of rules) {
       if (!matchesPattern(rule.action, action, { caseInsensitive })) continue
-      if (!matchesPattern(rule.resource, resource, { caseInsensitive, optionalTrailingArguments: options.optionalTrailingArguments })) continue
+      if (!matchesPattern(rule.resource, resource, { caseInsensitive, optionalTrailingArguments })) continue
       // Last match wins: keep overwriting instead of breaking on the first hit.
       matched = rule.effect
     }

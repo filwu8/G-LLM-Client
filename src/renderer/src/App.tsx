@@ -4874,8 +4874,8 @@ export default function App() {
       {currentWorkspace && workspaceApprovalPrompt && (
         <WorkspaceOperationApprovalDialog
           prompt={workspaceApprovalPrompt}
-          onRespond={(approved) => {
-            window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved)
+          onRespond={(approved, remember) => {
+            window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved, remember)
             setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.id !== workspaceApprovalPrompt.id))
           }}
         />

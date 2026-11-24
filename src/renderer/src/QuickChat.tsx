@@ -2485,8 +2485,8 @@ export default function QuickChat() {
       {currentWorkspace && workspaceApprovalPrompt && workspaceApprovalPrompt.conversationId === conversation?.id && (
         <WorkspaceOperationApprovalDialog
           prompt={workspaceApprovalPrompt}
-          onRespond={(approved) => {
-            window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved)
+          onRespond={(approved, remember) => {
+            window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved, remember)
             setWorkspaceApprovalPrompt(null)
           }}
         />

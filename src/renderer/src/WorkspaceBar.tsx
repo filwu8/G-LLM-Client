@@ -103,7 +103,7 @@ export function WorkspaceApprovalDialog({ rootPath, currentMode, onSelect, onCan
 
 export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
   prompt: WorkspaceApprovalPrompt
-  onRespond: (approved: boolean) => void
+  onRespond: (approved: boolean, remember?: boolean) => void
 }) {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
@@ -150,8 +150,14 @@ export function WorkspaceOperationApprovalDialog({ prompt, onRespond }: {
             <span>{t('workspace.riskAcknowledge')}</span>
           </label>
         )}
+        {prompt.allowAlways && (
+          <p className="workspace-always-note">{t('workspace.operationAllowAlwaysHint', { rule: prompt.allowAlways })}</p>
+        )}
         <footer>
           <button className="secondary-action" onClick={() => onRespond(false)} type="button">{t('workspace.operationDeny')}</button>
+          {prompt.allowAlways && (
+            <button className="secondary-action" disabled={blockedByRisk} onClick={() => onRespond(true, true)} type="button">{t('workspace.operationAllowAlways')}</button>
+          )}
           <button className="primary-action" disabled={blockedByRisk} onClick={() => onRespond(true)} type="button">{t('workspace.operationAllow')}</button>
         </footer>
       </section>

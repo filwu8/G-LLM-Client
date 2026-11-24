@@ -825,6 +825,11 @@ export interface WorkspaceApprovalRisk {
 }
 
 export interface WorkspaceApprovalPrompt {
+  /**
+   * The rule an "always allow" answer would save, e.g. `git status *`.
+   * Absent when no safe rule exists, which hides the option entirely.
+   */
+  allowAlways?: string
   risk?: WorkspaceApprovalRisk
   tool?: string
   capability?: 'computer' | 'browser'

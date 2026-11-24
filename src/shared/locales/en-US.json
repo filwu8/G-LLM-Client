@@ -763,6 +763,8 @@
     "operationReadAccess": "This operation only needs to read files inside the current workspace.",
     "operationBoundary": "It cannot access the network, run system commands, or leave the workspace.",
     "operationAllow": "Allow",
+    "operationAllowAlways": "Always allow",
+    "operationAllowAlwaysHint": "Choosing \"Always allow\" saves this rule for the current folder, so similar operations stop asking: {rule}",
     "operationDeny": "Cancel",
     "barExpand": "Show workspace settings",
     "barCollapse": "Hide workspace settings",

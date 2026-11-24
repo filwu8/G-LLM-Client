@@ -151,8 +151,8 @@ const api = {
     ipcRenderer.invoke('workspace:open-directory', rootPath),
   removeWorkspaceCheckpoint: (conversationId: string): Promise<void> =>
     ipcRenderer.invoke('workspace:remove-checkpoint', conversationId),
-  respondWorkspaceApproval: (id: string, approved: boolean): void =>
-    ipcRenderer.send('workspace-agent:approval-response', id, approved),
+  respondWorkspaceApproval: (id: string, approved: boolean, remember?: boolean): void =>
+    ipcRenderer.send('workspace-agent:approval-response', id, approved, remember),
   respondWorkspaceInteraction: (response: import('../shared/types').WorkspaceInteractionResponse): void =>
     ipcRenderer.send('workspace-agent:interaction-response', response),
   cancelWorkspaceInteraction: (id: string): void =>

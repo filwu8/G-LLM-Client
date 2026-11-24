@@ -157,6 +157,7 @@ import {
   setSettings
 } from './storage'
 import { configureGitWriteGrantStorage } from './workspaceGitApproval'
+import { configureApprovalGrantStorage } from './approvalGrantStore'
 import {
   getChatTelemetryProperties,
   getErrorCategory,
@@ -225,7 +226,7 @@ function publishDataLocationChange(previousRoot: string): void {
   for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('storage:location-changed', state, previousRoot)
 }
 let agentRunLedger: AgentRunLedger | null = null
-const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>()
+const pendingWorkspaceApprovals = new Map<string, { senderId: number; resolve: (outcome: import('./workspaceAgent').WorkspaceToolApprovalOutcome) => void }>()
 const pendingWorkspaceInteractions = new Map<string, { senderId: number; resolve: (response: WorkspaceInteractionResponse) => void }>()
 
 function workspaceInteractionStore(): WorkspaceInteractionStore {
@@ -1739,6 +1740,7 @@ process.on('unhandledRejection', (reason) => {
 app.whenReady().then(() => {
   // Remember approved git operations per conversation, across restarts.
   configureGitWriteGrantStorage(() => getDataLocationInfo().activePath)
+  configureApprovalGrantStorage(() => getDataLocationInfo().activePath)
   // Expire questions that were left unanswered beyond their TTL before the UI
   // asks for the pending list.
   try {
@@ -2256,10 +2258,13 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('desktop:browser-status', (_event, conversationId: string) => isAgentBrowserOpen(conversationId))
   ipcMain.handle('desktop:show-browser', (_event, conversationId: string) => showAgentBrowser(conversationId))
-  ipcMain.on('workspace-agent:approval-response', (event, id: string, approved: boolean) => {
+  ipcMain.on('workspace-agent:approval-response', (event, id: string, approved: boolean, remember?: boolean) => {
     const pending = pendingWorkspaceApprovals.get(id)
     if (!pending || pending.senderId !== event.sender.id) return
-    pending.resolve(Boolean(approved))
+    // `remember` is only ever set by the dialog's "always allow" answer; a
+    // renderer bug that sends it without that intent still cannot invent a
+    // rule, because the agent only saves a proposal it generated itself.
+    pending.resolve({ approved: Boolean(approved), remember: approved === true && remember === true })
   })
   ipcMain.on('workspace-agent:interaction-response', (event, response: WorkspaceInteractionResponse) => {
     if (!response || typeof response.id !== 'string') return
@@ -2428,14 +2433,16 @@ app.whenReady().then(() => {
               tool: prompt.tool, preview: prompt.preview, workspaceName: request.workspace.displayName,
               canWrite: prompt.canWrite, isScript: false
             }
+            // The Harness engine takes a boolean: a delegated task cannot carry a
+            // durable grant, so "always allow" is not offered on this path.
             return await new Promise<boolean>((resolvePromise) => {
-              const finish = (approved: boolean) => {
+              const finish = (outcome: import('./workspaceAgent').WorkspaceToolApprovalOutcome) => {
                 pendingWorkspaceApprovals.delete(id)
                 approvalSignal.removeEventListener('abort', handleAbort)
-                resolvePromise(approved)
+                resolvePromise(outcome.approved)
               }
-              const handleAbort = () => finish(false)
-              if (approvalSignal.aborted) { finish(false); return }
+              const handleAbort = () => finish({ approved: false })
+              if (approvalSignal.aborted) { finish({ approved: false }); return }
               pendingWorkspaceApprovals.set(id, { senderId: sender.id, resolve: finish })
               approvalSignal.addEventListener('abort', handleAbort, { once: true })
               sender.send('workspace-agent:approval-requested', approvalPrompt)
@@ -2484,7 +2491,7 @@ app.whenReady().then(() => {
           const sender = [event.sender, mainWindow?.webContents, quickWindow?.webContents].find(
             candidate => candidate && !candidate.isDestroyed() && !candidate.isCrashed() && !candidate.isLoadingMainFrame()
           )
-          if (!sender) return false
+          if (!sender) return { approved: false }
           const id = randomUUID()
           const prompt: WorkspaceApprovalPrompt = { id, conversationId: request.conversationId, ...approval }
           runLedger.record(run.id, 'approval_waiting', 'waiting_approval', {
@@ -2492,18 +2499,18 @@ app.whenReady().then(() => {
             canWrite: approval.canWrite,
             isScript: approval.isScript
           })
-          return await new Promise<boolean>((resolvePromise) => {
-            const finish = (approved: boolean) => {
+          return await new Promise<import('./workspaceAgent').WorkspaceToolApprovalOutcome>((resolvePromise) => {
+            const finish = (outcome: import('./workspaceAgent').WorkspaceToolApprovalOutcome) => {
               pendingWorkspaceApprovals.delete(id)
               approvalSignal.removeEventListener('abort', handleAbort)
               sender.removeListener('destroyed', handleAbort)
               sender.removeListener('render-process-gone', handleAbort)
               sender.removeListener('did-start-loading', handleAbort)
-              runLedger.record(run.id, 'approval_resolved', 'running_tool', { approved })
-              resolvePromise(approved)
+              runLedger.record(run.id, 'approval_resolved', 'running_tool', { approved: outcome.approved, remembered: outcome.remember === true })
+              resolvePromise(outcome)
             }
-            const handleAbort = () => finish(false)
-            if (approvalSignal.aborted) { finish(false); return }
+            const handleAbort = () => finish({ approved: false })
+            if (approvalSignal.aborted) { finish({ approved: false }); return }
             pendingWorkspaceApprovals.set(id, { senderId: sender.id, resolve: finish })
             approvalSignal.addEventListener('abort', handleAbort, { once: true })
             sender.once('destroyed', handleAbort)

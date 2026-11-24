@@ -10149,6 +10149,12 @@ img.space-logo {
 .workspace-risk.risk-low > span strong { color: hsl(var(--success)); }
 .workspace-risk-ack { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 11.5px; line-height: 1.45; color: hsl(var(--foreground)); }
 .workspace-risk-ack input { margin: 2px 0 0; }
+/* The durable-rule hint is the only place the dialog shows the literal rule
+   text, so it wraps instead of stretching the footer button row. */
+.workspace-always-note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: hsl(var(--muted-foreground)); overflow-wrap: anywhere; }
+/* With an "always allow" button present there are two secondary buttons; only
+   the first one pulls away from the primary action. */
+.workspace-approval-dialog > footer .secondary-action + .secondary-action { margin-right: 0; }
 .workspace-approval-dialog > footer .primary-action:disabled { opacity: .45; cursor: not-allowed; }
 /* Agent question dialog (structured ask_user interactions) */
 .workspace-approval-dialog > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 4px; }

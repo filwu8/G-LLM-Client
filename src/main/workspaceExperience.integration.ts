@@ -219,7 +219,7 @@ async function main() {
     assert.match(freeform.content, /任务未完成/)
 
     scenario = 'document'; step = 0
-    const document = await runWorkspaceAgent(request('请读取采购合同并生成 Word 审阅稿“review.docx”和验收清单“checklist.docx”'), undefined, async () => true)
+    const document = await runWorkspaceAgent(request('请读取采购合同并生成 Word 审阅稿“review.docx”和验收清单“checklist.docx”'), undefined, async () => ({ approved: true }))
     assert.equal(document.plan.status, 'succeeded', JSON.stringify({ plan: document.plan, activities: document.activities }))
     assert.deepEqual(document.changedFiles.map(file => file.replace(/\\/g, '/')).sort(), ['outputs/checklist.docx', 'outputs/review.docx'])
     assert.equal(step, 6, 'the first artifact and the premature completion claim must not end the task')
@@ -329,14 +329,14 @@ async function main() {
     scenario = 'settings'; step = 0
     let approvals = 0
     const settings = await runWorkspaceAgent(request('修改软件主题为深色'), undefined, async approval => {
-      approvals++; assert.equal(approval.tool, 'update_application_settings'); assert.match(approval.preview!, /主题|theme/); return true
+      approvals++; assert.equal(approval.tool, 'update_application_settings'); assert.match(approval.preview!, /主题|theme/); return { approved: true }
     })
     assert.equal(settings.plan.status, 'succeeded')
     assert.equal(step, 3)
     assert.equal(approvals, 1, 'configuration must require approval even in full mode')
     assert.equal(storage.getSettings().theme, 'dark')
     scenario = 'denied'; step = 0
-    const denied = await runWorkspaceAgent(request('设置软件主题为浅色'), undefined, async () => false)
+    const denied = await runWorkspaceAgent(request('设置软件主题为浅色'), undefined, async () => ({ approved: false }))
     assert.equal(denied.plan.status, 'failed')
     assert.equal(step, 1, 'an explicit denial must not be retried')
     assert.equal(storage.getSettings().theme, 'dark', 'denial must prevent setting changes')

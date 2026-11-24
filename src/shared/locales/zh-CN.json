@@ -763,6 +763,8 @@
     "operationReadAccess": "该操作只需读取当前工作目录内的文件。",
     "operationBoundary": "操作不能联网、执行系统命令或访问工作目录外部。",
     "operationAllow": "允许",
+    "operationAllowAlways": "总是允许",
+    "operationAllowAlwaysHint": "选「总是允许」会把这条规则保存到当前文件夹，以后同类操作不再询问：{rule}",
     "operationDeny": "取消",
     "barExpand": "展开工作区设置",
     "barCollapse": "收起工作区设置",
