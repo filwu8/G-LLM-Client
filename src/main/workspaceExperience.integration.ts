@@ -65,7 +65,27 @@ async function main() {
     let body = ''; for await (const chunk of req) body += chunk
     const request = JSON.parse(body)
     assert.equal(request.stream, true)
-    const checkpointRequest = typeof request.messages.at(-1).content === 'string' && request.messages.at(-1).content.startsWith('[客户端进度检查]')
+    // Client-side notes are appended to the payload, so asserting on the last
+    // message couples these checks to message ordering: one trailing tool result
+    // or assistant acknowledgement and the assertion reads the wrong entry --
+    // or throws on undefined, which is worse. Match by content across the whole
+    // payload instead, and count, so a duplicated injection fails as well.
+    const notes = (pattern: RegExp): string[] => request.messages
+      .map((item: { content?: unknown }) => item.content)
+      .filter((content: unknown): content is string => typeof content === 'string' && pattern.test(content))
+    // Opt-in on GLLM_FIXTURE_PROBE=1. Kept because it is the only way to see the
+    // real payload shape; when a note silently stops being injected, the counts
+    // show it immediately instead of leaving a missing assertion to be guessed.
+    if (process.env.GLLM_FIXTURE_PROBE) {
+      console.error(`[probe] scenario=${scenario} step=${step} total=${request.messages.length}` +
+        ` checkpoint=${notes(/^\[客户端进度检查\]/).length}` +
+        ` checklist=${notes(/缺少 checklist\.docx/).length}` +
+        ` acceptance=${notes(/客户端验收检查/).length}` +
+        ` statusJson=${notes(/没有被识别为有效的 workspaceStatus JSON/).length}` +
+        ` recordPending=${notes(/执行记录尚未确认/).length}` +
+        ` lastRole=${request.messages.at(-1)?.role}`)
+    }
+    const checkpointRequest = notes(/^\[客户端进度检查\]/).length > 0
     if (scenario === 'overflow' && step === 1 && !overflowRejected) {
       overflowRejected = true
       res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -95,7 +115,7 @@ async function main() {
         : step === 4 ? call('create_docx', { output: 'outputs/checklist.docx', title: '验收清单', content: '核对交付数量和日期。' })
         : verdict('审阅稿和验收清单均已生成。', '已交付审阅稿和验收清单。')
       if (step === 1) assert.match(JSON.stringify(request.messages), /30 天/)
-      if (step === 4) assert.match(request.messages.at(-1).content, /缺少 checklist\.docx/)
+      if (step === 4) assert.equal(notes(/缺少 checklist\.docx/).length, 1, 'the missing-checklist note must reach the model exactly once')
     } else if (scenario === 'long') {
       if (checkpointRequest) {
         assert.equal(request.tools, undefined)
@@ -108,7 +128,7 @@ async function main() {
           assert.match(JSON.stringify(request.messages), new RegExp(`已读取 ${step} 段`))
           assert.ok(request.messages.filter((item: { role: string }) => item.role === 'tool').length <= 2)
         }
-        if (step === sections + 1) assert.match(request.messages.at(-1).content, /客户端验收检查/)
+        if (step === sections + 1) assert.equal(notes(/客户端验收检查/).length, 1, 'the acceptance note must reach the model exactly once')
         delta = step < sections ? call('read_file', { path: 'source.txt', offset: step * 256, maxCharacters: 256 })
           : step === sections ? { role: 'assistant', content: '已读取材料。' }
           : verdict(`已读取并汇总全部 ${sections} 段。`, '检查完毕。\n```text\nsection-47\n```')
@@ -173,7 +193,7 @@ async function main() {
     } else if (scenario === 'freeform') {
       // The model explains its work in prose but never returns the required
       // workspaceStatus JSON; the failure must still surface that explanation.
-      if (step > 0) assert.match(request.messages.at(-1).content, /没有被识别为有效的 workspaceStatus JSON/)
+      if (step > 0) assert.equal(notes(/没有被识别为有效的 workspaceStatus JSON/).length, 1, 'the malformed-status note must reach the model exactly once')
       delta = { role: 'assistant', content: '我已核对三个仓库，根仓库的 HEAD 尚未复核完成，需要一次只读检查。' }
     } else if (scenario === 'fallback') {
       delta = step === 0
@@ -182,7 +202,7 @@ async function main() {
     } else if (scenario === 'answer') {
       delta = { role: 'assistant', content: '4' }
     } else if (scenario === 'settings') {
-      if (step === 1) assert.match(request.messages.at(-1).content, /执行记录尚未确认/)
+      if (step === 1) assert.equal(notes(/执行记录尚未确认/).length, 1, 'the unconfirmed-record note must reach the model exactly once')
       delta = step === 0 ? verdict('已保存设置。', '已完成。')
         : step === 1 ? call('update_application_settings', { settings: { theme: 'dark' } })
         : verdict('设置工具确认主题为深色。', '软件主题已保存为深色。')
@@ -201,8 +221,13 @@ async function main() {
   const server = createServer((req, res) => {
     void handleRequest(req, res).catch((error) => {
       fixtureFailures.push(error)
-      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: 'fixture assertion failed' } }))
+      // 400, not 500: retryableModelStatuses only replays 429/500/502/503/504,
+      // so a 500 here sent the client through the full in-place ladder and then
+      // four agent-level backoffs -- one broken expectation cost ~3 minutes and
+      // buried the real assertion under retry noise. 400 ends the run at once;
+      // fixtureFailures still carries the actual assertion.
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: { code: 'fixture_assertion_failed', message: 'fixture assertion failed' } }))
     })
   })
   await new Promise<void>(fulfil => server.listen(0, '127.0.0.1', fulfil))
