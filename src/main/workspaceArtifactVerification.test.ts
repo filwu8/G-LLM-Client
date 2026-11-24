@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -24,8 +24,9 @@ test('distinguishes a requested table from a request to remove tables', () => {
   assert.equal(requestsNativeWordTable('Summarize the table without creating a document'), false)
 })
 
-test('requires a real editable Word table when the request asks for one', async () => {
+test('requires a real editable Word table when the request asks for one', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'gllm-artifact-verification-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
   const tableDocument = await createDocxDocument('报价', '| 项目 | 金额 |\n| --- | --- |\n| 设计 | 12000 |', 'G-LLM')
   writeFileSync(join(root, '报价.docx'), tableDocument.buffer)
 
@@ -34,8 +35,9 @@ test('requires a real editable Word table when the request asks for one', async 
   assert.equal(result.docxTables, 1)
 })
 
-test('rejects pipe-delimited text disguised as a requested Word table', async () => {
+test('rejects pipe-delimited text disguised as a requested Word table', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'gllm-artifact-verification-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
   const plainDocument = await createDocxDocument('报价', '项目 | 金额\n设计 | 12000', 'G-LLM')
   writeFileSync(join(root, '报价.docx'), plainDocument.buffer)
 
