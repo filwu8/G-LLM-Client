@@ -1470,6 +1470,7 @@
         "replace_text": "Edit file",
         "create_directory": "Create folder",
         "move_file": "Move file",
+        "delete_file": "Delete file",
         "search_files": "Search files",
         "compress_image": "Compress image",
         "compress_pdf": "Compress PDF",

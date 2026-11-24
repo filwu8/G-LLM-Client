@@ -1470,6 +1470,7 @@
         "replace_text": "修改文件",
         "create_directory": "创建目录",
         "move_file": "移动文件",
+        "delete_file": "删除文件",
         "search_files": "搜索文件",
         "compress_image": "压缩图片",
         "compress_pdf": "压缩 PDF",

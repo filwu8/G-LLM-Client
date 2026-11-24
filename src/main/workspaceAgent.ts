@@ -32,8 +32,9 @@ import { browserApprovalPreview, runBrowserAction } from './agentBrowser'
 import { WindowControlSession } from './windowControl'
 import { isWindowControlTool } from './windowControlPolicy'
 import { createWorkspaceEnvTemplate, inspectWorkspaceEnvFile, isPrivateEnvFile, resolveWorkspaceEnvFile } from './workspaceEnvFiles'
+import { resolveDeletableWorkspaceFile } from './workspaceFileDeletion'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import mammoth from 'mammoth'
 
 import type {
@@ -199,6 +200,7 @@ const toolDefinitions: WorkspaceToolDefinition[] = [
   { type: 'function', function: { name: 'replace_text', description: '精确替换文本文件中的一段内容；适合修改代码并避免重写整文件', parameters: { type: 'object', required: ['path', 'oldText', 'newText'], properties: { path: { type: 'string' }, oldText: { type: 'string' }, newText: { type: 'string' }, replaceAll: { type: 'boolean' } } } } },
   { type: 'function', function: { name: 'create_directory', description: '在工作区内创建目录', parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string' } } } } },
   { type: 'function', function: { name: 'move_file', description: '移动或重命名工作区内文件，不覆盖已有目标', parameters: { type: 'object', required: ['from', 'to'], properties: { from: { type: 'string' }, to: { type: 'string' } } } } },
+  { type: 'function', function: { name: 'delete_file', description: '删除工作区内的单个文件，移入操作系统回收站（用户可从回收站还原）。只接受工作区相对路径；拒绝目录、符号链接、凭据文件（.env 等）和 .git 元数据。delete_file 只用于清理你本次自己创建的临时文件；用户已有的文件必须先取得用户明确同意，不要推测“应该不需要了”就删除。', parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string', description: '要删除的工作区相对路径' } } } } },
   { type: 'function', function: { name: 'search_files', description: '按文件名和可选文本内容搜索工作区', parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, path: { type: 'string' }, includeContent: { type: 'boolean' } } } } },
   { type: 'function', function: { name: 'compress_image', description: '把工作区内图片压缩到指定字节数，输出为 JPEG', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' } } } } },
   { type: 'function', function: { name: 'compress_pdf', description: '在不超过目标大小的前提下搜索分辨率和 JPEG 质量，选择画质最高的 PDF；会丢失文本搜索、表单、链接和签名。minimumBytes 只是接近上限的画质偏好，绝不能通过填充无意义字节满足。', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' }, minimumBytes: { type: 'number', description: '可选的期望最小大小，仅用于从真实压缩候选中择优' } } } } },
@@ -1021,6 +1023,21 @@ async function executeTool(
     await rename(from, to)
     return { output: `已移动 ${relative(root, from)} → ${relative(root, to)}`, changedFile: relative(root, to) }
   }
+  if (name === 'delete_file') {
+    requireWrite()
+    const target = await resolveDeletableWorkspaceFile(root, args.path)
+    // Move to the OS recycle bin rather than unlinking, so the approval prompt
+    // can say "reversible" truthfully and a wrong deletion is recoverable.
+    await shell.trashItem(target.absolutePath)
+    const stillThere = await lstat(target.absolutePath).then(() => true, () => false)
+    if (stillThere) throw new Error('删除后文件仍然存在，可能被其他进程占用')
+    return {
+      output: `已将 ${target.relativePath}（${target.size} 字节）移入回收站，可从回收站还原。`,
+      // A deleted file must leave the deliverable set: if an earlier call
+      // "generated" it, keeping it listed would advertise a file that is gone.
+      supersededFiles: [target.relativePath]
+    }
+  }
   if (name === 'search_files') {
     const start = await resolveExisting(root, args.path)
     const query = String(args.query ?? '').toLocaleLowerCase()
@@ -1139,7 +1156,7 @@ function activityLabel(tool: string, request: WorkspaceAgentRequest): string {
   const knownTools = new Set([
     'start_background', 'job_output', 'job_list', 'job_stop', 'preview_text_replacements', 'commit_text_replacements',
     'list_directory', 'inspect_file', 'git_read', 'git_write', 'read_file', 'read_files', 'search_text', 'read_tool_output', 'read_document', 'create_docx', 'create_pdf', 'set_docx_header_image', 'write_file', 'replace_text',
-    'create_directory', 'move_file', 'search_files', 'compress_image', 'compress_pdf', 'run_javascript', 'generate_image', 'run_project_check', 'delegate_to_harness'
+    'create_directory', 'move_file', 'delete_file', 'search_files', 'compress_image', 'compress_pdf', 'run_javascript', 'generate_image', 'run_project_check', 'delegate_to_harness'
   ])
   return knownTools.has(tool) ? mainT(`main.workspace.tools.${tool}`, request.settings.language) : tool
 }
@@ -1195,6 +1212,13 @@ function describeApprovalRisk(options: {
     return { level: 'high', reversible: true, impact: '修改客户端配置，影响后续所有会话', requiresAcknowledgement: true }
   }
   if (canWrite) {
+    // Deletion is flagged apart from an ordinary write: it removes a file the
+    // user may still want, and unlike an overwrite there is no previous content
+    // left in the workspace to look at. It stays reversible because the file
+    // goes to the OS recycle bin, so no extra acknowledgement checkbox is asked.
+    if (tool === 'delete_file') {
+      return { level: 'high', reversible: true, impact: target ? `删除 ${target}（移入系统回收站，可从回收站还原）` : '删除工作区文件（移入系统回收站）' }
+    }
     return { level: 'medium', reversible: true, impact: target ? `写入 ${target}` : '修改工作区文件' }
   }
   return { level: 'low', reversible: true, impact: '只读访问' }
@@ -2073,7 +2097,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         if (nativeCommand) selectWorkspaceEnvironment(environmentValues, nativeCommand.envNames)
         const extensionTool = getExtensionTool(request, call.function.name)
         const applicationChange = isApplicationChange(call.function.name) ? prepareApplicationChange(request, call.function.name, args) : undefined
-        const writeTools = new Set(['create_docx', 'create_pdf', 'set_docx_header_image', 'write_file', 'replace_text', 'commit_text_replacements', 'create_directory', 'move_file', 'compress_image', 'compress_pdf', 'generate_image', 'git_write'])
+        const writeTools = new Set(['create_docx', 'create_pdf', 'set_docx_header_image', 'write_file', 'replace_text', 'commit_text_replacements', 'create_directory', 'move_file', 'delete_file', 'compress_image', 'compress_pdf', 'generate_image', 'git_write'])
         const canWrite = Boolean(applicationChange) || Boolean(capability) || Boolean(extensionTool) || (
           request.workspace.permission === 'read-write' && (
             writeTools.has(call.function.name) ||
