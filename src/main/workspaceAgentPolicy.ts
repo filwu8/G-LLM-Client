@@ -4,6 +4,7 @@
  * Change Date: 2030-08-01
  */
 
+import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
 import { open, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
@@ -106,6 +107,86 @@ export function approvalSignature(tool: string, target: string): string {
 export function isRejectedOperation(denied: ReadonlySet<string>, tool: string, target: string): boolean {
   return denied.has(approvalSignature(tool, target))
 }
+
+/**
+ * Reduce shell command text to a stable class the user would recognise.
+ *
+ * The rejection ledger answers one question: "is this the same operation the
+ * user just refused?" For a shell command the honest answer is the command, not
+ * the whole shell. Identifying it by tool name alone collapsed every command
+ * into one identity, so a single rejection forced an approval prompt on every
+ * later command in the task -- `ls` included. That was a bug, not a safety net.
+ *
+ * The program plus the first non-flag token is coarse enough that padding with
+ * arguments cannot dodge a rejection, and fine enough that unrelated commands
+ * stay unrelated. Over-blocking here only costs another prompt; under-blocking
+ * would run something silently, so every ambiguity resolves the coarse way.
+ */
+export function commandIdentity(command: unknown): string {
+  const normalized = String(command ?? '').trim().replace(/\s+/g, ' ')
+  if (!normalized) return ''
+  const [program, ...rest] = normalized.split(' ')
+  // The first token that is not a flag names the subcommand. Skipping flags
+  // instead of stopping at them is deliberate: it keeps `rm x` and `rm -rf x`
+  // in the same class, because a rejected `rm` must keep covering `rm` however
+  // the next attempt pads its flags. A command with no subcommand at all
+  // (`ls -la`, `git --version`) is identified by the program alone.
+  const subcommand = rest.find((token) => !token.startsWith('-'))
+  return subcommand ? `${program} ${subcommand}` : program
+}
+
+/**
+ * Identity of a script operation.
+ *
+ * A script is identified by its own text, not by the tool that ran it, for the
+ * same reason a file write is identified by its path: rejecting one script must
+ * not silently disable that tool for the rest of the task. Hashing keeps the
+ * checkpoint small and keeps model-authored code out of the checkpoint file.
+ */
+export function scriptIdentity(code: unknown): string {
+  const normalized = String(code ?? '').replace(/\r\n/g, '\n').trim()
+  if (!normalized) return ''
+  return `script:${createHash('sha256').update(normalized).digest('hex').slice(0, 16)}`
+}
+
+/**
+ * Identity of the operation being approved or rejected.
+ *
+ * Every branch has to return something meaningful. The previous implementation
+ * read `args.path ?? args.output ?? args.to` for every tool, which is empty for
+ * every command-bearing tool because they take `code`. So `run_shell` resolved
+ * to the constant `run_shell:`, the ledger could no longer tell one command
+ * from another, and a single rejection gated that whole tool for the task.
+ *
+ * `executedCode` carries the text that will actually run when it differs from
+ * `args.code`: a project check is planned into a fixed command, and the plan is
+ * what the user is really approving.
+ */
+export function resolveApprovalTarget(
+  tool: string,
+  args: Record<string, unknown>,
+  executedCode?: string
+): string {
+  const name = String(tool ?? '').trim()
+  const values = args ?? {}
+  if (name === 'set_docx_header_image') return String(values.document ?? '').trim()
+  if (name === 'git_write') {
+    // The repository and the path filter are both part of the identity so an
+    // approval for one repository never covers another.
+    return `${String(values.repo ?? '').trim()}│${String(values.path ?? '').trim()}`
+  }
+  if (name === 'run_project_check') return `check:${String(values.check ?? '').trim()}`
+  if (name === 'delegate_to_harness') return String(values.task ?? '').trim().slice(0, 120)
+  if (name === 'browser_action') return String(values.url ?? values.action ?? '').trim()
+
+  const code = String(executedCode ?? values.code ?? '')
+  if (name === 'run_shell' || name === 'run_computer_command') return commandIdentity(code)
+  if (name === 'run_javascript' || name === 'run_python') return scriptIdentity(code)
+  if (name === 'start_background') return values.language === 'python' ? scriptIdentity(code) : commandIdentity(code)
+
+  return String(values.path ?? values.output ?? values.to ?? values.file ?? '').trim()
+}
+
 
 /**
  * Whether a tool call needs a per-call decision from the user.

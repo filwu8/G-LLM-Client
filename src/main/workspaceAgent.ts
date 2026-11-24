@@ -8,7 +8,7 @@ import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'nod
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
-import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceInstructions, loadWorkspaceEnvironment, normalizeEnvNames, redactWorkspaceSecrets, selectWorkspaceEnvironment, needsWorkspaceApproval, approvalSignature, isRejectedOperation, workspaceApprovalInstructions, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning, type WorkspaceFailureHint } from './workspaceAgentPolicy'
+import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceInstructions, loadWorkspaceEnvironment, normalizeEnvNames, redactWorkspaceSecrets, selectWorkspaceEnvironment, needsWorkspaceApproval, approvalSignature, isRejectedOperation, resolveApprovalTarget, workspaceApprovalInstructions, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning, type WorkspaceFailureHint } from './workspaceAgentPolicy'
 import { hasGitWriteGrant, rememberGitWriteGrant } from './workspaceGitApproval'
 import { readRepositoryFiles, searchRepository, repositoryText } from './workspaceRepository'
 import { createOutputTokenBudget } from './workspaceTokenBudget'
@@ -2118,14 +2118,14 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           })
         }
         const approvalMode = liveApprovalMode
-        const approvalTarget = String(
-          call.function.name === 'set_docx_header_image'
-            ? args.document
-            : call.function.name === 'git_write'
-              // Include the repo so approvals/rejections are scoped per repository.
-              ? `${String(args.repo ?? '').trim()}│${String(args.path ?? '').trim()}`
-              : args.path ?? args.output ?? args.to ?? ''
-        ).trim()
+        // Every tool must resolve to a meaningful operation identity. Reading
+        // `args.path` for a command-bearing tool yielded an empty string, which
+        // collapsed every shell command into one ledger entry.
+        const approvalTarget = resolveApprovalTarget(
+          call.function.name,
+          args,
+          isNative ? nativeCommand?.code : undefined
+        )
         const operationSignature = approvalSignature(call.function.name, approvalTarget)
         // Git approvals are remembered per conversation, per operation kind, so
         // the same fetch/checkout is not asked again on the next turn or resume.
