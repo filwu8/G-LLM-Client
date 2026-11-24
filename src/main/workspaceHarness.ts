@@ -6,8 +6,8 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { statSync } from 'node:fs'
-import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { join, resolve } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
 
 /**
  * DeepSeek Harness integration.
@@ -39,6 +39,12 @@ export interface HarnessInitOptions {
   dshHome: string
   profile?: string
   approvalRequests?: boolean
+  /**
+   * Confinement the runtime is pinned to. Sent explicitly because the bridge
+   * writes a patch that overrides whatever the profile ships with; leaving it
+   * to the profile means inheriting `danger-full-access`.
+   */
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access'
   maxTokens?: number
 }
 
@@ -86,6 +92,8 @@ interface HarnessEnvironment {
   isPackaged: boolean
   appPath: string
   resourcesPath: string
+  /** Per-user application data directory; keeps Harness state out of workspaces. */
+  userDataPath?: string
 }
 let environment: HarnessEnvironment = {
   isPackaged: false,
@@ -94,6 +102,33 @@ let environment: HarnessEnvironment = {
 }
 export function configureHarnessEnvironment(next: Partial<HarnessEnvironment>): void {
   environment = { ...environment, ...next }
+}
+
+/** Directory that holds per-workspace Harness home folders. */
+function harnessHomeRoot(): string {
+  const configured = environment.userDataPath?.trim()
+  if (configured) return configured
+  // Plain-Node callers (tests, probe scripts) have no Electron userData; use a
+  // stable per-user location rather than anything inside the workspace.
+  const base = process.env.LOCALAPPDATA || process.env.XDG_DATA_HOME || join(process.env.HOME || process.cwd(), '.local', 'share')
+  return join(base, 'g-llm')
+}
+
+/**
+ * Per-workspace Harness home.
+ *
+ * Deliberately outside the workspace. dsh reads `$DSH_HOME/cordis.patch.yml` as
+ * a user preference layer before applying the profile, so a home directory
+ * inside the project would let repository contents rewrite the sandbox policy
+ * that is supposed to govern the run. Keying by workspace keeps each project's
+ * session history separate.
+ */
+export function harnessHomeFor(rootPath: string): string {
+  const absolute = resolve(rootPath)
+  // Windows paths are case-insensitive; hashing the raw form would give two
+  // homes for one project depending on how it was entered.
+  const key = createHash('sha256').update(process.platform === 'win32' ? absolute.toLowerCase() : absolute).digest('hex').slice(0, 16)
+  return join(harnessHomeRoot(), 'harness-home', key).replace(/\\/g, '/')
 }
 
 function dirExists(p: string): boolean {

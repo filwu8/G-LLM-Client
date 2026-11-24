@@ -684,6 +684,13 @@ export interface WorkspaceHarnessConfig {
   model?: string
   /** Named Harness profile (default sdk-minimal). */
   profile?: string
+  /**
+   * Confinement the delegated engine runs under. Defaults to
+   * `workspace-write`; the client pins this instead of inheriting the profile's
+   * own default, because the shipped `sdk-minimal` template sets
+   * `danger-full-access`.
+   */
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access'
   /** Optional absolute path to an externally prepared runtime directory. */
   runtimePath?: string
 }

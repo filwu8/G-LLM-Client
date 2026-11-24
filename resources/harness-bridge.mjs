@@ -11,7 +11,7 @@
  * the large dsh dependency tree into the app bundle.
  *
  * Host -> bridge (one JSON object per line):
- *   { id, method: 'init', params: { provider, model, apiKey, baseUrl?, dshHome, cwd, approvalRequests, maxTokens? } }
+ *   { id, method: 'init', params: { provider, model, apiKey, baseUrl?, dshHome, cwd, approvalRequests, sandboxMode?, maxTokens? } }
  *   { id, method: 'run', params: { prompt, sessionId? } }
  *   { id, method: 'approval', params: { callId, outcome } }
  *   { id, method: 'userQuestion', params: { requestId, answers?, cancelled? } }
@@ -96,6 +96,35 @@ function redactForHost(obj) {
   return clone
 }
 
+/**
+ * Environment variables the runtime legitimately needs.
+ *
+ * The previous code forwarded the whole host environment. That handed the
+ * delegated engine every credential the user's shell happened to hold —
+ * cloud tokens, CI secrets, unrelated API keys — and the engine runs model
+ * written shell commands. Forward configuration, never ambient credentials.
+ */
+const ENV_ALLOWLIST = new Set([
+  // Process bootstrap: without these the child cannot resolve its own runtime.
+  'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SystemDrive', 'windir', 'WINDIR', 'COMSPEC',
+  // Locations dsh expects to exist for temp files and its own home.
+  'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA',
+  // Locale only affects how dates and numbers reach the model.
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
+  // Network routing and trust roots. These are configuration, not credentials;
+  // a sandboxed run that loses its proxy cannot reach the model at all.
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+  'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS'
+])
+
+function allowedChildEnv() {
+  const env = {}
+  for (const name of Object.keys(process.env)) {
+    if (ENV_ALLOWLIST.has(name) && process.env[name] !== undefined) env[name] = process.env[name]
+  }
+  return env
+}
+
 // Known provider -> the env var its native/pi-ai adapter reads for the key.
 // The sdk-minimal profile only ships the DeepSeek adapter; every other route
 // is served by the generic pi-ai adapter through a generated patch below.
@@ -159,6 +188,48 @@ async function writeProviderPatch(dshHome, route, { apiKeyEnv, baseUrl, model })
   return file
 }
 
+// Confinement the runtime is allowed to give itself when a caller says nothing.
+// dsh's own fail-safe is `read-only`; the shipped `sdk-minimal` profile inverts
+// that to `danger-full-access`, so a run that does not pin a mode inherits an
+// unconfined shell. Pinning here is what keeps the profile's default from
+// deciding our security posture.
+const DEFAULT_SANDBOX_MODE = 'workspace-write'
+const SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access']
+
+/**
+ * Pin the file sandbox policy and mount an approval seam.
+ *
+ * Two separate problems, one patch:
+ *  1. `sandbox-policy.mode` is overwritten from the profile's
+ *     `danger-full-access` to a confined mode, so file writes stay inside the
+ *     workspace snapshot.
+ *  2. `dsh-user-approval` is mounted because `sdk-minimal` ships without it.
+ *     Without the seam, `ctx.get("approval")` is undefined and any future
+ *     escalation request would have nowhere to ask, so an enforcement point
+ *     would silently degrade into "no decision needed".
+ *
+ * `policy: ask` is the only safe value: `never` resolves every request to
+ * `rejected`, which would break sandboxed runs instead of gating them.
+ */
+async function writePolicyPatch(dshHome, sandboxMode) {
+  const home = resolvePath(dshHome || '.')
+  await mkdir(home, { recursive: true })
+  const file = resolvePath(home, 'gllm-sandbox.patch.yml')
+  const mode = SANDBOX_MODES.includes(sandboxMode) ? sandboxMode : DEFAULT_SANDBOX_MODE
+  const patch =
+    '- id: sandbox-policy\n' +
+    "  name: '@deepseek-ai/dsh-sandbox-policy'\n" +
+    '  config:\n' +
+    `    mode: ${mode}\n` +
+    '- insert:\n' +
+    '    - id: user-approval\n' +
+    "      name: '@deepseek-ai/dsh-user-approval'\n" +
+    '      config:\n' +
+    '        policy: ask\n'
+  await writeFile(file, patch, 'utf8')
+  return file
+}
+
 async function init(params) {
   if (initialized) return { alreadyInitialized: true }
   await loadSdk()
@@ -171,14 +242,20 @@ async function init(params) {
   const profile = String(params.profile || 'sdk-minimal')
 
   // Credentials are owned by the host and passed only through this child env.
-  const childEnv = { ...process.env }
+  // The allowlist keeps every other ambient secret out of a process that runs
+  // model-written shell commands.
+  const childEnv = allowedChildEnv()
   // Never let a host-side key leak to the runtime under a different name.
   childEnv.DSH_BRIDGE_RUNTIME = runtimeDir
 
   let route = provider
-  let patches = []
+  const patches = [await writePolicyPatch(dshHome, params.sandboxMode)]
   if (isNativeDeepSeekRoute(provider, baseUrl)) {
-    if (apiKey) childEnv.DEEPSEEK_API_KEY = apiKey
+    // A caller-supplied key wins; otherwise fall back to the single variable
+    // that names this route, so a key the user exported is not silently lost
+    // when the allowlist drops everything else.
+    const key = apiKey || String(process.env.DEEPSEEK_API_KEY || '')
+    if (key) childEnv.DEEPSEEK_API_KEY = key
     if (baseUrl) childEnv.DEEPSEEK_BASE_URL = baseUrl
   } else {
     if (!model) throw new Error('Harness 需要指定模型；请为该 provider 配置默认模型')
@@ -187,10 +264,12 @@ async function init(params) {
     // serves, including hosted aggregators and self-hosted endpoints.
     route = safeRouteName(provider)
     const keyEnv = PROVIDER_KEY_ENV[provider.toLowerCase()] || 'GLLM_PROVIDER_API_KEY'
-    if (apiKey) childEnv[keyEnv] = apiKey
+    const key = apiKey || String(process.env[keyEnv] || '')
+    if (key) childEnv[keyEnv] = key
     if (baseUrl) childEnv[`${keyEnv}_BASE_URL`] = baseUrl
     const patchFile = await writeProviderPatch(dshHome, route, { apiKeyEnv: keyEnv, baseUrl, model })
-    patches = [patchFile]
+    // Append, never replace: replacing would drop the pinned sandbox policy.
+    patches.push(patchFile)
     log(`Configured pi-ai route '${route}' via ${keyEnv}`)
   }
 

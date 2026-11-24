@@ -1171,6 +1171,17 @@ function describeApprovalRisk(options: {
   if (gitOperation) {
     return { level: 'medium', reversible: true, impact: `git ${gitOperation}：只影响本地仓库引用与工作区，可用 stash/备份回退` }
   }
+  if (tool === 'delegate_to_harness') {
+    // The user approves a task, not a command: the engine decides which files
+    // to touch and which commands to run while it works, so the impact cannot
+    // be narrowed to a single path.
+    return {
+      level: 'high',
+      reversible: false,
+      impact: '把任务委派给 Harness 引擎自主执行：它会读写工作区并运行项目命令，具体步骤无法逐条预览',
+      requiresAcknowledgement: true
+    }
+  }
   if (isScript || nativeExecution) {
     const host = executionMode === 'host'
     return {
@@ -2043,6 +2054,11 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           throw new Error('Python 3 cannot run in the selected execution environment. The client did not switch to host execution. Continue with JavaScript, shell, or specialized workspace tools; if Python is essential, make a compatible runtime available or explicitly change the execution mode.')
         }
         const backgroundTimeoutMs = isBackground ? integerOption(args.timeoutMs, 120000, 1000, 600000) : undefined
+        // Delegating to Harness hands a model-written task to an engine that
+        // runs its own shell commands. The client never evaluates that code
+        // in-process, so it is not a script for the purpose of previewing what
+        // will run — but for approval it is code execution and must be gated.
+        const isHarnessDelegation = call.function.name === 'delegate_to_harness'
         const isScript = call.function.name === 'run_javascript' || isNative || isComputerCommand
         if (!availableToolDefinitions.some((tool) => tool.function.name === call.function.name)) throw new Error('Tool is not enabled for this task')
         const windowAction = isWindowControlTool(call.function.name) ? windowControls[call.function.name].prepare(args) : undefined
@@ -2092,7 +2108,7 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         const gitOperation = call.function.name === 'git_write' ? String(args.operation ?? '').trim() : ''
         const gitRepo = gitOperation ? String(args.repo ?? '').trim() : ''
         const gitReuseApproval = Boolean(gitOperation) && hasGitWriteGrant(request.conversationId, root, gitOperation, { approvalMode, repo: gitRepo })
-        let needsApproval = Boolean(applicationChange) || needsWorkspaceApproval(approvalMode, isScript, canWrite, isNative, { executionMode: nativeCommand?.executionMode, external: Boolean(extensionTool), desktop: Boolean(capability) })
+        let needsApproval = Boolean(applicationChange) || needsWorkspaceApproval(approvalMode, isScript || isHarnessDelegation, canWrite, isNative, { executionMode: nativeCommand?.executionMode, external: Boolean(extensionTool), desktop: Boolean(capability) })
         if (!needsApproval && isRejectedOperation(deniedApprovals, call.function.name, approvalTarget)) {
           // A rejected operation cannot be revived by relaxing the mode.
           needsApproval = true
@@ -2109,9 +2125,13 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           const target = approvalTarget
           const purpose = isScript || capability
             ? String(args.purpose ?? '').trim() || (isEnglish ? 'Process files in the workspace' : '处理工作区中的文件')
-            : call.function.name === 'git_write'
-              ? describeGitWritePurpose(args, isEnglish)
-              : `${activity.label}${target ? (isEnglish ? `: ${target}` : `：${target}`) : ''}`
+            : isHarnessDelegation
+              // Show the delegated task, not the tool label: the user is being
+              // asked to approve work they cannot preview.
+              ? String(args.task ?? '').trim().slice(0, 240) || (isEnglish ? 'Delegate a coding task to Harness' : '把编码任务委派给 Harness')
+              : call.function.name === 'git_write'
+                ? describeGitWritePurpose(args, isEnglish)
+                : `${activity.label}${target ? (isEnglish ? `: ${target}` : `：${target}`) : ''}`
           activity.detail = isEnglish ? 'Waiting for your approval' : '等待你确认是否允许运行'
           onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
           const preview = applicationChange?.preview ?? windowAction?.preview ?? (call.function.name === 'browser_action' ? browserApprovalPreview(request.conversationId, args) : replacementPreview)

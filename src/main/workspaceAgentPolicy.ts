@@ -8,6 +8,7 @@ import { constants } from 'node:fs'
 import { open, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
+import { boundaryFromTool, requiresApproval, resolveExecutionPolicy } from './executionPolicy.ts'
 
 export function isProtectedWorkspacePath(path: string): boolean {
   return path.split(/[\\/]/).some((part) => /^(?:\.env(?:\..*)?|\.ssh|\.aws|\.gnupg|\.git|id_rsa|id_ed25519)$/i.test(part) && !/^\.env\.(?:example|sample|template)$/i.test(part))
@@ -106,6 +107,15 @@ export function isRejectedOperation(denied: ReadonlySet<string>, tool: string, t
   return denied.has(approvalSignature(tool, target))
 }
 
+/**
+ * Whether a tool call needs a per-call decision from the user.
+ *
+ * The answer is derived from the confinement the call actually runs under, not
+ * from guessing what a tool name or script body does. See
+ * {@link ./executionPolicy.ts} for the two-axis model and why the axes are kept
+ * apart: an unconfined operation stays approval-gated in every mode, which is
+ * what stops "full access mode" from silently waiving the write boundary.
+ */
 export function needsWorkspaceApproval(
   mode: string | undefined,
   isScript: boolean,
@@ -113,18 +123,19 @@ export function needsWorkspaceApproval(
   isNative = false,
   boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean; desktop?: boolean } = {}
 ): boolean {
-  if (boundary.desktop === true) return true
-  // Host (unsandboxed) execution can read and write files outside the authorized
-  // workspace and cannot be path-confined by the client. Full mode removes
-  // per-operation approval for in-workspace tools, but the write boundary is a
-  // hard limit that no permission mode relaxes: host jobs still ask every time.
-  // Sandboxed jobs stay confined to a workspace copy and remain auto-approved.
-  const hostJob = isNative && boundary.executionMode === 'host'
-  if (mode === 'full') return hostJob
-  // Decide by enforced execution boundaries, never by guessing what script text does.
-  // Unknown native boundaries ask; the caller must explicitly supply sandbox mode.
-  if (mode === 'auto') return boundary.external === true || (isNative && boundary.executionMode !== 'sandbox')
-  return isScript || canWrite || isNative || boundary.external === true
+  // The client confines every dispatch it makes: in-workspace tools are path
+  // checked against the authorized root, scripts run in a snapshot copy, and
+  // native commands only leave that confinement in host mode — which
+  // boundaryFromTool reports as danger-full-access.
+  const policy = resolveExecutionPolicy('workspace-write', mode)
+  return requiresApproval(policy, boundaryFromTool({
+    isScript,
+    canWrite,
+    isNative,
+    executionMode: boundary.executionMode,
+    external: boundary.external,
+    desktop: boundary.desktop
+  }))
 }
 
 export function workspaceApprovalInstructions(mode: string | undefined): string {  const policy = mode === 'full'
@@ -132,7 +143,7 @@ export function workspaceApprovalInstructions(mode: string | undefined): string 
     : mode === 'auto'
       ? 'Approve for me: workspace tools, restricted JavaScript and configured sandbox Python/Shell (including background jobs) execute automatically. Host commands and HTTP extensions require approval.'
       : 'Ask for approval: file writes, scripts and HTTP extensions require per-operation approval; read-only workspace tools execute directly.'
-  return `${policy} Dedicated computer and browser tools always require per-call approval, including in full mode. Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode. Permission approval is not a business decision: in every mode, when several reasonable options exist and user intent is ambiguous, ask the user instead of choosing silently. The user can change the mode at any time; the client always applies the mode that is active when each tool call starts, and an operation the user rejected stays blocked.`
+  return `${policy} Delegating to the embedded Harness engine is gated as code execution: that engine runs its own shell commands, so the approval covers the whole delegated task rather than a previewable command. Dedicated computer and browser tools always require per-call approval, including in full mode. Approval mode does not enable disabled tools, expand workspace permissions, enable networking or variables, or change sandbox/host mode. The client enforces approvals; invoke the appropriate tool instead of asking the user to approve again in chat. Batch replacements still require a preview and version checks in every mode. Permission approval is not a business decision: in every mode, when several reasonable options exist and user intent is ambiguous, ask the user instead of choosing silently. The user can change the mode at any time; the client always applies the mode that is active when each tool call starts, and an operation the user rejected stays blocked.`
 }
 
 export async function loadWorkspaceEnvExampleNames(root: string): Promise<string[]> {

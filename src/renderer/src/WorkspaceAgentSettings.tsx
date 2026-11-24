@@ -125,6 +125,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
   const [loadAgentsMd, setLoadAgentsMd] = useState(workspace.loadAgentsMd !== false)
   const [harnessEnabled, setHarnessEnabled] = useState(workspace.harness?.enabled === true)
   const [harnessDelegateAll, setHarnessDelegateAll] = useState(workspace.harness?.delegateAll === true)
+  const [harnessSandboxMode, setHarnessSandboxMode] = useState<'read-only' | 'workspace-write' | 'danger-full-access'>(workspace.harness?.sandboxMode ?? 'workspace-write')
   const [rows, setRows] = useState<VariableRow[]>(() => prefetched ? buildVariableRows(prefetched, workspace) : [])
   const [removed, setRemoved] = useState<string[]>([])
   const [status, setStatus] = useState<WorkspaceAgentSettingsPayload | undefined>(prefetched)
@@ -179,7 +180,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       const updates = rows.filter(row => row.value !== '').map(row => ({ name: row.name, description: row.description, value: row.value }))
       if (updates.length || removed.length) await window.gllm.saveWorkspaceVariables(workspace.rootPath, [...updates, ...[...new Set(removed)].filter(name => /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && !rows.some(row => row.name === name)).map(name => ({ name, description: '', remove: true }))])
       setRows(current => current.map(row => ({ ...row, value: '' })))
-      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork, harness: { ...(workspace.harness ?? {}), enabled: harnessEnabled, delegateAll: harnessDelegateAll } })
+      await onSave({ nativeExecution, computerAccess, browserAccess, computerWindowAccess, browserWindowAccess, loadAgentsMd, envNames: rows.filter(row => row.enabled).map(row => row.name), executionMode, sandboxNetwork, harness: { ...(workspace.harness ?? {}), enabled: harnessEnabled, delegateAll: harnessDelegateAll, sandboxMode: harnessSandboxMode } })
       // Saved values invalidate the prefetch: refresh it so the next open is fast
       // and shows the new state.
       settingsPrefetch.delete(workspace.rootPath)
@@ -224,6 +225,12 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       <p>{t('workspace.harnessDescription')}</p>
       {status?.harness && <p role="status" className={status.harness.installed ? 'harness-ready' : 'harness-missing'}>{t(status.harness.installed ? 'workspace.harnessReady' : 'workspace.harnessMissing')}{status.harness.nodeVersion ? ` (Node ${status.harness.nodeVersion})` : ''}</p>}
       {harnessEnabled && <>
+        <label>{t('workspace.harnessSandboxMode')}<select value={harnessSandboxMode} onChange={event => setHarnessSandboxMode(event.target.value as 'read-only' | 'workspace-write' | 'danger-full-access')}>
+          <option value="workspace-write">{t('workspace.harnessSandboxWorkspace')}</option>
+          <option value="read-only">{t('workspace.harnessSandboxReadOnly')}</option>
+          <option value="danger-full-access">{t('workspace.harnessSandboxFull')}</option>
+        </select></label>
+        <p>{harnessSandboxMode === 'danger-full-access' ? t('workspace.harnessSandboxFullWarning') : t('workspace.harnessSandboxDescription')}</p>
         <label><input type="checkbox" checked={harnessDelegateAll} onChange={event => setHarnessDelegateAll(event.target.checked)} />{t('workspace.harnessDelegateAll')}</label>
         <p>{t('workspace.harnessDelegateAllDescription')}</p>
       </>}

@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { configureHarnessEnvironment, HarnessBridge, inspectHarnessRuntime, setHarnessRuntimeOverride, type HarnessApprovalOutcome } from './workspaceHarness.ts'
+import { configureHarnessEnvironment, HarnessBridge, harnessHomeFor, inspectHarnessRuntime, setHarnessRuntimeOverride, type HarnessApprovalOutcome } from './workspaceHarness.ts'
 import { createWorkspacePlan, finishPlan } from '../shared/agentPlanning.ts'
 import type {
   ApiProvider,
@@ -25,7 +25,8 @@ function configureFromElectron(): void {
     configureHarnessEnvironment({
       isPackaged: electron.app.isPackaged,
       appPath: electron.app.getAppPath(),
-      resourcesPath: process.resourcesPath
+      resourcesPath: process.resourcesPath,
+      userDataPath: electron.app.getPath('userData')
     })
   } catch {
     // Running outside Electron: callers/tests configure explicitly.
@@ -102,7 +103,10 @@ export async function runHarnessWorkspace(options: HarnessExecutionOptions): Pro
   }
   onRuntimeEvent?.({ type: 'harness_start', status: 'running_tool', details: { runtimeDir: runtime.runtimeDir } })
 
-  const dshHome = `${request.workspace.rootPath}/.dsh-home`.replace(/\\/g, '/')
+  // Kept outside the workspace: dsh applies `$DSH_HOME/cordis.patch.yml` as a
+  // user layer before the profile, so a home inside the project would let
+  // repository contents rewrite the sandbox policy for the run.
+  const dshHome = harnessHomeFor(request.workspace.rootPath)
   const bridge = new HarnessBridge({
     onNotification: (notification) => {
       const method = String(notification.method || '')
@@ -148,6 +152,9 @@ export async function runHarnessWorkspace(options: HarnessExecutionOptions): Pro
       dshHome,
       profile: harnessConfig.profile || 'sdk-minimal',
       approvalRequests: true,
+      // Pinned, not inherited: the shipped `sdk-minimal` template overrides the
+      // upstream read-only fail-safe with `danger-full-access`.
+      sandboxMode: harnessConfig.sandboxMode || 'workspace-write',
       maxTokens: request.settings.enableMaxTokens ? request.settings.maxTokens : undefined
     })
     progress('harness_init', '启动 DeepSeek Harness 引擎', 'completed')
