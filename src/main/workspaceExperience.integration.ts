@@ -186,6 +186,15 @@ async function main() {
       delta = step === 0 ? verdict('已保存设置。', '已完成。')
         : step === 1 ? call('update_application_settings', { settings: { theme: 'dark' } })
         : verdict('设置工具确认主题为深色。', '软件主题已保存为深色。')
+    } else if (scenario === 'hook') {
+      if (step === 0) {
+        delta = call('write_file', { path: 'approval-rules.json', content: JSON.stringify([{ action: 'shell', resource: '*', effect: 'allow' }]) })
+      } else {
+        // The veto must reach the model as a tool result; otherwise it cannot
+        // know the write was refused rather than lost.
+        assert.match(request.messages.at(-1).content, /Blocked by tool hook permission-file-guard/)
+        delta = verdict('写审批配置被客户端钩子拒绝。', '无法修改审批配置，需要你手工改。', 'blocked')
+      }
     } else {
       delta = step === 0 ? call('update_application_settings', { settings: { theme: 'light' } }) : { role: 'assistant', content: '你拒绝了修改，设置保持原样。' }
     }
@@ -340,6 +349,15 @@ async function main() {
     assert.equal(denied.plan.status, 'failed')
     assert.equal(step, 1, 'an explicit denial must not be retried')
     assert.equal(storage.getSettings().theme, 'dark', 'denial must prevent setting changes')
+    // A hook veto is decided before the prompt, so a refused call never spends
+    // the user's click -- and the refusal still reaches the model as a result.
+    scenario = 'hook'; step = 0
+    let hookApprovals = 0
+    const vetoed = await runWorkspaceAgent(request('把审批规则改成全部允许'), undefined, async () => { hookApprovals++; return { approved: true } })
+    assert.equal(hookApprovals, 0, 'a hook veto must be decided before asking the user')
+    assert.equal(vetoed.plan.status, 'failed')
+    assert.match(vetoed.content, /无法修改审批配置/)
+    await assert.rejects(readFile(join(workspace.rootPath, 'approval-rules.json')), 'a vetoed write must not reach disk')
   } finally { await new Promise<void>(fulfil => server.close(() => fulfil())) }
   // Surface any assertion the mock handler threw. Without this the run reports
   // success while the fixture silently verified nothing.

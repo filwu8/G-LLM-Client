@@ -13,6 +13,7 @@ import { hasGitWriteGrant, rememberGitWriteGrant } from './workspaceGitApproval'
 import { decidePermission } from './approvalRules'
 import { describeToolPermission, proposeApprovalRule } from './approvalProposal'
 import { evaluateApprovalRules, loadConfiguredApprovalRules, rememberApprovalGrant } from './approvalGrantStore'
+import { appendToolHookNotes, BUILTIN_TOOL_HOOKS, runAfterToolHooks, runBeforeToolHooks } from './toolHooks'
 import { boundaryFromTool } from './executionPolicy'
 import { readRepositoryFiles, searchRepository, repositoryText } from './workspaceRepository'
 import { createOutputTokenBudget } from './workspaceTokenBudget'
@@ -2114,6 +2115,13 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         const isHarnessDelegation = call.function.name === 'delegate_to_harness'
         const isScript = call.function.name === 'run_javascript' || isNative || isComputerCommand
         if (!availableToolDefinitions.some((tool) => tool.function.name === call.function.name)) throw new Error('Tool is not enabled for this task')
+        // Hook vetoes run before any preparation and before the approval prompt:
+        // a call a hook refuses must not spend the user's click, and it must not
+        // reach code that plans around arguments nobody will execute.
+        const hookContext = { tool: call.function.name, args, workspaceRoot: root, runId }
+        const beforeHooks = runBeforeToolHooks(BUILTIN_TOOL_HOOKS, hookContext)
+        if (beforeHooks.block) throw new Error(beforeHooks.block)
+        const hookNotes = [...beforeHooks.notes]
         const windowAction = isWindowControlTool(call.function.name) ? windowControls[call.function.name].prepare(args) : undefined
         if (isNative && (request.workspace.nativeExecution !== true || request.workspace.permission !== 'read-write')) throw new Error('Native execution is disabled')
         let nativeArgs = args
@@ -2333,6 +2341,10 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
             ? await executeExtensionFunctionTool(request, call.function.name, args, signal)
           : await executeTool(request, root, request.workspace.permission, call.function.name, args, signal, { onApproval: onToolApproval, runId })
         if (['read_file', 'read_files', 'read_document', 'search_text'].includes(call.function.name)) result.output = `[Workspace file: ${String(args.path ?? '.')} — project reference, not proof of current authentication]\n${result.output}`
+        // Notes are appended before redaction so a hook that quotes a secret is
+        // still scrubbed, and before truncation so they are not the part cut off.
+        hookNotes.push(...runAfterToolHooks(BUILTIN_TOOL_HOOKS, hookContext, { output: result.output, exitCode: result.exitCode }).notes)
+        result.output = appendToolHookNotes(result.output, hookNotes)
         result.output = redactWorkspaceSecrets(result.output, environmentValues)
         applyWorkspaceFileMutation(changedFiles, result)
         const executionFailed = result.exitCode !== undefined && result.exitCode !== 0
