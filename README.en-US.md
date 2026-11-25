@@ -4,7 +4,7 @@
 
 Current code version: [V2.0.33](docs/releases/v2.0.33.md)
 
-Current public Microsoft Store version: [V2.0.32](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-20. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
+Current public Microsoft Store version: [V2.0.33](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-24. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
 > Starting with V1.1.0, the source is licensed under BUSL-1.1 for free personal and internal business use; each version's conversion date is defined by the `LICENSE` included with that release. V1.0.10 and earlier remain under the AGPL-3.0-only license included in their release tags.
 
