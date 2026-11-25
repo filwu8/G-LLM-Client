@@ -23,6 +23,7 @@ import type {
   PreparedAttachment,
   ProviderCheckResult,
   ProviderModel,
+  ProviderProtocol,
   SkillConfig,
   GoalWebSearchScope,
   WebResearchAudit,
@@ -52,7 +53,7 @@ import {
 } from '../shared/modelCapabilities'
 import { supportsReasoningEffort } from '../shared/featureFlags'
 import { isProviderApiKeyMissing } from '../shared/providers'
-import { saveGeneratedImageResource } from './storage'
+import { getNotes, saveGeneratedImageResource } from './storage'
 import { mainT } from './i18n'
 import {
   buildImageGenerationContext,
@@ -84,10 +85,17 @@ import {
   parseGoogleSearchResults
 } from './webSearchParser'
 import {
-  extractTextContent,
   streamChatResponseEvents,
   type ChatStreamEvent as ParsedChatStreamEvent
 } from './chatStreamParser'
+import { retrieveKnowledgeContext } from './knowledgeRetrieval.ts'
+import {
+  buildChatRequest,
+  buildModelListRequest,
+  readCompletionText,
+  readModelRecords,
+  resolveProviderProtocol
+} from './providerProtocol.ts'
 import {
   compactContextText,
   CONTEXT_COMPRESSION_CHARACTER_THRESHOLD,
@@ -411,7 +419,8 @@ async function fetchStreamingModelResponse(
   endpoint: string,
   provider: ApiProvider,
   body: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  headers?: Record<string, string>
 ): Promise<Response> {
   const timeoutController = new AbortController()
   const timeout = setTimeout(() => {
@@ -425,7 +434,7 @@ async function fetchStreamingModelResponse(
   try {
     return await fetch(endpoint, {
       method: 'POST',
-      headers: getProviderHeaders(provider),
+      headers: headers ?? getProviderHeaders(provider),
       body: JSON.stringify(body),
       signal: fetchSignal
     })
@@ -755,26 +764,18 @@ export async function updateConversationProjectMemory(
   const context = prepareConversationContext(chatMessages)
   const recent = context.messages.map((message) => `${message.role === 'user' ? '用户' : '助手'}：${compactContextText(message.content, 1800)}`).join('\n\n')
   const prompt = `你是项目长期记忆整理器。根据同一会话的已有记忆和最新对话，维护可跨越长上下文的事实记录。只保留用户明确说明或双方已确认的事实；不要把助手的建议当成已确认决策，不要猜测。合并重复项，删除已被后续内容否定的旧项。只返回 JSON。\n\n已有记忆：\n${JSON.stringify(current ?? {})}\n\n较早上下文摘要：\n${context.compressedHistory ?? '[无]'}\n\n近期对话：\n${recent}\n\n返回结构：\n{"overview":"项目概况","requirements":["已确认需求"],"decisions":["已确认决策"],"businessRules":["业务规则或约束"],"entities":["关键角色、系统、模块、数据对象"],"openItems":["待确认问题或待办"],"risks":["明确风险"]}`
-  const endpoint = buildProviderUrl(provider, provider.chatCompletionsPath ?? '/chat/completions')
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: getProviderHeaders(provider),
-    body: JSON.stringify({
-      model: provider.defaultModel,
-      messages: [
-        { role: 'system', content: '你只输出有效 JSON，不要 Markdown。' },
-        { role: 'user', content: prompt }
-      ],
-      stream: false,
-      temperature: 0.1,
-      max_tokens: 1800
-    }),
-    signal: AbortSignal.timeout(90_000)
+  const outcome = await requestProviderText(provider, {
+    messages: [
+      { role: 'system', content: '你只输出有效 JSON，不要 Markdown。' },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.1,
+    maxTokens: 1800,
+    jsonMode: true,
+    timeoutMs: 90_000
   })
-  if (!response.ok) throw new Error(`项目记忆更新失败：${response.status}`)
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-  const content = payload.choices?.[0]?.message?.content ?? ''
-  const parsed = extractJsonObject<Partial<ConversationProjectMemory>>(content)
+  if (!outcome.ok) throw new Error(`项目记忆更新失败：${outcome.status}`)
+  const parsed = extractJsonObject<Partial<ConversationProjectMemory>>(outcome.text)
   if (!parsed) throw new Error('项目记忆更新未返回有效 JSON')
   return normalizeProjectMemory(parsed, chatMessages.length)
 }
@@ -944,40 +945,19 @@ interface SemanticConversationSearchPayload {
   matches?: Array<{ id?: unknown; score?: unknown; reason?: unknown }>
 }
 
-function parseProviderModels(payload: unknown): ProviderModel[] {
-  const source = Array.isArray(payload)
-    ? payload
-    : Array.isArray((payload as { data?: unknown })?.data)
-      ? ((payload as { data: unknown[] }).data ?? [])
-      : []
-  const seen = new Set<string>()
-  const models: ProviderModel[] = []
-
-  for (const item of source) {
-    const itemObject = typeof item === 'object' && item ? (item as { id?: unknown; model?: unknown; name?: unknown; owned_by?: unknown; ownedBy?: unknown }) : null
-    const id =
-      typeof item === 'string'
-        ? item
-        : itemObject
-          ? String(itemObject.id ?? itemObject.model ?? itemObject.name ?? '')
-          : ''
-
-    const normalizedId = id.trim()
-    if (!normalizedId || seen.has(normalizedId)) continue
-
-    const name = itemObject && typeof itemObject.name === 'string' ? itemObject.name.trim() : normalizedId
-    const ownedBy = itemObject ? String(itemObject.owned_by ?? itemObject.ownedBy ?? '').trim() : ''
-
-    seen.add(normalizedId)
-    models.push({
-      id: normalizedId,
-      name: name || normalizedId,
-      ownedBy: ownedBy || undefined,
-      capabilities: inferModelCapabilitiesFromMetadata(normalizedId, itemObject),
-      type: inferModelTypeFromMetadata(normalizedId, itemObject)
-    })
-  }
-
+function parseProviderModels(protocol: ProviderProtocol, payload: unknown): ProviderModel[] {
+  // The wire shape belongs to the protocol module; capability inference stays
+  // here because it also reads vendor metadata only some gateways send back.
+  const models = readModelRecords(protocol, payload).map((record) => {
+    const metadata = record as unknown as Record<string, unknown>
+    return {
+      id: record.id,
+      name: record.name || record.id,
+      ownedBy: record.ownedBy,
+      capabilities: inferModelCapabilitiesFromMetadata(record.id, metadata),
+      type: inferModelTypeFromMetadata(record.id, metadata)
+    }
+  })
   return models.slice(0, 300)
 }
 
@@ -1087,7 +1067,6 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
   }
 
   try {
-    const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
     const messages: OpenAiMessage[] = [
       {
         role: 'system',
@@ -1102,31 +1081,25 @@ async function planWebSearch(request: ChatRequest, signal?: AbortSignal): Promis
     let lastError: unknown = new Error('规划模型没有返回有效的结构化结果')
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: getProviderHeaders(request.provider),
-        body: JSON.stringify({
-          model: request.provider.defaultModel,
-          messages: normalizeOpenAiSystemMessages(attempt === 0
-            ? messages
-            : [...messages, { role: 'system' as const, content: '上一次结果无法解析。请只返回一个完整、有效、无代码围栏的 JSON 对象。' }]),
-          temperature: 0.1,
-          max_tokens: 850,
-          stream: false,
-          ...(attempt === 0 ? { response_format: { type: 'json_object' } } : {})
-        }),
-        signal: requestSignal(signal, 10_000)
+      const outcome = await requestProviderText(request.provider, {
+        messages: normalizeOpenAiSystemMessages(attempt === 0
+          ? messages
+          : [...messages, { role: 'system' as const, content: '上一次结果无法解析。请只返回一个完整、有效、无代码围栏的 JSON 对象。' }]),
+        temperature: 0.1,
+        maxTokens: 850,
+        jsonMode: attempt === 0,
+        timeoutMs: 10_000,
+        signal
       })
 
-      if (!response.ok) {
-        lastError = new Error(`规划请求失败：HTTP ${response.status}`)
-        if (attempt === 0 && (response.status === 400 || response.status === 422)) continue
+      if (!outcome.ok) {
+        if (signal?.aborted) signal.throwIfAborted()
+        lastError = new Error(`规划请求失败：HTTP ${outcome.status}`)
+        if (attempt === 0 && (outcome.status === 400 || outcome.status === 422)) continue
         break
       }
 
-      const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown }; text?: unknown }> }
-      const content = extractTextContent(payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.text)
-      const parsed = extractJsonObject<SearchPlanInput>(content)
+      const parsed = extractJsonObject<SearchPlanInput>(outcome.text)
       if (parsed) return sanitizeSearchPlan(parsed, fallbackQuery, { mode: 'model' }, request.messages)
       lastError = new Error('规划模型返回的内容不是有效 JSON')
       break
@@ -1817,13 +1790,8 @@ export async function generateAssistantSuggestion(request: AssistantSuggestionRe
     return fallbackAssistantSuggestion(keyword, language)
   }
 
-  const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: getProviderHeaders(request.provider),
-    body: JSON.stringify({
-      model: request.provider.defaultModel,
-      messages: [
+  const outcome = await requestProviderText(request.provider, {
+    messages: [
         {
           role: 'system',
           content: `You design assistant configurations for a desktop AI client. Generate all human-facing fields in ${mainT('main.assistant.outputLanguage', language)}. Put role boundaries, output constraints, and risk boundaries in systemPrompt. The assistant must respond in the user's current language unless explicitly asked otherwise. Return JSON only, without Markdown.`
@@ -1845,15 +1813,12 @@ Return this JSON structure:
         }
       ],
       temperature: 0.4,
-      stream: false
-    })
+      jsonMode: true
   })
 
-  if (!response.ok) return fallbackAssistantSuggestion(keyword, language)
+  if (!outcome.ok) return fallbackAssistantSuggestion(keyword, language)
 
-  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  const content = payload.choices?.[0]?.message?.content ?? ''
-  const parsed = extractJsonObject(content)
+  const parsed = extractJsonObject(outcome.text)
   return sanitizeAssistantSuggestion(keyword, parsed ?? fallbackAssistantSuggestion(keyword, language), language)
 }
 
@@ -1876,7 +1841,6 @@ export async function assessGoal(request: GoalAssessRequest): Promise<GoalAssess
     .slice(-24)
     .join('\n')
 
-  const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
   const systemContent = `${goalAssessmentSystemPrompt}\n\nRespond in ${mainT('main.assistant.outputLanguage', request.language)}.`
   const alreadyAsked = (request.alreadyAsked ?? []).map((question) => question.trim()).filter(Boolean)
   const alreadyAskedBlock = alreadyAsked.length > 0
@@ -1904,35 +1868,27 @@ export async function assessGoal(request: GoalAssessRequest): Promise<GoalAssess
   let lastError: unknown = new Error('goal judge returned no valid result')
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: getProviderHeaders(request.provider),
-        body: JSON.stringify({
-          model: request.provider.defaultModel,
-          messages: normalizeOpenAiSystemMessages(attempt === 0
-            ? [
-                { role: 'system' as const, content: systemContent },
-                { role: 'user' as const, content: userContent }
-              ]
-            : [
-                { role: 'system' as const, content: systemContent },
-                { role: 'user' as const, content: `${userContent}\n\nThe previous response was not valid JSON. Return only a single complete JSON object.` }
-              ]),
-          temperature: 0.1,
-          max_tokens: 700,
-          stream: false,
-          ...(attempt === 0 ? { response_format: { type: 'json_object' } } : {})
-        }),
-        signal: requestSignal(undefined, 12_000)
+      const outcome = await requestProviderText(request.provider, {
+        messages: normalizeOpenAiSystemMessages(attempt === 0
+          ? [
+              { role: 'system' as const, content: systemContent },
+              { role: 'user' as const, content: userContent }
+            ]
+          : [
+              { role: 'system' as const, content: systemContent },
+              { role: 'user' as const, content: `${userContent}\n\nThe previous response was not valid JSON. Return only a single complete JSON object.` }
+            ]),
+        temperature: 0.1,
+        maxTokens: 700,
+        jsonMode: attempt === 0,
+        timeoutMs: 12_000
       })
-      if (!response.ok) {
-        lastError = new Error(`goal judge HTTP ${response.status}`)
-        if (attempt === 0 && (response.status === 400 || response.status === 422)) continue
+      if (!outcome.ok) {
+        lastError = new Error(`goal judge HTTP ${outcome.status}`)
+        if (attempt === 0 && (outcome.status === 400 || outcome.status === 422)) continue
         break
       }
-      const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown }; text?: unknown }> }
-      const content = extractTextContent(payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.text)
-      const parsed = extractJsonObject<Record<string, unknown>>(content)
+      const parsed = extractJsonObject<Record<string, unknown>>(outcome.text)
       if (parsed) return sanitizeGoalAssessment(parsed, request)
       lastError = new Error('goal judge returned non-JSON content')
       break
@@ -1972,16 +1928,8 @@ export async function searchConversations(
       updatedAt: new Date(source.updatedAt).toISOString(),
       excerpt: getSemanticConversationExcerpt(source)
     }))
-    const endpoint = buildProviderUrl(
-      request.provider,
-      request.provider.chatCompletionsPath ?? '/chat/completions'
-    )
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: getProviderHeaders(request.provider),
-      body: JSON.stringify({
-        model: request.provider.defaultModel,
-        messages: [
+    const outcome = await requestProviderText(request.provider, {
+      messages: [
           {
             role: 'system',
             content:
@@ -1992,18 +1940,15 @@ export async function searchConversations(
             content: `Search query: ${query}\n\nCandidate conversations:\n${JSON.stringify(catalog)}\n\nReturn at most ${limit} matches in this format:\n{"matches":[{"id":"candidate id","score":0-100,"reason":"short reason"}]}`
           }
         ],
-        temperature: 0.1,
-        max_tokens: 1800,
-        stream: false
-      }),
-      signal: AbortSignal.timeout(30_000)
+      temperature: 0.1,
+      maxTokens: 1800,
+      jsonMode: true,
+      timeoutMs: 30_000
     })
 
-    if (!response.ok) throw new Error(`会话语义检索失败：${response.status}`)
+    if (!outcome.ok) throw new Error(`会话语义检索失败：${outcome.status}`)
 
-    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    const content = payload.choices?.[0]?.message?.content ?? ''
-    const parsed = extractJsonObject<SemanticConversationSearchPayload>(content)
+    const parsed = extractJsonObject<SemanticConversationSearchPayload>(outcome.text)
     const terms = getConversationSearchTerms(query)
     const semanticResults: ConversationSearchResult[] = []
     const seen = new Set<string>()
@@ -2037,13 +1982,64 @@ export async function searchConversations(
   return { mode: 'local', results: localResults, searchedCount }
 }
 
+type ProviderTextOutcome =
+  | { ok: true; text: string }
+  | { ok: false; status: number; detail: string }
+
+/**
+ * One non-streaming completion in whichever protocol the provider speaks.
+ * Every internal one-shot call (search planning, project memory, goal judge,
+ * conversation ranking) used to post an OpenAI body straight at the provider,
+ * which 404s against a native Anthropic or Gemini endpoint even though the
+ * main chat path works.
+ */
+async function requestProviderText(
+  provider: ApiProvider,
+  options: {
+    messages: OpenAiMessage[]
+    temperature?: number
+    maxTokens?: number
+    jsonMode?: boolean
+    timeoutMs?: number
+    signal?: AbortSignal
+  }
+): Promise<ProviderTextOutcome> {
+  const protocol = resolveProviderProtocol(provider)
+  const spec = buildChatRequest(protocol, provider, {
+    model: provider.defaultModel,
+    messages: options.messages,
+    temperature: options.temperature,
+    maxTokens: options.maxTokens,
+    jsonMode: options.jsonMode
+  })
+
+  try {
+    const response = await fetch(spec.url, {
+      method: 'POST',
+      headers: spec.headers,
+      body: JSON.stringify(spec.body),
+      signal: requestSignal(options.signal, options.timeoutMs ?? 30_000)
+    })
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      return { ok: false, status: response.status, detail }
+    }
+    return { ok: true, text: readCompletionText(protocol, await response.json()) }
+  } catch (error) {
+    options.signal?.throwIfAborted()
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, status: 0, detail: message }
+  }
+}
+
 export async function fetchProviderModels(provider: ApiProvider, language: AppLanguage = 'system', signal?: AbortSignal): Promise<ProviderModel[]> {
   assertProviderReady(provider, language)
 
-  const endpoint = buildProviderUrl(provider, provider.modelsPath ?? '/models')
-  const response = await fetch(endpoint, {
+  const protocol = resolveProviderProtocol(provider)
+  const modelRequest = buildModelListRequest(protocol, provider)
+  const response = await fetch(modelRequest.url, {
     method: 'GET',
-    headers: getProviderHeaders(provider),
+    headers: modelRequest.headers,
     redirect: 'error',
     signal: requestSignal(signal, 15_000)
   })
@@ -2053,7 +2049,7 @@ export async function fetchProviderModels(provider: ApiProvider, language: AppLa
     throw new Error(mainT('main.provider.modelsRequestFailed', language, { provider: provider.name, status: response.status, detail }).trim())
   }
 
-  const models = parseProviderModels(await response.json())
+  const models = parseProviderModels(protocol, await response.json())
   if (models.length === 0) {
     throw new Error(mainT('main.provider.noModels', language, { provider: provider.name }))
   }
@@ -2271,6 +2267,26 @@ export async function* streamGllmChat(
     }
   }
 
+  let knowledgeContext = ''
+  if (request.settings.knowledgeAutoRetrieval && request.purpose !== 'translation') {
+    const query = getLastUserQuery(request.messages)
+    if (query) {
+      try {
+        knowledgeContext = await retrieveKnowledgeContext({
+          query,
+          notes: getNotes(request.assistant.projectId),
+          provider: request.provider,
+          signal
+        })
+      } catch (error) {
+        // Retrieval is an enhancement, not a dependency. A provider without an
+        // embedding model or a failed embedding call must still answer.
+        signal?.throwIfAborted()
+        knowledgeContext = ''
+      }
+    }
+  }
+
   const endpoint = buildProviderUrl(request.provider, request.provider.chatCompletionsPath ?? '/chat/completions')
   const reasoningModel = request.provider.models.find((model) => model.id === request.provider.defaultModel)
   const configuredReasoningEffort = supportsReasoningEffort(reasoningModel ?? request.provider.defaultModel) &&
@@ -2282,7 +2298,7 @@ export async function* streamGllmChat(
     const preparedMessages = prepareOpenAiMessages(
       request.assistant,
       request.messages,
-      webContext,
+      `${knowledgeContext}${webContext}`,
       sendImages,
       request.assistantMemories ?? [],
       request.assistantSkills ?? [],
@@ -2298,6 +2314,39 @@ export async function* streamGllmChat(
       stream: true
     }
   }
+  const protocol = resolveProviderProtocol(request.provider)
+  if (protocol !== 'openai') {
+    // The ladder below exists to coax OpenAI-compatible gateways that reject
+    // unknown fields. The native APIs accept exactly what we build, so they get
+    // one request and no guessing.
+    const nativeBody = buildRequestBody(true)
+    const spec = buildChatRequest(protocol, request.provider, {
+      model: request.provider.defaultModel,
+      messages: nativeBody.messages,
+      temperature: nativeBody.temperature,
+      maxTokens: nativeBody.max_tokens,
+      stream: true
+    })
+    const nativeResponse = await fetchStreamingModelResponse(spec.url, request.provider, spec.body, signal, spec.headers)
+    if (!nativeResponse.ok || !nativeResponse.body) {
+      const detail = await nativeResponse.text().catch(() => '')
+      if (researchRecoveryAnswer && (!nativeResponse.body || recoverableModelStatuses.has(nativeResponse.status))) {
+        onDiagnostic?.({
+          stage: 'research_answer',
+          outcome: 'fallback',
+          details: { reason: nativeResponse.body ? 'answer_http_error' : 'answer_empty_body', status: nativeResponse.status }
+        })
+        yield { content: researchRecoveryAnswer, contextSavings }
+        return
+      }
+      throw new Error(`${request.provider.name} 请求失败：${nativeResponse.status} ${detail}`.trim())
+    }
+    for await (const event of streamChatResponseEvents(nativeResponse, signal)) {
+      yield { ...event, contextSavings }
+    }
+    return
+  }
+
   const hasImages = hasSendableImageAttachments(request.messages)
   let includeReasoningEffort = true
   let requestBody = buildRequestBody(true)

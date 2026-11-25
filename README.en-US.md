@@ -297,12 +297,12 @@ Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs dire
 - Cross-platform desktop client built with Electron, React, and TypeScript, with Windows, macOS, and Linux packaging.
 - Assistant workflow with built-in assistants for general chat, documents, contracts, code, business analysis, and learning, plus creation, editing, drag reordering, pinning, hiding, restoring, and deletion.
 - Chinese and English UI with system-language detection or manual selection across the main window, Quick Chat, and native menus.
-- Multi-provider and multi-model setup with the default G-LLM gateway and OpenAI-compatible provider templates.
-- Model management with connection tests, `/models` fetching, capability detection, and default model selection.
+- Multi-provider and multi-model setup with the default G-LLM gateway plus OpenAI-compatible, Anthropic Messages, Google Gemini generateContent and local provider templates.
+- Model management with connection tests, protocol-aware `/models` fetching (OpenAI-compatible, Anthropic and Gemini authentication and response formats), capability detection, and default model selection.
 - Unified model selection across chat, global defaults, assistant settings, and quick chat, with capability labels and natural name sorting.
 - Streaming chat, starter prompts, Markdown rendering, conversation history, local persistence, and editing and resending sent messages. Long conversations preserve the latest instruction while compacting older context, and the main window and Quick Chat show total/input/output tokens plus the request's context-saving percentage.
 - Intelligent conversation search across spaces using topics, people, tasks, or conclusions, with direct navigation back to the original conversation.
-- Local-first features including lightweight knowledge base, assistant memory, persistent project memory, local data storage, and data import/export.
+- Local-first features including a local knowledge base that splits notes into chunks and retrieves them per question with hybrid keyword and vector search (falling back to keywords when the provider has no embedding model), plus assistant memory, persistent project memory, local data storage, and data import/export.
 - Attachments and visual inputs including files, images, pasted clipboard content, system screenshots, and image copy to the system clipboard.
 - Local file tasks that compress images or PDFs to a requested byte limit with approval, PDF rasterization warnings, non-destructive output, and per-file verification.
 - Conversation workspaces that grant a single conversation controlled access to inspect, search, create, and modify files. Large text is read in ranges, while completed older tool payloads become verifiable summaries and the newest read result remains verbatim.

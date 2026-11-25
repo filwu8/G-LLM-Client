@@ -29,7 +29,16 @@ interface StreamChoice {
 
 interface StreamPayload {
   choices?: StreamChoice[]
-  candidates?: Array<{ finishReason?: unknown }>
+  type?: unknown
+  delta?: { type?: unknown; text?: unknown; thinking?: unknown; stop_reason?: unknown }
+  message?: { usage?: Record<string, unknown> }
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: unknown; thought?: unknown }> }
+    finishReason?: unknown
+    finish_reason?: unknown
+  }>
+  usageMetadata?: Record<string, unknown>
+  error?: { message?: unknown }
   finish_reason?: unknown
   finishReason?: unknown
   native_finish_reason?: unknown
@@ -44,13 +53,56 @@ interface StreamPayload {
   usage?: unknown
 }
 
-function parseUsage(payload: unknown): ChatStreamEvent['usage'] | undefined {
-  const usage = (payload as { usage?: Record<string, unknown> })?.usage
+/** Anthropic reports prompt tokens once, before any text arrives, and the
+ * completion count at the end. The two halves are added up here so a consumer
+ * that keeps "the last usage it saw" still ends with a complete total. */
+export interface StreamUsageState {
+  anthropicInputTokens: number
+}
+
+function readUsageNumber(usage: Record<string, unknown>, ...keys: string[]): number {
+  for (const key of keys) {
+    const value = Number(usage[key])
+    if (Number.isFinite(value)) return value
+  }
+  return 0
+}
+
+function parseUsage(payload: unknown, state?: StreamUsageState): ChatStreamEvent['usage'] | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const record = payload as Record<string, unknown>
+
+  const anthropicUsage =
+    record.type === 'message_start'
+      ? (record.message as { usage?: Record<string, unknown> } | undefined)?.usage
+      : record.type === 'message_delta'
+        ? (record.usage as Record<string, unknown> | undefined)
+        : undefined
+  if (anthropicUsage) {
+    if (record.type === 'message_start' && state) {
+      state.anthropicInputTokens = Math.max(0, Math.round(readUsageNumber(anthropicUsage, 'input_tokens')))
+    }
+    const inputTokens = state?.anthropicInputTokens ?? Math.max(0, Math.round(readUsageNumber(anthropicUsage, 'input_tokens')))
+    const outputTokens = Math.max(0, Math.round(readUsageNumber(anthropicUsage, 'output_tokens')))
+    if (!inputTokens && !outputTokens) return undefined
+    return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens }
+  }
+
+  const geminiUsage = record.usageMetadata as Record<string, unknown> | undefined
+  if (geminiUsage) {
+    const inputTokens = Math.max(0, Math.round(readUsageNumber(geminiUsage, 'promptTokenCount')))
+    const outputTokens = Math.max(0, Math.round(readUsageNumber(geminiUsage, 'candidatesTokenCount')))
+    const totalTokens = Math.max(0, Math.round(readUsageNumber(geminiUsage, 'totalTokenCount') || inputTokens + outputTokens))
+    if (!inputTokens && !outputTokens && !totalTokens) return undefined
+    return { inputTokens, outputTokens, totalTokens: totalTokens || inputTokens + outputTokens }
+  }
+
+  const usage = record.usage as Record<string, unknown> | undefined
   if (!usage) return undefined
 
-  const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0)
-  const outputTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0)
-  const totalTokens = Number(usage.total_tokens ?? inputTokens + outputTokens)
+  const inputTokens = readUsageNumber(usage, 'prompt_tokens', 'input_tokens')
+  const outputTokens = readUsageNumber(usage, 'completion_tokens', 'output_tokens')
+  const totalTokens = readUsageNumber(usage, 'total_tokens') || inputTokens + outputTokens
 
   if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || !Number.isFinite(totalTokens)) {
     return undefined
@@ -80,6 +132,16 @@ export function extractTextContent(value: unknown): string {
 }
 
 function extractStreamContent(payload: StreamPayload): string {
+  if (payload.type === 'content_block_delta' && typeof payload.delta?.text === 'string') {
+    return payload.delta.text
+  }
+  const nativeParts = payload.candidates?.[0]?.content?.parts
+  if (Array.isArray(nativeParts)) {
+    return nativeParts
+      .filter((part) => part && part.thought !== true && typeof part.text === 'string')
+      .map((part) => String(part.text))
+      .join('')
+  }
   const choice = payload.choices?.[0]
   if (!choice) return ''
 
@@ -91,6 +153,9 @@ function extractStreamContent(payload: StreamPayload): string {
 }
 
 function extractStreamReasoningContent(payload: StreamPayload): string {
+  if (payload.type === 'content_block_delta' && typeof payload.delta?.thinking === 'string') {
+    return payload.delta.thinking
+  }
   const choice = payload.choices?.[0]
   const delta = choice?.delta
   const message = choice?.message
@@ -117,6 +182,7 @@ function normalizeFinishReason(value: unknown): string {
 function extractStreamFinishReason(payload: StreamPayload): string {
   const choice = payload.choices?.[0]
   const values = [
+    payload.delta?.stop_reason,
     choice?.finish_reason,
     choice?.finishReason,
     choice?.native_finish_reason,
@@ -144,7 +210,10 @@ function isTruncatedFinishReason(reason: string): boolean {
   return ['length', 'max_tokens', 'max_output_tokens', 'token_limit'].includes(normalized)
 }
 
-export function parseStreamDataPayload(data: string): ChatStreamEvent | null {
+export function parseStreamDataPayload(
+  data: string,
+  state: StreamUsageState = { anthropicInputTokens: 0 }
+): ChatStreamEvent | null {
   const trimmed = data.trim()
   if (!trimmed || trimmed === '[DONE]') return null
 
@@ -152,7 +221,7 @@ export function parseStreamDataPayload(data: string): ChatStreamEvent | null {
     const parsed = JSON.parse(trimmed) as StreamPayload
     const content = extractStreamContent(parsed)
     const reasoningContent = extractStreamReasoningContent(parsed)
-    const usage = parseUsage(parsed)
+    const usage = parseUsage(parsed, state)
     const finishReason = extractStreamFinishReason(parsed)
     if (!content && !reasoningContent && !usage && !finishReason) return null
     return {
@@ -162,6 +231,23 @@ export function parseStreamDataPayload(data: string): ChatStreamEvent | null {
       finishReason: finishReason || undefined,
       isTruncated: finishReason ? isTruncatedFinishReason(finishReason) : undefined
     }
+  } catch {
+    return null
+  }
+}
+
+/** Anthropic and some gateways report a mid-stream failure as a normal SSE
+ * frame. Surfacing it as a throw keeps the caller from treating a broken call
+ * as a short but successful answer. */
+export function readStreamError(data: string): Error | null {
+  const trimmed = data.trim()
+  if (!trimmed.startsWith('{')) return null
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: unknown; error?: { message?: unknown; type?: unknown } }
+    if (parsed.type !== 'error') return null
+    const detail = typeof parsed.error?.message === 'string' ? parsed.error.message : ''
+    const kind = typeof parsed.error?.type === 'string' ? parsed.error.type : 'stream_error'
+    return new Error(detail ? `${kind}: ${detail}` : kind)
   } catch {
     return null
   }
@@ -232,6 +318,7 @@ export async function* streamChatResponseEvents(
   const decoder = new TextDecoder()
   let buffer = ''
   let finished = false
+  const usageState: StreamUsageState = { anthropicInputTokens: 0 }
 
   function* drainStreamBuffer(final = false): Generator<ChatStreamEvent> {
     const separatorPattern = /\r?\n\r?\n/
@@ -245,7 +332,9 @@ export async function* streamChatResponseEvents(
           finished = true
           return
         }
-        const parsed = parseStreamDataPayload(data)
+        const failure = readStreamError(data)
+        if (failure) throw failure
+        const parsed = parseStreamDataPayload(data, usageState)
         if (parsed) yield parsed
       }
       match = buffer.match(separatorPattern)
@@ -272,7 +361,9 @@ export async function* streamChatResponseEvents(
         finished = true
         return
       }
-      const parsed = parseStreamDataPayload(data)
+      const failure = readStreamError(data)
+      if (failure) throw failure
+      const parsed = parseStreamDataPayload(data, usageState)
       if (parsed) yield parsed
     }
 
@@ -284,7 +375,9 @@ export async function* streamChatResponseEvents(
         finished = true
         return
       }
-      const parsed = parseStreamDataPayload(data)
+      const failure = readStreamError(data)
+      if (failure) throw failure
+      const parsed = parseStreamDataPayload(data, usageState)
       if (parsed) yield parsed
     }
   }

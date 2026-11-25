@@ -606,8 +606,17 @@ export type ProviderTemplateId =
   | 'ollama'
   | 'lm-studio'
   | 'local-compatible'
+  | 'anthropic'
+  | 'gemini-native'
 
 export type ProviderTemplateCategory = 'default' | 'global' | 'china' | 'aggregator' | 'local'
+
+/**
+ * Which wire protocol a provider speaks. Almost every gateway implements
+ * /chat/completions; Anthropic and Google each have a native API with features
+ * their OpenAI shims do not expose.
+ */
+export type ProviderProtocol = 'openai' | 'anthropic' | 'gemini'
 export type ProviderModelType = 'chat' | 'vision' | 'image' | 'embedding' | 'audio' | 'rerank' | 'other'
 export type ProviderModelCapability = ProviderModelType | 'image-tool'
 
@@ -616,6 +625,7 @@ export interface ProviderTemplate {
   name: string
   description: string
   category: ProviderTemplateCategory
+  protocol?: ProviderProtocol
   apiBaseUrl: string
   chatCompletionsPath?: string
   imageGenerationsPath?: string
@@ -636,6 +646,7 @@ export interface ProviderModel {
 export interface ApiProvider {
   id: string
   templateId: ProviderTemplateId
+  protocol?: ProviderProtocol
   name: string
   apiBaseUrl: string
   chatCompletionsPath?: string
@@ -1047,6 +1058,12 @@ export interface AppSettings {
   enableTemperature: boolean
   maxTokens: number
   enableMaxTokens: boolean
+  /**
+   * When true the client retrieves the relevant chunks of the current
+   * assistant's knowledge base for every question instead of waiting for the
+   * user to tick notes by hand.
+   */
+  knowledgeAutoRetrieval: boolean
   messageSendShortcut: MessageSendShortcut
   floatingMascotSkin: FloatingMascotAppearance
   floatingMascotHints: boolean

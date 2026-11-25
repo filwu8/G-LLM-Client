@@ -303,7 +303,10 @@
     "memoryEnabled": "已启用长期记忆",
     "memoryDisabled": "已停用长期记忆",
     "memoryDeleted": "已删除长期记忆",
-    "referenced": "已引用「{{title}}」，关闭窗口后可在输入区看到"
+    "referenced": "已引用「{{title}}」，关闭窗口后可在输入区看到",
+    "autoRetrieval": "自动检索知识库",
+    "autoRetrievalHint": "提问时自动从当前助手的知识库里检索相关片段",
+    "autoRetrievalDetail": "只把命中的片段发给模型；关闭后仅使用你手动勾选的资料。"
   },
   "tools": {
     "title": "扩展工具中心",

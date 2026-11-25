@@ -801,6 +801,7 @@ function getComparableSettings(settings: AppSettings) {
     enableTemperature: settings.enableTemperature,
     maxTokens: Number(settings.maxTokens),
     enableMaxTokens: settings.enableMaxTokens,
+    knowledgeAutoRetrieval: settings.knowledgeAutoRetrieval,
     messageSendShortcut: settings.messageSendShortcut,
     floatingMascotSkin: settings.floatingMascotSkin,
     floatingMascotHints: settings.floatingMascotHints,
@@ -8105,6 +8106,22 @@ function SettingsPanel({
                     </button>
                   </div>
                 </div>
+              </section>
+
+              <section className="parameter-section">
+                <ParameterToggle
+                  description={t('knowledge.autoRetrievalHint')}
+                  enabled={settingsDraft.knowledgeAutoRetrieval}
+                  label={t('knowledge.autoRetrieval')}
+                  valueLabel={
+                    settingsDraft.knowledgeAutoRetrieval ? t('common.enabled') : t('common.disabled')
+                  }
+                  onEnabledChange={(enabled) =>
+                    setSettingsDraft({ ...settingsDraft, knowledgeAutoRetrieval: enabled })
+                  }
+                >
+                  <small>{t('knowledge.autoRetrievalDetail')}</small>
+                </ParameterToggle>
               </section>
 
               <section className="parameter-section">

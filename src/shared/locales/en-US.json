@@ -303,7 +303,10 @@
     "memoryEnabled": "Long-term memory enabled",
     "memoryDisabled": "Long-term memory disabled",
     "memoryDeleted": "Long-term memory deleted",
-    "referenced": "Quoted “{{title}}”. It will appear in the composer after you close this window."
+    "referenced": "Quoted “{{title}}”. It will appear in the composer after you close this window.",
+    "autoRetrieval": "Auto-retrieve knowledge",
+    "autoRetrievalHint": "Retrieve relevant chunks from this assistant's knowledge base for each question",
+    "autoRetrievalDetail": "Only matched chunks are sent. When off, only notes you select manually are used."
   },
   "tools": {
     "title": "Extensions center",

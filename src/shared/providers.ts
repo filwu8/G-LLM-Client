@@ -120,8 +120,9 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'OpenAI 官方兼容接口',
+    description: 'OpenAI 官方接口',
     category: 'global',
+    protocol: 'openai',
     apiBaseUrl: 'https://api.openai.com/v1',
     imageGenerationsPath: '/images/generations',
     defaultModel: 'gpt-4.1-mini',
@@ -129,10 +130,33 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     requiresApiKey: true
   },
   {
+    id: 'anthropic',
+    name: 'Anthropic Claude',
+    description: 'Claude 原生 Messages API（支持提示缓存与思维链）',
+    category: 'global',
+    protocol: 'anthropic',
+    apiBaseUrl: 'https://api.anthropic.com/v1',
+    defaultModel: 'claude-sonnet-4-5',
+    suggestedModels: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'],
+    requiresApiKey: true
+  },
+  {
+    id: 'gemini-native',
+    name: 'Google Gemini 原生',
+    description: 'Gemini 原生 generateContent API',
+    category: 'global',
+    protocol: 'gemini',
+    apiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    defaultModel: 'gemini-2.5-flash',
+    suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    requiresApiKey: true
+  },
+  {
     id: 'google-gemini',
-    name: 'Google Gemini',
+    name: 'Google Gemini（OpenAI 兼容）',
     description: 'Gemini OpenAI 兼容接口',
     category: 'global',
+    protocol: 'openai',
     apiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     defaultModel: 'gemini-2.5-flash',
     suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'text-embedding-004'],
@@ -313,6 +337,7 @@ export function createProviderFromTemplate(templateId: ProviderTemplateId, id = 
   return {
     id,
     templateId: template.id,
+    ...(template.protocol ? { protocol: template.protocol } : {}),
     name: template.name,
     apiBaseUrl: template.apiBaseUrl,
     chatCompletionsPath: template.chatCompletionsPath,

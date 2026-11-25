@@ -712,6 +712,7 @@ export const defaultSettings: AppSettings = {
   enableTemperature: false,
   maxTokens: 4096,
   enableMaxTokens: false,
+  knowledgeAutoRetrieval: true,
   messageSendShortcut: 'enter',
   floatingMascotSkin: 'auto',
   floatingMascotHints: true,
@@ -1606,6 +1607,10 @@ export function getSettings(): AppSettings {
     enableTemperature: Boolean(saved.enableTemperature),
     maxTokens: Number.isFinite(saved.maxTokens) ? Math.max(1, Math.round(Number(saved.maxTokens))) : defaultSettings.maxTokens,
     enableMaxTokens: Boolean(saved.enableMaxTokens),
+    knowledgeAutoRetrieval:
+      saved.knowledgeAutoRetrieval === undefined
+        ? defaultSettings.knowledgeAutoRetrieval
+        : Boolean(saved.knowledgeAutoRetrieval),
     messageSendShortcut: sanitizeMessageSendShortcut(saved.messageSendShortcut),
     floatingMascotSkin:
       saved.floatingMascotSkin === 'gold' || saved.floatingMascotSkin === 'blue'
@@ -1654,6 +1659,10 @@ export function setSettings(settings: AppSettings): AppSettings {
       ? Math.max(1, Math.round(Number(settings.maxTokens)))
       : defaultSettings.maxTokens,
     enableMaxTokens: Boolean(settings.enableMaxTokens),
+    knowledgeAutoRetrieval:
+      settings.knowledgeAutoRetrieval === undefined
+        ? defaultSettings.knowledgeAutoRetrieval
+        : Boolean(settings.knowledgeAutoRetrieval),
     messageSendShortcut: sanitizeMessageSendShortcut(settings.messageSendShortcut),
     floatingMascotSkin:
       settings.floatingMascotSkin === 'gold' || settings.floatingMascotSkin === 'blue'
