@@ -39,6 +39,7 @@ import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
 import { copyMermaidSvgAsPng } from './mermaidPng'
 import { closeAgentBrowser, isAgentBrowserOpen, setAgentBrowserStateListener, showAgentBrowser } from './agentBrowser'
+import { formatBuildCode, resolveBuildCode } from './buildCode'
 import { isWindowControlTool } from './windowControlPolicy'
 import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
 
@@ -164,6 +165,11 @@ import {
   getProviderTelemetryProperties,
   trackTelemetryEvent
 } from './telemetry'
+
+// Substituted at bundle time by electron.vite.config.ts. It is absent in a
+// development run, and in any build that bypasses that config, in which
+// case a packaged app shows no build code rather than a guessed one.
+declare const __BUILD_CODE__: string | undefined
 
 function getTrayIconPath(useDarkBackground = false): string {
   if (process.platform === 'win32') {
@@ -448,27 +454,23 @@ if (process.platform === 'win32' && !process.windowsStore) {
   app.setAppUserModelId(APP_USER_MODEL_ID)
 }
 
-function formatBuildCode(date: Date): string {
-  const parts = [
-    date.getFullYear(),
-    date.getMonth() + 1,
-    date.getDate(),
-    date.getHours(),
-    date.getMinutes()
-  ]
-
-  return parts.map((part) => String(part).padStart(2, '0')).join('')
+function readOwnMtime(): number | undefined {
+  try {
+    return statSync(__filename).mtime.getTime()
+  } catch {
+    return undefined
+  }
 }
 
 function getAppBuildCode(): string {
-  const envBuildCode = process.env.GLLM_BUILD_CODE?.trim()
-  if (envBuildCode) return envBuildCode
-
-  try {
-    return formatBuildCode(statSync(__filename).mtime)
-  } catch {
-    return formatBuildCode(new Date())
-  }
+  return resolveBuildCode({
+    envCode: process.env.GLLM_BUILD_CODE,
+    // Injected by electron.vite.config.ts. Absent here means the bundle was not
+    // built through that path, and a packaged app then shows no code at all.
+    injectedCode: typeof __BUILD_CODE__ === 'string' ? __BUILD_CODE__ : undefined,
+    isPackaged: app.isPackaged,
+    scriptMtimeMs: readOwnMtime()
+  })
 }
 
 function getMainLogDirectory(): string {
