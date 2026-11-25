@@ -1,14 +1,25 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
-import { access, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runWorkspaceProcess, type WorkspaceProcessOptions } from './workspaceProcess.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
 import { windowsBatchScript } from './workspaceWindowsShell.ts'
 
 export type SandboxPlatform = 'darwin' | 'linux' | 'win32'
-export interface SandboxStatus { backend: string; available: boolean; detail: string }
+export interface SandboxStatus {
+  backend: string
+  available: boolean
+  detail: string
+  /**
+   * Why the backend cannot be used; absent when available. `missing` means the
+   * launcher was not shipped on this system, `unverified` means it is present but
+   * a sandboxed child process could not actually start.
+   */
+  reason?: 'missing' | 'unverified'
+}
 export function sandboxBackend(platform: string = process.platform): string {
   return ({ darwin: 'Seatbelt', linux: 'Bubblewrap + seccomp', win32: 'AppContainer + Job Object' } as Record<string, string>)[platform] ?? 'Unsupported'
 }
@@ -16,21 +27,99 @@ function resourcePath(name: string) {
   const packaged = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
   return packaged && !process.defaultApp ? resolve(packaged, 'resources', name) : fileURLToPath(new URL(`../../resources/${name}`, import.meta.url))
 }
-export async function sandboxStatus(): Promise<SandboxStatus> {
+/**
+ * OS runtime environment a sandboxed child needs. Shared with the pre-flight so a
+ * probe can never pass under conditions the real command would not have. Carries
+ * no business secrets: callers merge in explicitly selected variables.
+ */
+export function sandboxRuntimeEnv(pythonDirectory?: string): NodeJS.ProcessEnv {
+  const windows = process.platform === 'win32'
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows'
+  return {
+    PATH: [...(pythonDirectory ? [pythonDirectory] : []), ...(windows ? [resolve(systemRoot, 'System32'), systemRoot] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'])].join(delimiter),
+    LANG: 'en_US.UTF-8',
+    ...(windows
+      // Windows requires LOCALAPPDATA when creating an AppContainer process.
+      ? { SystemRoot: systemRoot, windir: systemRoot, SystemDrive: systemRoot.slice(0, 2), LOCALAPPDATA: process.env.LOCALAPPDATA, PATHEXT: '.COM;.EXE;.BAT;.CMD', PSModulePath: resolve(systemRoot, 'System32/WindowsPowerShell/v1.0/Modules'), TEMP: process.env.TEMP, TMP: process.env.TMP }
+      : { TMPDIR: process.env.TMPDIR || '/tmp' })
+  }
+}
+async function requireLauncher(): Promise<void> {
+  if (process.platform === 'darwin') await access('/usr/bin/sandbox-exec', constants.X_OK)
+  else if (process.platform === 'linux') {
+    await access('/usr/bin/bwrap', constants.X_OK)
+    if (!['x64', 'arm64'].includes(process.arch)) throw new Error('seccomp backend requires x64 or arm64')
+  } else if (process.platform === 'win32') {
+    await access(resourcePath('workspace-appcontainer.ps1'))
+    await access(resourcePath('workspace-appcontainer.cs'))
+  } else throw new Error('This OS has no supported native sandbox')
+}
+const PREFLIGHT_MARKER = '__GLLM_SANDBOX_PREFLIGHT_OK__'
+async function probeSandboxLaunch(): Promise<string | undefined> {
+  // Returns the failure detail, or undefined when a sandboxed child really ran.
+  // It goes through executeSandboxed, never runSandboxCommand, because this probe
+  // is what runSandboxCommand's own gate depends on.
+  let root: string | undefined
+  try {
+    root = await mkdtemp(resolve(tmpdir(), 'gllm-sandbox-preflight-'))
+    const windows = process.platform === 'win32'
+    const command = `echo ${PREFLIGHT_MARKER}`
+    const result = await executeSandboxed({
+      executable: windows ? resolve(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe') : '/bin/sh',
+      args: windows ? ['/d', '/s', '/c', command] : ['-c', command],
+      cwd: root,
+      env: { ...sandboxRuntimeEnv(), HOME: root },
+      timeoutMs: 30000
+    }, root, false)
+    if (result.exitCode === 0 && result.stdout.includes(PREFLIGHT_MARKER)) return undefined
+    // executeSandboxed appends a note about the user's workspace not being applied.
+    // The probe never had workspace changes, so that line would misdescribe it.
+    const stderr = result.stderr.replace(/Sandbox execution failed; temporary workspace changes were not applied\. No host fallback was attempted\./g, '').trim().slice(0, 300)
+    return `the probe exited with code ${result.exitCode}${stderr ? `: ${stderr}` : ''}`
+  } catch (error) {
+    return (error as Error).message
+  } finally {
+    if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+let sandboxStatusProbe: Promise<SandboxStatus> | undefined
+async function resolveSandboxStatus(): Promise<SandboxStatus> {
   const backend = sandboxBackend()
   try {
-    if (process.platform === 'darwin') await access('/usr/bin/sandbox-exec', constants.X_OK)
-    else if (process.platform === 'linux') {
-      await access('/usr/bin/bwrap', constants.X_OK)
-      if (!['x64', 'arm64'].includes(process.arch)) throw new Error('seccomp backend requires x64 or arm64')
-    } else if (process.platform === 'win32') {
-      await access(resourcePath('workspace-appcontainer.ps1'))
-      await access(resourcePath('workspace-appcontainer.cs'))
-    } else throw new Error('This OS has no supported native sandbox')
-    return { backend, available: true, detail: 'Backend present; execution still requires a successful OS isolation check. No host fallback.' }
+    await requireLauncher()
   } catch {
-    return { backend, available: false, detail: process.platform === 'linux' ? 'Install bubblewrap (/usr/bin/bwrap); enable unprivileged user namespaces according to your system policy. x64/arm64 required. No host fallback.' : 'Native sandbox backend unavailable. No host fallback.' }
+    return {
+      backend,
+      available: false,
+      reason: 'missing',
+      detail: process.platform === 'linux' ? 'Install bubblewrap (/usr/bin/bwrap); enable unprivileged user namespaces according to your system policy. x64/arm64 required. No host fallback.' : 'Native sandbox backend unavailable. No host fallback.'
+    }
   }
+  const failure = await probeSandboxLaunch()
+  if (failure === undefined) return { backend, available: true, detail: 'Backend present and a sandboxed child process started successfully. No host fallback.' }
+  // The launcher ships with the app, so a failed launch is a host limitation, not
+  // a missing install. Distinguishing the two is the whole point: a backend that
+  // cannot start a child used to look exactly like the user's command failing with
+  // exit code 1, and nothing in the UI said the sandbox was the problem.
+  return {
+    backend,
+    available: false,
+    reason: 'unverified',
+    detail: `${backend} is present but could not start a sandboxed process on this system (${failure}). Commands are blocked rather than run without isolation.`
+  }
+}
+/**
+ * Whether the native sandbox can be used. Runs one real probe per process instead
+ * of trusting that the launcher files exist: presence on disk says nothing about
+ * whether the OS will accept a sandboxed child. Cached because the answer is
+ * stable for the process lifetime and the probe is expensive on Windows.
+ */
+export function sandboxStatus(): Promise<SandboxStatus> {
+  return (sandboxStatusProbe ??= resolveSandboxStatus())
+}
+/** Clear the cached probe so the next call re-checks. Tests and manual retry. */
+export function resetSandboxStatus(): void {
+  sandboxStatusProbe = undefined
 }
 const q = (path: string) => JSON.stringify(path)
 const powershellLiteral = (value: string) => `'${value.replace(/'/g, "''")}'`
@@ -106,6 +195,9 @@ export function bubblewrapArgs(work: string, scratch: string, executable: string
 export async function runSandboxCommand(options: WorkspaceProcessOptions, root: string, network: boolean) {
   const status = await sandboxStatus()
   if (!status.available) throw new Error(status.detail)
+  return executeSandboxed(options, root, network)
+}
+async function executeSandboxed(options: WorkspaceProcessOptions, root: string, network: boolean) {
   const snapshot = await createSandboxSnapshot(root)
   try {
     const { relative } = await import('node:path')

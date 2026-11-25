@@ -216,7 +216,7 @@ export function WorkspaceAgentSettingsDialog({ workspace, onSave, onClose }: {
       <label>{t('workspace.agentExecutionMode')}<select value={executionMode} onChange={event => setExecutionMode(event.target.value as 'sandbox' | 'host')}><option value="sandbox">{t('workspace.agentSandbox')}</option><option value="host">{t('workspace.agentHost')}</option></select></label>
       <p>{executionMode === 'sandbox' ? t('workspace.agentSandboxBoundary') : t('workspace.agentNativeDescription')}</p>
       {executionMode === 'sandbox' && <>
-        <p role="status">{status ? `${status.sandbox.backend} · ${t(status.sandbox.available ? 'workspace.agentBackendPresent' : 'workspace.agentBackendMissing')}` : t('workspace.agentLoading')}</p>
+        <p role="status">{status ? `${status.sandbox.backend} · ${t(status.sandbox.available ? 'workspace.agentBackendPresent' : status.sandbox.reason === 'unverified' ? 'workspace.agentBackendUnusable' : 'workspace.agentBackendMissing')}` : t('workspace.agentLoading')}</p>
         {status && !status.sandbox.available && <p>{status.sandbox.detail}</p>}
         <label><input type="checkbox" checked={sandboxNetwork} onChange={event => setSandboxNetwork(event.target.checked)} />{t('workspace.agentNetworkOn')}</label>
         <p>{t('workspace.agentNetworkDescription')}</p>

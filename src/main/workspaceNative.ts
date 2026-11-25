@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { constants } from 'node:fs'
 import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { normalizeEnvNames, selectWorkspaceEnvironment, redactWorkspaceSecrets } from './workspaceAgentPolicy.ts'
-import { runSandboxCommand } from './workspaceSandbox.ts'
+import { runSandboxCommand, sandboxRuntimeEnv, sandboxStatus } from './workspaceSandbox.ts'
 import { runWorkspaceProcess, type WorkspaceProcessOptions } from './workspaceProcess.ts'
 import { windowsBatchScript } from './workspaceWindowsShell.ts'
 
@@ -76,15 +76,10 @@ export async function runNativeCommand(command: NativeCommand, values: Record<st
     : windows ? resolve(systemRoot, 'System32', 'cmd.exe') : '/bin/sh'
   const args = command.language === 'python' ? ['-I', '-X', 'utf8', '-u', '-c', command.code]
     : windows ? ['/d', '/s', '/c', command.code] : ['-c', command.code]
-  const env: NodeJS.ProcessEnv = {
-    PATH: [ ...(python ? [dirname(python)] : []), ...(windows ? [resolve(systemRoot, 'System32'), systemRoot] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']) ].join(delimiter),
-    HOME: command.cwd,
-    LANG: 'en_US.UTF-8',
-    // Windows requires LOCALAPPDATA when creating an AppContainer process.
-    // Keep only OS runtime paths; never inherit the host's business environment.
-    ...(windows ? { SystemRoot: systemRoot, windir: systemRoot, SystemDrive: systemRoot.slice(0, 2), LOCALAPPDATA: process.env.LOCALAPPDATA, PATHEXT: '.COM;.EXE;.BAT;.CMD', PSModulePath: resolve(systemRoot, 'System32/WindowsPowerShell/v1.0/Modules'), TEMP: process.env.TEMP, TMP: process.env.TMP } : { TMPDIR: process.env.TMPDIR || '/tmp' }),
-    ...selected
-  }
+  // Built by the same helper the sandbox pre-flight uses, so a probe can never
+  // pass under conditions this real command would not have. Only OS runtime
+  // paths plus explicitly selected variables; never the host's business env.
+  const env: NodeJS.ProcessEnv = { ...sandboxRuntimeEnv(python ? dirname(python) : undefined), HOME: command.cwd, ...selected }
   const options = { ...execution, executable, args, cwd: command.cwd, env, signal }
   let result: Awaited<ReturnType<typeof runWorkspaceProcess>>
   if (windows && command.language === 'shell' && command.executionMode === 'host') {
@@ -146,6 +141,9 @@ export function probeNativeShell(settings: { executionMode?: 'sandbox' | 'host';
   if (cached) return cached
 
   const probe = (async () => {
+    // The sandbox pre-flight already answers this question for sandboxed runs. Asking
+    // it first avoids launching a second child that is bound to fail on such a host.
+    if (executionMode === 'sandbox' && !(await sandboxStatus()).available) return false
     let root: string | undefined
     try {
       root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-probe-'))
