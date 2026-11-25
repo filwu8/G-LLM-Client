@@ -795,7 +795,13 @@ export interface AgentPlanStep {
 
 export interface AgentExecutionPlan {
   goal: string
-  status: 'planning' | 'executing' | 'verifying' | 'succeeded' | 'failed'
+  /**
+   * `waiting` means the run stopped only because it needs something from the
+   * user (an answer, a decision, a credential). It is deliberately not
+   * `failed`: the plan, the finished steps and the produced files stay valid
+   * and the run can continue from the checkpoint.
+   */
+  status: 'planning' | 'executing' | 'verifying' | 'waiting' | 'succeeded' | 'failed'
   steps: AgentPlanStep[]
   verification?: string
   startedAt: number

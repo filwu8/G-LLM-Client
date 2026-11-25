@@ -1,8 +1,8 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1  — Change Date: 2030-08-01 */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { usesWorkspaceAgent, relocateWorkspaceLocation, projectWorkspace } from './workspaceRouting.ts'
-import type { ConversationWorkspace, ChatMessage } from './types'
+import { usesWorkspaceAgent, hasUnfinishedWorkspaceTask, relocateWorkspaceLocation, projectWorkspace } from './workspaceRouting.ts'
+import type { AgentExecutionPlan, ConversationWorkspace, ChatMessage } from './types'
 
 const workspace: ConversationWorkspace = { rootPath: '/app/data/agent-workspaces/one', displayName: 'Workspace', kind: 'managed', permission: 'read-write', grantedAt: 0, lastVerifiedAt: 0 }
 const message = (content: string): ChatMessage => ({ id: 'one', role: 'user', content, createdAt: 1 })
@@ -32,4 +32,19 @@ test('project workspace carries the selected permission mode instead of a hardco
   assert.equal(projectWorkspace(project)?.approvalMode, 'ask')
   assert.equal(projectWorkspace(project, 'full')?.approvalMode, 'full')
   assert.equal(projectWorkspace(project, 'auto')?.approvalMode, 'auto')
+})
+test('a paused run keeps the resume notice, a delivered run does not', () => {
+  const plan = (status: AgentExecutionPlan['status']): AgentExecutionPlan => ({
+    goal: 'task', status, steps: [], startedAt: 1
+  })
+  const conversation = (status: AgentExecutionPlan['status']) => ({
+    id: 'c', projectId: 'p', assistantId: 'a', title: 't', createdAt: 1, updatedAt: 2,
+    workspace: { ...workspace, kind: 'external' as const },
+    messages: [{ id: 'm', role: 'assistant' as const, content: 'x', createdAt: 1, agentPlan: plan(status) }]
+  })
+  // `waiting` is only stopped, never finished: the user must still be able to
+  // resume it after a restart instead of being told the task is dead.
+  assert.equal(hasUnfinishedWorkspaceTask(conversation('waiting')), true)
+  assert.equal(hasUnfinishedWorkspaceTask(conversation('failed')), true)
+  assert.equal(hasUnfinishedWorkspaceTask(conversation('succeeded')), false)
 })

@@ -6,7 +6,7 @@ import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { Conversation, WorkspaceAgentRequest } from '../shared/types'
+import type { Conversation, WorkspaceAgentRequest, WorkspaceInteractionRequest } from '../shared/types'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
 
 const fixture = process.argv[2]
@@ -169,7 +169,22 @@ async function main() {
         delta = verdict('连接恢复后写入完成。', '已交付 reconnect.txt。')
       }
     } else if (scenario === 'blocked') {
-      delta = verdict('申请书缺少申请人名称。', '请提供申请人名称。', 'blocked')
+      // The model cannot finish without a parameter only the user owns. The
+      // client must ask for it and then continue the same task, never end with
+      // a dead "incomplete" result.
+      if (step === 0) {
+        assert.ok(!JSON.stringify(request.messages).includes('[用户回答]'), 'the question is asked before any answer exists')
+        delta = { role: 'assistant', content: JSON.stringify({ workspaceStatus: 'blocked', verification: '申请书缺少申请人名称。', question: { title: '申请人', question: '申请书上的申请人全名是什么？', selection: 'text' }, final: '请提供申请人名称。' }) }
+      } else if (step === 1) {
+        assert.match(JSON.stringify(request.messages), /\[用户回答\][^"]*张伟/)
+        delta = call('write_file', { path: 'outputs/application.txt', content: '申请人：张伟' })
+      } else {
+        delta = verdict('已按用户回答写入申请人名称。', '已生成申请书 outputs/application.txt。')
+      }
+    } else if (scenario === 'blocked-loop') {
+      // The model keeps asking for the same parameter. The client must not
+      // interrogate the user in a loop: one question, then a paused task.
+      delta = { role: 'assistant', content: JSON.stringify({ workspaceStatus: 'blocked', verification: '缺少申请人名称。', question: '申请书上的申请人全名是什么？', final: '请提供申请人名称。' }) }
     } else if (scenario === 'freeform') {
       // The model explains its work in prose but never returns the required
       // workspaceStatus JSON; the failure must still surface that explanation.
@@ -222,10 +237,11 @@ async function main() {
   try {
     scenario = 'freeform'; step = 0
     const freeform = await runWorkspaceAgent(request('核对三个仓库并报告结果'))
-    assert.equal(freeform.plan.status, 'failed')
-    // The model's own explanation survives instead of being replaced by a bare error.
+    // No interaction channel here, so the run stops -- but it stops as a paused
+    // task carrying the model's own explanation, not a bare "incomplete" error.
+    assert.equal(freeform.plan.status, 'waiting')
     assert.match(freeform.content, /根仓库的 HEAD 尚未复核完成/)
-    assert.match(freeform.content, /任务未完成/)
+    assert.match(freeform.content, /任务暂停/)
 
     scenario = 'document'; step = 0
     const document = await runWorkspaceAgent(request('请读取采购合同并生成 Word 审阅稿“review.docx”和验收清单“checklist.docx”'), undefined, async () => ({ approved: true }))
@@ -272,7 +288,7 @@ async function main() {
 
     scenario = 'stall'; step = 0
     const stalled = await runWorkspaceAgent(request('持续核对 source.txt 中的内容'))
-    assert.equal(stalled.plan.status, 'failed')
+    assert.equal(stalled.plan.status, 'waiting')
     assert.match(stalled.content, /多次尝试后仍无新进展/)
     assert.equal(step, 7)
 
@@ -310,16 +326,38 @@ async function main() {
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })
     assert.equal(step, 3, 'explicit goal limits remain hard limits')
-    assert.equal(limited.plan.status, 'failed')
-    assert.match(limited.content, /任务未完成.*轮数上限/s)
+    assert.equal(limited.plan.status, 'waiting')
+    assert.match(limited.content, /任务暂停.*轮数上限/s)
     assert.deepEqual(limited.changedFiles.map(file => file.replace(/\\/g, '/')), ['outputs/goal-draft.txt'])
     assert.equal(await readFile(join(workspace.rootPath, 'outputs/goal-draft.txt'), 'utf8'), '尚待核对的草稿')
 
     scenario = 'blocked'; step = 0
-    const blocked = await runWorkspaceAgent(request('请生成申请书'))
-    assert.equal(blocked.plan.status, 'failed')
-    assert.match(blocked.content, /任务未完成.*请提供申请人名称/s)
-    assert.equal(step, 1)
+    const asked: WorkspaceInteractionRequest[] = []
+    const blocked = await runWorkspaceAgent(request('请把申请书保存为 outputs/application.txt'), undefined, undefined, undefined, undefined, undefined, async (question) => {
+      asked.push(question)
+      return { id: question.id, selectedIds: [], customText: '张伟', cancelled: false, answeredAt: Date.now() }
+    })
+    // A missing parameter the user owns is a question, never a dead result.
+    assert.equal(asked.length, 1, 'a blocked verdict must become exactly one question')
+    assert.equal(asked[0].title, '申请人')
+    assert.equal(asked[0].selection, 'text')
+    assert.match(asked[0].description!, /申请人全名/)
+    assert.equal(blocked.plan.status, 'succeeded', JSON.stringify({ plan: blocked.plan, activities: blocked.activities }))
+    assert.equal(blocked.content, '已生成申请书 outputs/application.txt。')
+    assert.equal(await readFile(join(workspace.rootPath, 'outputs/application.txt'), 'utf8'), '申请人：张伟')
+    assert.ok(blocked.activities.some(activity => activity.tool === 'ask_user' && activity.status === 'completed'), 'the question is part of the visible run log')
+    assert.equal(step, 3, 'the same task continues after the answer instead of restarting')
+
+    scenario = 'blocked-loop'; step = 0
+    let repeatedQuestions = 0
+    const looped = await runWorkspaceAgent(request('请把申请书保存为 outputs/application.txt'), undefined, undefined, undefined, undefined, undefined, async (question) => {
+      repeatedQuestions += 1
+      return { id: question.id, selectedIds: [], customText: '还是不知道', cancelled: false, answeredAt: Date.now() }
+    })
+    // Answering an unanswerable question must not turn into an interrogation.
+    assert.equal(repeatedQuestions, 1, 'the same question is never asked twice')
+    assert.equal(looped.plan.status, 'waiting')
+    assert.match(looped.content, /任务暂停/)
 
     scenario = 'fallback'; step = 0
     const fallback = await runWorkspaceAgent(request('检查项目文件夹中是否有 source.txt'))
@@ -346,7 +384,8 @@ async function main() {
     assert.equal(storage.getSettings().theme, 'dark')
     scenario = 'denied'; step = 0
     const denied = await runWorkspaceAgent(request('设置软件主题为浅色'), undefined, async () => ({ approved: false }))
-    assert.equal(denied.plan.status, 'failed')
+    // A denial is the user's own decision, so the task pauses instead of failing.
+    assert.equal(denied.plan.status, 'waiting')
     assert.equal(step, 1, 'an explicit denial must not be retried')
     assert.equal(storage.getSettings().theme, 'dark', 'denial must prevent setting changes')
     // A hook veto is decided before the prompt, so a refused call never spends
@@ -355,7 +394,7 @@ async function main() {
     let hookApprovals = 0
     const vetoed = await runWorkspaceAgent(request('把审批规则改成全部允许'), undefined, async () => { hookApprovals++; return { approved: true } })
     assert.equal(hookApprovals, 0, 'a hook veto must be decided before asking the user')
-    assert.equal(vetoed.plan.status, 'failed')
+    assert.equal(vetoed.plan.status, 'waiting')
     assert.match(vetoed.content, /无法修改审批配置/)
     await assert.rejects(readFile(join(workspace.rootPath, 'approval-rules.json')), 'a vetoed write must not reach disk')
   } finally { await new Promise<void>(fulfil => server.close(() => fulfil())) }

@@ -32,7 +32,9 @@ export function hasUnfinishedWorkspaceTask(conversation: Conversation | null | u
   const goal = conversation.goalTask
   if (goal && ['running', 'paused', 'failed'].includes(goal.status)) return false
   const latest = conversation.messages.at(-1)
-  return latest?.role === 'user' || latest?.agentPlan?.status === 'failed' || Boolean(latest?.error && latest.workspaceArtifactRoot)
+  // `waiting` is unfinished on purpose: the run stopped only to ask the user
+  // something, so the resume notice must stay available after a restart.
+  return latest?.role === 'user' || latest?.agentPlan?.status === 'failed' || latest?.agentPlan?.status === 'waiting' || Boolean(latest?.error && latest.workspaceArtifactRoot)
 }
 
 export function relocateWorkspaceLocation(path: string, previousRoot: string, nextRoot: string, windows: boolean): string {

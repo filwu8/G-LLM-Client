@@ -1123,7 +1123,7 @@ function sanitizeTimeZone(value: unknown): string {
 function sanitizeAgentPlan(value: AgentExecutionPlan | undefined): AgentExecutionPlan | undefined {
   if (!value || typeof value !== 'object' || !Array.isArray(value.steps)) return undefined
   const statuses = ['pending', 'running', 'completed', 'failed', 'skipped'] as const
-  const planStatuses = ['planning', 'executing', 'verifying', 'succeeded', 'failed'] as const
+  const planStatuses = ['planning', 'executing', 'verifying', 'waiting', 'succeeded', 'failed'] as const
   return {
     goal: String(value.goal ?? '').trim().slice(0, 500),
     status: planStatuses.includes(value.status) ? value.status : 'planning',
@@ -1945,7 +1945,9 @@ export function saveWorkspaceAgentResult(request: WorkspaceAgentRequest, result:
       ...goal,
       status: succeeded ? 'completed' : 'paused',
       lastPlan: result.plan,
-      lastError: succeeded ? undefined : result.plan.verification,
+      // A paused plan is not an error: it is waiting for the user, so nothing
+      // should be reported as a failure.
+      lastError: result.plan.status === 'failed' ? result.plan.verification : undefined,
       updatedAt: now,
       completedAt: succeeded ? now : undefined
     } : goal,
