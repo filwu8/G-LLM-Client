@@ -34,6 +34,14 @@ export function createAssistantTemplateBundle(
       ...tool,
       projectId: undefined,
       endpoint: undefined,
+      mcpCommand: undefined,
+      mcpArgs: undefined,
+      mcpEnv: undefined,
+      mcpCwd: undefined,
+      mcpHeaders: undefined,
+      mcpTools: undefined,
+      mcpLastTestedAt: undefined,
+      mcpLastError: undefined,
       enabled: false
     }))
   }
@@ -57,6 +65,14 @@ export function importAssistantTemplateBundle(
     id: toolIdMap.get(tool.id)!,
     projectId,
     endpoint: undefined,
+    mcpCommand: undefined,
+    mcpArgs: undefined,
+    mcpEnv: undefined,
+    mcpCwd: undefined,
+    mcpHeaders: undefined,
+    mcpTools: undefined,
+    mcpLastTestedAt: undefined,
+    mcpLastError: undefined,
     enabled: false,
     createdAt: now,
     updatedAt: now

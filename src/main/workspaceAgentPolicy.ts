@@ -202,7 +202,7 @@ export function needsWorkspaceApproval(
   isScript: boolean,
   canWrite: boolean,
   isNative = false,
-  boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean; desktop?: boolean } = {}
+  boundary: { executionMode?: 'sandbox' | 'host'; external?: boolean; externalUnconfined?: boolean; desktop?: boolean } = {}
 ): boolean {
   // The client confines every dispatch it makes: in-workspace tools are path
   // checked against the authorized root, scripts run in a snapshot copy, and
@@ -215,6 +215,7 @@ export function needsWorkspaceApproval(
     isNative,
     executionMode: boundary.executionMode,
     external: boundary.external,
+    externalUnconfined: boundary.externalUnconfined,
     desktop: boundary.desktop
   }))
 }

@@ -4802,6 +4802,46 @@ img.space-logo {
   color: hsl(var(--muted-foreground));
 }
 
+.tool-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mcp-discovered-tools {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.mcp-tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mcp-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.mcp-tool-error {
+  display: block;
+  margin-top: 6px;
+  color: hsl(var(--destructive));
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .knowledge-tabs {
   display: flex;
   flex: 0 0 auto;

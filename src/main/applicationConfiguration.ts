@@ -8,7 +8,7 @@ import { evolveSkill } from '../shared/skillLifecycle'
 import { mainT } from './i18n'
 
 export const applicationToolDefinitions = [
-  { type: 'function' as const, function: { name: 'get_application_configuration', description: 'Read supported application settings and the current assistant’s skill bindings. Supply skillId to read an existing skill’s complete instructions before updating it. Never reads keys or credential values. MCP and plugin runtimes are not available.', parameters: { type: 'object', properties: { skillId: { type: 'string' } } } } },
+  { type: 'function' as const, function: { name: 'get_application_configuration', description: 'Read supported application settings and the current assistant’s skill bindings. Supply skillId to read an existing skill’s complete instructions before updating it. Never reads keys or credential values. HTTP function tools and configured MCP servers are supported; plugin runtimes are not available.', parameters: { type: 'object', properties: { skillId: { type: 'string' } } } } },
   { type: 'function' as const, function: { name: 'update_application_settings', description: 'Actually change supported application settings through the app, with preview and explicit approval. Applies to subsequent requests. Supported keys: language (system/zh-CN/en-US), theme (auto/light/dark), timeZone, webSearchMode (off/auto/on), temperature (0-2), enableTemperature, maxTokens (1-131072), enableMaxTokens, messageSendShortcut (enter/ctrl-enter), floatingMascotVisible, floatingMascotHints. No credentials or permissions can be changed.', parameters: { type: 'object', required: ['settings'], properties: { settings: { type: 'object', additionalProperties: true } } } } },
   { type: 'function' as const, function: { name: 'configure_assistant_skill', description: 'Create or update an instruction skill in the current project and bind it to this assistant. Requires explicit approval. Before updating an existing skill, read its full instructions with get_application_configuration(skillId) and preserve rules the user did not ask to change. Provide complete instructions, not a file path. To install a remote Skill.md the user can send its URL with an install request. Does not install software, executable plugins or MCP servers.', parameters: { type: 'object', required: ['name', 'instructions'], properties: { skillId: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } } } } }
 ]
@@ -35,7 +35,7 @@ export function getApplicationConfiguration(request: WorkspaceAgentRequest, skil
   }
   return { settings: Object.fromEntries(assistantSettingKeys.map(key => [key, settings[key]])), assistant: { id: assistant.id, name: assistant.name },
     skills: getSkills(projectId).map(skill => ({ id: skill.id, name: skill.name, description: skill.description, status: skill.status, bound: assistant.skillIds?.includes(skill.id) ?? false })),
-    extensions: { httpFunctions: true, mcpRuntime: false, pluginRuntime: false } }
+    extensions: { httpFunctions: true, mcpRuntime: true, pluginRuntime: false } }
 }
 export function prepareApplicationChange(request: WorkspaceAgentRequest, tool: string, args: Record<string, unknown>) {
   if (tool === 'update_application_settings') {

@@ -36,7 +36,8 @@ test('three approval modes cover file writes, restricted scripts, sandbox/host j
     { name: 'sandbox Python/Shell including background', script: true, write: true, native: true, boundary: { executionMode: 'sandbox' as const }, expected: [true, false, false] },
     { name: 'host Python/Shell including background', script: true, write: true, native: true, boundary: { executionMode: 'host' as const }, expected: [true, true, true] },
     { name: 'HTTP extension', script: false, write: true, native: false, boundary: { external: true }, expected: [true, true, false] },
-    { name: 'HTTP extension claiming read-only', script: false, write: false, native: false, boundary: { external: true }, expected: [true, true, false] }
+    { name: 'HTTP extension claiming read-only', script: false, write: false, native: false, boundary: { external: true }, expected: [true, true, false] },
+    { name: 'local stdio MCP server (a process outside the sandbox)', script: false, write: true, native: false, boundary: { external: true, externalUnconfined: true }, expected: [true, true, true] }
   ]
   for (const entry of cases) {
     for (const [index, mode] of ['ask', 'auto', 'full'].entries()) {
@@ -56,6 +57,19 @@ test('full access still requires approval for host jobs that can write outside t
   // desktop/browser boundaries remain hard even in full mode.
   assert.equal(needsWorkspaceApproval('full', true, true, true, { executionMode: 'host', desktop: true }), true)
   assert.match(workspaceApprovalInstructions('full'), /Host \(unsandboxed\).*require per-call approval/)
+})
+
+test('a local MCP server asks every time, while a remote one follows the network rule', () => {
+  // A stdio MCP server is a program this client spawns on the machine: it runs
+  // outside the workspace sandbox, so nothing confines it and no approval mode
+  // may waive the prompt. A remote MCP server only sends data over the network,
+  // which is the same trade-off as an HTTP function tool.
+  // The call site derives this from isMcpStdioTool, so a wrong answer there
+  // would hand the model unconfined execution without asking.
+  for (const mode of ['ask', 'auto', 'full', undefined, 'invalid']) {
+    assert.equal(needsWorkspaceApproval(mode, false, true, false, { external: true, externalUnconfined: true }), true, `${mode}: stdio MCP`)
+  }
+  assert.equal(needsWorkspaceApproval('full', false, true, false, { external: true }), false)
 })
 
 test('unknown modes and native boundaries request approval; model guidance follows the selected mode', () => {

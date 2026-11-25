@@ -1360,10 +1360,38 @@ function sanitizeMemory(memory: AssistantMemory, fallbackProjectId = getActivePr
   }
 }
 
+function sanitizeStringRecord(value: unknown, maxEntries = 32, maxKeyLen = 128, maxValueLen = 2000): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, item]) => [key.trim().slice(0, maxKeyLen), String(item ?? '').slice(0, maxValueLen)] as const)
+    .filter(([key, item]) => Boolean(key) && item !== undefined)
+    .slice(0, maxEntries)
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 function sanitizeTool(tool: ToolConfig, fallbackProjectId = getActiveProjectId()): ToolConfig {
   const now = Date.now()
   const typeOptions: ToolConfigType[] = ['function', 'mcp', 'plugin']
   const type = typeOptions.includes(tool.type) ? tool.type : 'function'
+  const transportOptions = ['auto', 'stdio', 'streamable-http', 'sse'] as const
+  const mcpTransport = type === 'mcp' && tool.mcpTransport && transportOptions.includes(tool.mcpTransport)
+    ? tool.mcpTransport
+    : undefined
+  const mcpArgs = type === 'mcp' && Array.isArray(tool.mcpArgs)
+    ? tool.mcpArgs.map(String).map((item) => item.slice(0, 1000)).filter(Boolean).slice(0, 64)
+    : undefined
+  const mcpTools = type === 'mcp' && Array.isArray(tool.mcpTools)
+    ? tool.mcpTools
+      .filter((item) => item && typeof item.name === 'string' && item.name.trim())
+      .slice(0, 200)
+      .map((item) => ({
+        name: item.name.trim().slice(0, 160),
+        description: typeof item.description === 'string' && item.description.trim() ? item.description.trim().slice(0, 1000) : undefined,
+        inputSchema: item.inputSchema && typeof item.inputSchema === 'object' && !Array.isArray(item.inputSchema)
+          ? item.inputSchema
+          : undefined
+      }))
+    : undefined
 
   return {
     id: tool.id?.trim() || `tool_${now}_${Math.random().toString(16).slice(2)}`,
@@ -1372,6 +1400,15 @@ function sanitizeTool(tool: ToolConfig, fallbackProjectId = getActiveProjectId()
     name: String(tool.name ?? '').trim() || (type === 'mcp' ? 'MCP 服务' : type === 'plugin' ? '外部插件' : '函数工具'),
     description: String(tool.description ?? '').trim().slice(0, 600) || undefined,
     endpoint: String(tool.endpoint ?? '').trim().slice(0, 1000) || undefined,
+    mcpTransport,
+    mcpCommand: type === 'mcp' ? (String(tool.mcpCommand ?? '').trim().slice(0, 1000) || undefined) : undefined,
+    mcpArgs: mcpArgs && mcpArgs.length > 0 ? mcpArgs : undefined,
+    mcpEnv: type === 'mcp' ? sanitizeStringRecord(tool.mcpEnv) : undefined,
+    mcpCwd: type === 'mcp' ? (String(tool.mcpCwd ?? '').trim().slice(0, 1000) || undefined) : undefined,
+    mcpHeaders: type === 'mcp' ? sanitizeStringRecord(tool.mcpHeaders) : undefined,
+    mcpTools: mcpTools && mcpTools.length > 0 ? mcpTools : undefined,
+    mcpLastTestedAt: type === 'mcp' && Number.isFinite(tool.mcpLastTestedAt) ? Number(tool.mcpLastTestedAt) : undefined,
+    mcpLastError: type === 'mcp' ? (String(tool.mcpLastError ?? '').trim().slice(0, 600) || undefined) : undefined,
     enabled: Boolean(tool.enabled),
     createdAt: Number.isFinite(tool.createdAt) ? Number(tool.createdAt) : now,
     updatedAt: now

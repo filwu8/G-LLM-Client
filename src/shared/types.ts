@@ -363,6 +363,23 @@ export interface AssistantMemory {
 }
 
 export type ToolConfigType = 'function' | 'mcp' | 'plugin'
+export type McpTransportType = 'auto' | 'stdio' | 'streamable-http' | 'sse'
+
+export interface McpDiscoveredTool {
+  name: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+}
+
+export interface McpTestResult {
+  ok: boolean
+  transport: Exclude<McpTransportType, 'auto'>
+  serverName?: string
+  serverVersion?: string
+  tools: McpDiscoveredTool[]
+  error?: string
+  testedAt: number
+}
 
 export interface ToolConfig {
   id: string
@@ -371,6 +388,15 @@ export interface ToolConfig {
   name: string
   description?: string
   endpoint?: string
+  mcpTransport?: McpTransportType
+  mcpCommand?: string
+  mcpArgs?: string[]
+  mcpEnv?: Record<string, string>
+  mcpCwd?: string
+  mcpHeaders?: Record<string, string>
+  mcpTools?: McpDiscoveredTool[]
+  mcpLastTestedAt?: number
+  mcpLastError?: string
   enabled: boolean
   createdAt: number
   updatedAt: number

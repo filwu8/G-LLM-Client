@@ -87,6 +87,7 @@ test('the boundary derivation matches the dispatcher facts it is fed', () => {
   // the filesystem entirely.
   assert.deepEqual(boundaryFromTool({ desktop: true, external: true, isScript: true }), { kind: 'desktop', confinement: 'workspace-write' })
   assert.deepEqual(boundaryFromTool({ external: true, isScript: true, canWrite: true }), { kind: 'network', confinement: 'workspace-write' })
+  assert.deepEqual(boundaryFromTool({ external: true, externalUnconfined: true }), { kind: 'network', confinement: 'danger-full-access' })
   assert.deepEqual(boundaryFromTool({ isScript: true, canWrite: true }), { kind: 'code', confinement: 'workspace-write' })
   assert.deepEqual(boundaryFromTool({ canWrite: true }), { kind: 'write', confinement: 'workspace-write' })
   assert.deepEqual(boundaryFromTool({}), { kind: 'read', confinement: 'workspace-write' })

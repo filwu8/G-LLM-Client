@@ -39,6 +39,7 @@ import { getSuggestedImageSaveName } from '../shared/imageSaveName'
 import { getSvgClipboardFormat } from '../shared/svgClipboard'
 import { copyMermaidSvgAsPng } from './mermaidPng'
 import { closeAgentBrowser, isAgentBrowserOpen, setAgentBrowserStateListener, showAgentBrowser } from './agentBrowser'
+import { mcpRuntimeManager } from './mcpClient'
 import { formatBuildCode, resolveBuildCode } from './buildCode'
 import { isWindowControlTool } from './windowControlPolicy'
 import { getConversationSkillInstallIntent, resolveSkillInstallationSource, SkillInstallationError } from './skillInstallation'
@@ -2147,8 +2148,18 @@ app.whenReady().then(() => {
   ipcMain.handle('note:delete', (_, id: string) => deleteNote(id))
   ipcMain.handle('memory:save', (_, memory) => saveMemory(memory))
   ipcMain.handle('memory:delete', (_, id: string) => deleteMemory(id))
-  ipcMain.handle('tool:save', (_, tool) => saveTool(tool))
-  ipcMain.handle('tool:delete', (_, id: string) => deleteTool(id))
+  ipcMain.handle('tool:save', (_, tool) => {
+    const saved = saveTool(tool)
+    void mcpRuntimeManager.invalidate(saved.id)
+    return saved
+  })
+  // Probing only: the renderer decides what to persist, so testing a draft does
+  // not silently save it (Cancel would then have nothing to undo).
+  ipcMain.handle('tool:test-mcp', (_, tool) => mcpRuntimeManager.testConnection(tool))
+  ipcMain.handle('tool:delete', (_, id: string) => {
+    void mcpRuntimeManager.invalidate(id)
+    deleteTool(id)
+  })
   ipcMain.handle('skill:save', (_, skill) => saveSkill(skill))
   ipcMain.handle('skill:install-from-conversation', async (_, conversation: Conversation) => {
     const language = getSettings().language
@@ -2938,6 +2949,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  void mcpRuntimeManager.closeAll()
   clearFloatingMascotHintSchedule()
   if (floatingMascotHintHideTimer) clearTimeout(floatingMascotHintHideTimer)
 })

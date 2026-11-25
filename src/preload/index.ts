@@ -39,6 +39,7 @@ import type {
   LocalTaskResult,
   MainConversationOpenRequest,
   ImageSaveRequest,
+  McpTestResult,
   PreparedAttachment,
   Project,
   ProviderCheckResult,
@@ -188,6 +189,7 @@ const api = {
   saveMemory: (memory: AssistantMemory): Promise<AssistantMemory> => ipcRenderer.invoke('memory:save', memory),
   deleteMemory: (id: string): Promise<void> => ipcRenderer.invoke('memory:delete', id),
   saveTool: (tool: ToolConfig): Promise<ToolConfig> => ipcRenderer.invoke('tool:save', tool),
+  testMcpTool: (tool: ToolConfig): Promise<McpTestResult> => ipcRenderer.invoke('tool:test-mcp', tool),
   deleteTool: (id: string): Promise<void> => ipcRenderer.invoke('tool:delete', id),
   saveSkill: (skill: SkillConfig): Promise<SkillConfig> => ipcRenderer.invoke('skill:save', skill),
   installSkillFromConversation: (conversation: Conversation): Promise<ConversationSkillInstallationResult> =>

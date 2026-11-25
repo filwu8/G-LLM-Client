@@ -78,6 +78,7 @@ import { ChatErrorRetry } from './ChatErrorRetry'
 import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { getChatErrorPresentation } from './chatErrors'
 import { findMainConversationTarget } from '@shared/conversationHandoff'
+import { formatMcpCommandLine, isHttpUrl } from '@shared/mcpCommandLine'
 import type { ComposerSessionTarget, MainConversationOpenRequest } from '@shared/types'
 import { coalesceChatChunks, mergeConversationChange } from './chatPerformance'
 import {
@@ -200,6 +201,8 @@ import type {
   LocalTaskPlan,
   LocalTaskProgress,
   LocalTaskResult,
+  McpDiscoveredTool,
+  McpTransportType,
   MessageRetryAttempt,
   PreparedAttachment,
   Project,
@@ -6636,6 +6639,26 @@ function KnowledgeBaseDialog({
   )
 }
 
+function parseKeyValueLines(raw: string, separator: '=' | ':'): Record<string, string> | undefined {
+  const entries: Array<[string, string]> = []
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const idx = trimmed.indexOf(separator)
+    const fallbackIdx = idx === -1 && separator === ':' ? trimmed.indexOf('=') : idx
+    if (fallbackIdx <= 0) continue
+    const key = trimmed.slice(0, fallbackIdx).trim()
+    const value = trimmed.slice(fallbackIdx + 1).trim()
+    if (key) entries.push([key, value])
+  }
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+function formatKeyValueLines(record: Record<string, string> | undefined, separator: '=' | ':'): string {
+  if (!record) return ''
+  return Object.entries(record).map(([key, value]) => `${key}${separator === ':' ? ': ' : '='}${value}`).join('\n')
+}
+
 function ToolConfigDialog({
   embedded = false,
   skills,
@@ -6656,9 +6679,15 @@ function ToolConfigDialog({
   onSaveSkill: (skill: SkillConfig) => Promise<SkillConfig>
 }) {
   const { t } = useTranslation()
+  const [editingToolId, setEditingToolId] = useState<string | null>(null)
   const [type, setType] = useState<ToolConfigType>('function')
   const [name, setName] = useState('')
   const [endpoint, setEndpoint] = useState('')
+  const [mcpTransport, setMcpTransport] = useState<McpTransportType>('auto')
+  const [mcpEnvText, setMcpEnvText] = useState('')
+  const [mcpHeadersText, setMcpHeadersText] = useState('')
+  const [mcpDiscoveredTools, setMcpDiscoveredTools] = useState<McpDiscoveredTool[]>([])
+  const [testingMcpId, setTestingMcpId] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
@@ -6777,6 +6806,57 @@ function ToolConfigDialog({
     }))
   }
 
+  function resetToolForm(nextType: ToolConfigType = type) {
+    setEditingToolId(null)
+    setType(nextType)
+    setName('')
+    setEndpoint('')
+    setMcpTransport('auto')
+    setMcpEnvText('')
+    setMcpHeadersText('')
+    setMcpDiscoveredTools([])
+    setDescription('')
+  }
+
+  function loadToolIntoForm(tool: ToolConfig) {
+    setEditingToolId(tool.id)
+    setType(tool.type)
+    setName(tool.name)
+    setEndpoint(tool.mcpCommand ? formatMcpCommandLine(tool.mcpCommand, tool.mcpArgs ?? []) : (tool.endpoint ?? ''))
+    setMcpTransport(tool.mcpTransport ?? 'auto')
+    setMcpEnvText(formatKeyValueLines(tool.mcpEnv, '='))
+    setMcpHeadersText(formatKeyValueLines(tool.mcpHeaders, ':'))
+    setMcpDiscoveredTools(tool.mcpTools ?? [])
+    setDescription(tool.description ?? '')
+  }
+
+  function buildDraftTool(existing?: ToolConfig): ToolConfig {
+    const now = Date.now()
+    const trimmedEndpoint = endpoint.trim()
+    const isUrl = isHttpUrl(trimmedEndpoint)
+    const isMcp = type === 'mcp'
+    const isStdio = isMcp && (mcpTransport === 'stdio' || (mcpTransport === 'auto' && !isUrl))
+    return {
+      ...(existing ?? {}),
+      id: existing?.id ?? editingToolId ?? createId('tool'),
+      type,
+      name: name.trim() || existing?.name || '',
+      endpoint: trimmedEndpoint || undefined,
+      mcpTransport: isMcp ? mcpTransport : undefined,
+      mcpCommand: isMcp && isStdio ? (trimmedEndpoint || undefined) : undefined,
+      mcpArgs: undefined,
+      mcpEnv: isMcp && isStdio ? parseKeyValueLines(mcpEnvText, '=') : undefined,
+      mcpHeaders: isMcp && !isStdio ? parseKeyValueLines(mcpHeadersText, ':') : undefined,
+      mcpTools: isMcp ? (mcpDiscoveredTools.length > 0 ? mcpDiscoveredTools : existing?.mcpTools) : undefined,
+      mcpLastTestedAt: existing?.mcpLastTestedAt,
+      mcpLastError: existing?.mcpLastError,
+      description: description.trim() || undefined,
+      enabled: existing?.enabled ?? true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    }
+  }
+
   async function saveNewTool() {
     const trimmedName = name.trim()
     if (!trimmedName) {
@@ -6786,27 +6866,60 @@ function ToolConfigDialog({
 
     setSaving(true)
     setStatus(t('tools.saving'))
-    const now = Date.now()
+    const existing = editingToolId ? tools.find((item) => item.id === editingToolId) : undefined
 
     try {
-      const saved = await onSave({
-        id: createId('tool'),
-        type,
-        name: trimmedName,
-        endpoint: endpoint.trim() || undefined,
-        description: description.trim() || undefined,
-        enabled: true,
-        createdAt: now,
-        updatedAt: now
-      })
+      const saved = await onSave(buildDraftTool(existing))
       setStatus(t('tools.saved', { tool: saved.name }))
-      setName('')
-      setEndpoint('')
-      setDescription('')
+      resetToolForm(saved.type)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function testMcpDraft() {
+    const draft = buildDraftTool(editingToolId ? tools.find((item) => item.id === editingToolId) : undefined)
+    setTestingMcpId('draft')
+    setStatus(t('tools.mcpTesting', { tool: draft.name || 'MCP' }))
+    try {
+      const result = await window.gllm.testMcpTool(draft)
+      if (result.ok) {
+        setMcpDiscoveredTools(result.tools)
+        setStatus(t('tools.mcpTestPassed', { count: result.tools.length, transport: result.transport }))
+      } else {
+        setStatus(t('tools.mcpTestFailed', { error: result.error || 'Unknown error' }))
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error))
+    } finally {
+      setTestingMcpId(null)
+    }
+  }
+
+  async function testSavedMcp(tool: ToolConfig) {
+    setTestingMcpId(tool.id)
+    setStatus(t('tools.mcpTesting', { tool: tool.name }))
+    try {
+      const result = await window.gllm.testMcpTool(tool)
+      const updated = await onSave({
+        ...tool,
+        mcpTransport: tool.mcpTransport && tool.mcpTransport !== 'auto' ? tool.mcpTransport : result.transport,
+        mcpTools: result.ok ? result.tools : tool.mcpTools,
+        mcpLastTestedAt: result.testedAt,
+        mcpLastError: result.ok ? undefined : result.error,
+        updatedAt: Date.now()
+      })
+      if (result.ok) {
+        setStatus(t('tools.mcpTestPassed', { count: updated.mcpTools?.length ?? result.tools.length, transport: result.transport }))
+      } else {
+        setStatus(t('tools.mcpTestFailed', { error: result.error || 'Unknown error' }))
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error))
+    } finally {
+      setTestingMcpId(null)
     }
   }
 
@@ -6927,7 +7040,7 @@ function ToolConfigDialog({
 
         {activeSection === 'tools' && <>
         <div className="tool-config-form">
-          <h3>{t('tools.workspaceTools')}</h3>
+          <h3>{editingToolId ? t('tools.editTitle') : t('tools.workspaceTools')}</h3>
           <div className="tool-type-tabs">
             {(['function', 'mcp', 'plugin'] as ToolConfigType[]).map((item) => (
               <button key={item} className={item === type ? 'active' : ''} onClick={() => setType(item)} type="button">
@@ -6935,6 +7048,20 @@ function ToolConfigDialog({
               </button>
             ))}
           </div>
+          {type === 'mcp' && (
+            <div className="tool-type-tabs">
+              {(['auto', 'stdio', 'streamable-http', 'sse'] as McpTransportType[]).map((transport) => (
+                <button
+                  key={transport}
+                  className={transport === mcpTransport ? 'active' : ''}
+                  onClick={() => setMcpTransport(transport)}
+                  type="button"
+                >
+                  {t(`tools.mcpTransports.${transport}`)}
+                </button>
+              ))}
+            </div>
+          )}
           <label>
             <span>{t('tools.name')}</span>
             <input
@@ -6951,19 +7078,67 @@ function ToolConfigDialog({
               onChange={(event) => setEndpoint(event.target.value)}
             />
           </label>
+          {type === 'mcp' && (mcpTransport === 'stdio' || (mcpTransport === 'auto' && !isHttpUrl(endpoint))) && (
+            <label>
+              <span>{t('tools.mcpEnvLabel')}</span>
+              <textarea
+                placeholder={t('tools.mcpEnvPlaceholder')}
+                value={mcpEnvText}
+                onChange={(event) => setMcpEnvText(event.target.value)}
+                rows={2}
+              />
+            </label>
+          )}
+          {type === 'mcp' && (mcpTransport === 'streamable-http' || mcpTransport === 'sse' || (mcpTransport === 'auto' && isHttpUrl(endpoint))) && (
+            <label>
+              <span>{t('tools.mcpHeadersLabel')}</span>
+              <textarea
+                placeholder={t('tools.mcpHeadersPlaceholder')}
+                value={mcpHeadersText}
+                onChange={(event) => setMcpHeadersText(event.target.value)}
+                rows={2}
+              />
+            </label>
+          )}
           <label>
             <span>{t('tools.description')}</span>
             <textarea
               placeholder={t('tools.descriptionPlaceholder')}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              rows={3}
+              rows={2}
             />
           </label>
-          <button className="primary-action" disabled={saving} onClick={() => void saveNewTool()} type="button">
-            <Plus size={16} />
-            {t('tools.add')}
-          </button>
+          {type === 'mcp' && mcpDiscoveredTools.length > 0 && (
+            <div className="mcp-discovered-tools">
+              <span>{t('tools.mcpDiscoveredCount', { count: mcpDiscoveredTools.length })}</span>
+              <div className="mcp-tool-chips">
+                {mcpDiscoveredTools.slice(0, 12).map((item) => (
+                  <span key={item.name} className="mcp-tool-chip" title={item.description || item.name}>{item.name}</span>
+                ))}
+                {mcpDiscoveredTools.length > 12 && (
+                  <span className="mcp-tool-chip">+{mcpDiscoveredTools.length - 12}</span>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="tool-form-actions">
+            {type === 'mcp' && (
+              <button className="secondary-action" disabled={saving || testingMcpId !== null} onClick={() => void testMcpDraft()} type="button">
+                <RefreshCw size={15} />
+                {testingMcpId === 'draft' ? t('tools.mcpTestingShort') : t('tools.mcpTest')}
+              </button>
+            )}
+            {editingToolId && (
+              <button className="secondary-action" disabled={saving} onClick={() => resetToolForm()} type="button">
+                {t('common.cancel')}
+              </button>
+            )}
+            <button className="primary-action" disabled={saving} onClick={() => void saveNewTool()} type="button">
+              <Plus size={16} />
+              {editingToolId ? t('tools.saveEdit') : t('tools.add')}
+            </button>
+          </div>
         </div>
 
         <div className="tool-card-list">
@@ -6975,10 +7150,33 @@ function ToolConfigDialog({
               </span>
               <div>
                 <strong>{tool.name}</strong>
-                <p>{t(`tools.types.${tool.type}`)}{tool.endpoint ? ` · ${tool.endpoint}` : ''}</p>
+                <p>
+                  {t(`tools.types.${tool.type}`)}
+                  {tool.type === 'mcp' && tool.mcpTransport ? ` · ${t(`tools.mcpTransports.${tool.mcpTransport}`)}` : ''}
+                  {(tool.mcpCommand || tool.endpoint) ? ` · ${tool.mcpCommand || tool.endpoint}` : ''}
+                </p>
                 {tool.description && <em>{tool.description}</em>}
+                {tool.type === 'mcp' && (tool.mcpTools?.length ?? 0) > 0 && (
+                  <div className="mcp-tool-chips">
+                    {tool.mcpTools!.slice(0, 8).map((item) => (
+                      <span key={item.name} className="mcp-tool-chip" title={item.description || item.name}>{item.name}</span>
+                    ))}
+                    {tool.mcpTools!.length > 8 && <span className="mcp-tool-chip">+{tool.mcpTools!.length - 8}</span>}
+                  </div>
+                )}
+                {tool.type === 'mcp' && tool.mcpLastError && (
+                  <small className="mcp-tool-error">{tool.mcpLastError}</small>
+                )}
               </div>
               <div className="tool-card-actions">
+                {tool.type === 'mcp' && (
+                  <button disabled={saving || testingMcpId !== null} type="button" onClick={() => void testSavedMcp(tool)}>
+                    {testingMcpId === tool.id ? t('tools.mcpTestingShort') : t('tools.mcpTest')}
+                  </button>
+                )}
+                <button disabled={saving} type="button" onClick={() => loadToolIntoForm(tool)}>
+                  {t('common.edit')}
+                </button>
                 <button disabled={saving} type="button" onClick={() => void toggleTool(tool)}>
                   {tool.enabled ? t('knowledge.disable') : t('knowledge.enable')}
                 </button>

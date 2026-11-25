@@ -151,6 +151,7 @@ export function boundaryFromTool(input: {
   isNative?: boolean
   executionMode?: 'sandbox' | 'host'
   external?: boolean
+  externalUnconfined?: boolean
   desktop?: boolean
 }): OperationBoundary {
   const kind: OperationKind = input.desktop
@@ -163,10 +164,10 @@ export function boundaryFromTool(input: {
           ? 'write'
           : 'read'
 
-  // Native commands are the only tools that leave the workspace sandbox when
-  // the user picks host execution. Everything else the client dispatches is
-  // path-checked against the workspace root or runs in a snapshot copy.
-  const confinement: SandboxMode = input.isNative && input.executionMode !== 'sandbox'
+  // Native commands in host mode and local unconfined external processes (e.g.
+  // stdio MCP servers) run outside the workspace sandbox, so they stay
+  // unconfined and always require per-call approval.
+  const confinement: SandboxMode = (input.isNative && input.executionMode !== 'sandbox') || input.externalUnconfined
     ? 'danger-full-access'
     : 'workspace-write'
 

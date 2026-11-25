@@ -4,6 +4,7 @@
     "close": "Close",
     "cancel": "Cancel",
     "save": "Save",
+    "edit": "Edit",
     "delete": "Delete",
     "copy": "Copy",
     "quote": "Quote",
@@ -307,11 +308,13 @@
   "tools": {
     "title": "Extensions center",
     "workspaceTools": "Workspace tools",
-    "note": "Manage skills and extensions for this workspace. Skills can be bound to assistants; HTTP function tools can run. MCP and plugin configurations do not yet have a connected runtime.",
+    "editTitle": "Edit tool configuration",
+    "note": "Manage skills and extensions for this workspace. Skills, HTTP function tools, and MCP servers (Stdio / Streamable HTTP / SSE) connect to the workspace agent under approval controls; external plugin runtimes are not yet connected.",
     "name": "Tool name",
     "description": "Purpose",
     "descriptionPlaceholder": "Describe the tool for yourself and the model, for example: Look up a CRM customer by phone number.",
     "add": "Add configuration",
+    "saveEdit": "Save changes",
     "empty": "No extensions configured",
     "nameRequired": "Enter a tool name",
     "saving": "Saving tool configuration...",
@@ -319,6 +322,22 @@
     "enabled": "Enabled “{{tool}}”",
     "disabled": "Disabled “{{tool}}”",
     "deleted": "Deleted “{{tool}}”",
+    "mcpTest": "Test & discover tools",
+    "mcpTestingShort": "Connecting...",
+    "mcpTesting": "Connecting to “{{tool}}” and listing tools...",
+    "mcpTestPassed": "Connected ({{transport}}), discovered {{count}} MCP tools",
+    "mcpTestFailed": "Connection failed: {{error}}",
+    "mcpDiscoveredCount": "Discovered {{count}} MCP tools:",
+    "mcpEnvLabel": "Environment variables (KEY=VALUE per line, optional)",
+    "mcpEnvPlaceholder": "For example:\nGITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx",
+    "mcpHeadersLabel": "HTTP headers (Key: Value per line, optional)",
+    "mcpHeadersPlaceholder": "For example:\nAuthorization: Bearer your-token",
+    "mcpTransports": {
+      "auto": "Auto",
+      "stdio": "Local Stdio",
+      "streamable-http": "Streamable HTTP",
+      "sse": "SSE"
+    },
     "types": {
       "function": "Function tool",
       "mcp": "MCP service",
@@ -336,7 +355,7 @@
     },
     "endpointPlaceholders": {
       "function": "For example: https://api.example.com/tools/search",
-      "mcp": "For example: npx -y @modelcontextprotocol/server-filesystem C:/data",
+      "mcp": "For example: npx -y @modelcontextprotocol/server-filesystem C:/data or https://mcp.example.com/mcp",
       "plugin": "For example: company.crm or https://plugin.example.com/manifest.json"
     }
   },

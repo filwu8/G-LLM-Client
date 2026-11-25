@@ -4,6 +4,7 @@
     "close": "关闭",
     "cancel": "取消",
     "save": "保存",
+    "edit": "编辑",
     "delete": "删除",
     "copy": "复制",
     "quote": "引用",
@@ -307,11 +308,13 @@
   "tools": {
     "title": "扩展工具中心",
     "workspaceTools": "工作区工具",
-    "note": "在这里管理当前空间的技能与扩展。技能可绑定给助手使用；HTTP 函数工具可以执行。MCP 与插件配置暂未接通运行，请勿将添加配置视为安装成功。",
+    "editTitle": "编辑工具配置",
+    "note": "在这里管理当前空间的技能与扩展。技能、HTTP 函数工具和 MCP 服务（Stdio / Streamable HTTP / SSE）均可接入工作区 Agent 并受安全审批控制；外部插件运行时仍在扩展中。",
     "name": "工具名称",
     "description": "用途说明",
     "descriptionPlaceholder": "写给自己和后续模型调用系统看的说明，例如：根据客户手机号查询 CRM 客户档案。",
     "add": "添加配置",
+    "saveEdit": "保存修改",
     "empty": "暂无扩展工具配置",
     "nameRequired": "请输入工具名称",
     "saving": "正在保存工具配置...",
@@ -319,6 +322,22 @@
     "enabled": "已启用「{{tool}}」",
     "disabled": "已停用「{{tool}}」",
     "deleted": "已删除「{{tool}}」",
+    "mcpTest": "测试并拉取工具",
+    "mcpTestingShort": "连接中...",
+    "mcpTesting": "正在连接并拉取「{{tool}}」的工具列表...",
+    "mcpTestPassed": "连接成功（{{transport}}），已发现 {{count}} 个 MCP 工具",
+    "mcpTestFailed": "连接失败：{{error}}",
+    "mcpDiscoveredCount": "已发现 {{count}} 个 MCP 工具：",
+    "mcpEnvLabel": "环境变量（每行 KEY=VALUE，可选）",
+    "mcpEnvPlaceholder": "例如：\nGITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx",
+    "mcpHeadersLabel": "HTTP 请求头（每行 Key: Value，可选）",
+    "mcpHeadersPlaceholder": "例如：\nAuthorization: Bearer your-token",
+    "mcpTransports": {
+      "auto": "自动识别",
+      "stdio": "本地 Stdio",
+      "streamable-http": "Streamable HTTP",
+      "sse": "SSE"
+    },
     "types": {
       "function": "函数工具",
       "mcp": "MCP 服务",
@@ -336,7 +355,7 @@
     },
     "endpointPlaceholders": {
       "function": "例如：https://api.example.com/tools/search",
-      "mcp": "例如：npx -y @modelcontextprotocol/server-filesystem C:/data",
+      "mcp": "例如：npx -y @modelcontextprotocol/server-filesystem C:/data 或 https://mcp.example.com/mcp",
       "plugin": "例如：company.crm 或 https://plugin.example.com/manifest.json"
     }
   },
