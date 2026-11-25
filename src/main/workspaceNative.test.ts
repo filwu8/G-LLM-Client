@@ -9,7 +9,7 @@ import test from 'node:test'
 import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { nativeExecutionLanguages, prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
+import { nativeExecutionLanguages, prepareNativeCommand, probeNativePython, probeNativeShell, runNativeCommand } from './workspaceNative.ts'
 import { runWorkspaceProcess } from './workspaceProcess.ts'
 
 test('Python is offered only when the selected execution mode can actually launch it', async () => {
@@ -67,7 +67,8 @@ test('Python executes a business CSV calculation and creates a verified output',
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('Windows CMD preserves multiline code, Unicode and quoted paths in host and sandbox modes', { skip: process.platform !== 'win32' }, async () => {
+test('Windows CMD preserves multiline code, Unicode and quoted paths in host and sandbox modes', { skip: process.platform !== 'win32' }, async (t) => {
+  if (!await probeNativeShell()) { t.skip('the sandbox backend cannot start a child process on this host'); return }
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell space-&-'))
   try {
     for (const executionMode of ['host', 'sandbox'] as const) {
@@ -84,7 +85,8 @@ test('Windows CMD preserves multiline code, Unicode and quoted paths in host and
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('Windows sandbox keeps Chinese failure output readable and preserves the process exit code', { skip: process.platform !== 'win32' }, async () => {
+test('Windows sandbox keeps Chinese failure output readable and preserves the process exit code', { skip: process.platform !== 'win32' }, async (t) => {
+  if (!await probeNativeShell()) { t.skip('the sandbox backend cannot start a child process on this host'); return }
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-unicode-error-'))
   try {
     const result = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'echo 中文命令失败 1>&2\nexit /b 7' }, [], { executionMode: 'sandbox' }), {})
@@ -95,7 +97,8 @@ test('Windows sandbox keeps Chinese failure output readable and preserves the pr
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('Windows CMD gives actionable guidance for unsupported POSIX commands', { skip: process.platform !== 'win32' }, async () => {
+test('Windows CMD gives actionable guidance for unsupported POSIX commands', { skip: process.platform !== 'win32' }, async (t) => {
+  if (!await probeNativeShell()) { t.skip('the sandbox backend cannot start a child process on this host'); return }
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-guidance-'))
   try {
     const unsupported = await runNativeCommand(await prepareNativeCommand(root, 'run_shell', { code: 'head -n 1 missing.txt' }, [], { executionMode: 'sandbox' }), {})

@@ -5,8 +5,9 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { diagnoseWorkspaceExecution } from './workspaceDiagnostics.ts'
-import { probeNativePython } from './workspaceNative.ts'
-test('execution checks distinguish Python availability from Shell and do not change business files', async () => {
+import { probeNativePython, probeNativeShell } from './workspaceNative.ts'
+test('execution checks distinguish Python availability from Shell and do not change business files', async (t) => {
+  if (!await probeNativeShell({ sandboxNetwork: false })) { t.skip('the sandbox backend cannot start a child process on this host'); return }
   const root = await mkdtemp(join(tmpdir(), 'gllm-doctor-test-'))
   try {
     await writeFile(join(root, 'business.txt'), 'leave untouched')

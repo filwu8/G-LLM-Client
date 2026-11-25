@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { createServer } from 'node:net'
-import { prepareNativeCommand, probeNativePython, runNativeCommand } from './workspaceNative.ts'
+import { prepareNativeCommand, probeNativePython, probeNativeShell, runNativeCommand } from './workspaceNative.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
 import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
 
@@ -133,7 +133,19 @@ test('seccomp blocks Unix IPC and cross-process access while preserving ordinary
   assert.equal(evaluate('x64', 0x40000029, 1), 0x50001)
 })
 
-test('platform shell creates a result inside the sandbox', { skip: !supported }, async () => {
+// Availability on disk proves nothing: the backend can be present and still fail
+// to start a child process, which is how a launcher fault once hid behind a bare
+// "exit code 1". A host that cannot start sandboxed children skips locally, but
+// CI must never accept it, otherwise a launcher regression would silently turn
+// real coverage into skips.
+test('sandbox backend starts a child process', { skip: !supported }, async (t) => {
+  if (await probeNativeShell()) return
+  if (process.env.CI) assert.fail(`${sandboxBackend()} could not start a sandboxed child process on this runner`)
+  t.skip('the sandbox backend cannot start a child process on this host')
+})
+
+test('platform shell creates a result inside the sandbox', { skip: !supported }, async (t) => {
+  if (!await probeNativeShell()) { t.skip('the sandbox backend cannot start a child process on this host'); return }
   const root = await fixture()
   try {
     const code = process.platform === 'win32' ? 'echo sandbox-shell>"shell.txt"\necho shell-ok' : 'printf sandbox-shell > shell.txt; echo shell-ok'

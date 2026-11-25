@@ -41,6 +41,7 @@ export async function prepareNativeCommand(root: string, tool: string, args: Rec
 }
 
 const pythonAvailabilityByMode = new Map<string, Promise<boolean>>()
+const shellAvailabilityByMode = new Map<string, Promise<boolean>>()
 
 export function nativeExecutionLanguages(pythonAvailable: boolean): ('python' | 'shell')[] {
   return pythonAvailable ? ['python', 'shell'] : ['shell']
@@ -128,5 +129,35 @@ export function probeNativePython(settings: { executionMode?: 'sandbox' | 'host'
     }
   })()
   pythonAvailabilityByMode.set(key, probe)
+  return probe
+}
+
+/**
+ * Verify that the sandbox backend can start a child process at all. Availability
+ * on disk is not the same thing: a host can ship the backend and still refuse to
+ * launch an AppContainer child, in which case every sandboxed command reports a
+ * bare non-zero exit code that is indistinguishable from a failing command.
+ * Callers must never treat this probe as permission to run without isolation.
+ */
+export function probeNativeShell(settings: { executionMode?: 'sandbox' | 'host'; sandboxNetwork?: boolean } = {}): Promise<boolean> {
+  const executionMode = settings.executionMode === 'host' ? 'host' : 'sandbox'
+  const key = `${process.platform}:${executionMode}`
+  const cached = shellAvailabilityByMode.get(key)
+  if (cached) return cached
+
+  const probe = (async () => {
+    let root: string | undefined
+    try {
+      root = await mkdtemp(resolve(tmpdir(), 'gllm-shell-probe-'))
+      const command = await prepareNativeCommand(root, 'run_shell', { code: 'echo __GLLM_SHELL_PROBE_OK__' }, [], settings)
+      const result = await runNativeCommand(command, {}, undefined, { timeoutMs: 10000, maxOutputBytes: 4096 })
+      return result.exitCode === 0 && result.output.includes('__GLLM_SHELL_PROBE_OK__')
+    } catch {
+      return false
+    } finally {
+      if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
+    }
+  })()
+  shellAvailabilityByMode.set(key, probe)
   return probe
 }
