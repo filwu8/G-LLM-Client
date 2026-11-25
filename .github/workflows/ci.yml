@@ -105,20 +105,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run sandbox tests
         shell: bash
-        run: |
-          set -o pipefail
-          pnpm test:sandbox 2>&1 | tee sandbox-tests.log
-          status=$?
-          if [ $status -ne 0 ]; then
-            # Reading this repository's job logs needs admin rights, so a red build used to
-            # say nothing but "exit code 1". Republish the failing assertions as annotations,
-            # which stay readable from the commit and pull-request views.
-            awk '/^not ok/{hit=1; left=8} hit{print; left--} left<0{hit=0}' sandbox-tests.log | head -80 | while IFS= read -r line; do
-              line=$(printf '%s' "$line" | tr -d '\r' | cut -c1-800)
-              [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ] && echo "::error::$line"
-            done
-          fi
-          exit $status
+        run: pnpm test:sandbox 2>&1 | tee sandbox-tests.log
+      # Reporting lives in its own step on purpose. `shell: bash` runs the script below
+      # with `-e -o pipefail`, so a failing pipeline aborts it before any handler written
+      # into that same script can run. That is exactly why the first attempt at this
+      # produced no annotations and a red build still said only "exit code 1".
+      - name: Report sandbox test failures
+        if: failure()
+        shell: bash
+        run: node scripts/report-tap-failures.mjs sandbox-tests.log
       - name: Test host context, data migration and desktop authorization
         run: node --test --experimental-strip-types src/main/hostEnvironment.test.ts src/main/dataDirectoryCopy.test.ts src/main/desktopToolPolicy.test.ts src/main/computerCommand.test.ts
       - name: Test browser interaction in Electron
