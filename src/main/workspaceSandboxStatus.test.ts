@@ -45,15 +45,18 @@ test('an unusable backend blocks commands with its own reason instead of running
   try {
     await writeFile(join(root, 'business.txt'), 'keep')
     const command = await prepareNativeCommand(root, 'run_shell', { code: 'echo written>escaped.txt' }, [], { executionMode: 'sandbox' })
-    const status = await sandboxStatus()
     // A foreground call surfaces the refusal as an error, matching the path already
     // taken when the launcher is absent, so the model never sees a fake 'exit 1'.
     await assert.rejects(runNativeCommand(command, {}), (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
-      // The refusal has to carry the backend's own reason. Generic wording would leave
-      // the user unable to tell a broken sandbox from their own command failing.
-      assert.ok(message.includes(status.detail), message)
-      assert.match(message, /blocked rather than run without isolation/)
+      // The refusal has to carry the backend's own reason: generic wording would leave
+      // the user unable to tell a broken sandbox from their own command failing. It
+      // cannot be compared against one captured status detail, because on a host whose
+      // check times out every probe is retried and reports a different elapsed time, so
+      // that snapshot never matches the refusal the command actually produced. Match the
+      // stable skeleton instead -- backend name, both reason shapes, and the refusal.
+      assert.match(message, /(AppContainer \+ Job Object|Seatbelt|Bubblewrap \+ seccomp) is present but could not (start|verify) a sandboxed process/, message)
+      assert.match(message, /blocked rather than run without isolation/, message)
       return true
     })
     // The whole point: a blocked sandbox must never write through to the workspace.
