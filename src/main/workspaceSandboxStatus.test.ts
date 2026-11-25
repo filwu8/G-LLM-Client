@@ -30,8 +30,10 @@ test('the sandbox status reflects a real child launch, not the presence of launc
     } finally { await rm(root, { recursive: true, force: true }) }
     return
   }
-  assert.equal(status.reason, 'unverified', JSON.stringify(status))
-  assert.match(status.detail, /could not start a sandboxed process/, JSON.stringify(status))
+  // Two ways to be unavailable, and they mean different things: the launch really
+  // failed, or the check ran out of time and proved nothing either way.
+  assert.ok(status.reason === 'unverified' || status.reason === 'timeout', JSON.stringify(status))
+  assert.match(status.detail, status.reason === 'unverified' ? /could not start a sandboxed process/ : /could not verify a sandboxed process/, JSON.stringify(status))
   assert.match(status.detail, /blocked rather than run without isolation/)
   t.diagnostic(`sandbox unavailable on this host: ${status.detail}`)
 })
@@ -43,11 +45,14 @@ test('an unusable backend blocks commands with its own reason instead of running
   try {
     await writeFile(join(root, 'business.txt'), 'keep')
     const command = await prepareNativeCommand(root, 'run_shell', { code: 'echo written>escaped.txt' }, [], { executionMode: 'sandbox' })
+    const status = await sandboxStatus()
     // A foreground call surfaces the refusal as an error, matching the path already
     // taken when the launcher is absent, so the model never sees a fake 'exit 1'.
     await assert.rejects(runNativeCommand(command, {}), (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
-      assert.match(message, /could not start a sandboxed process/)
+      // The refusal has to carry the backend's own reason. Generic wording would leave
+      // the user unable to tell a broken sandbox from their own command failing.
+      assert.ok(message.includes(status.detail), message)
       assert.match(message, /blocked rather than run without isolation/)
       return true
     })
@@ -62,11 +67,51 @@ test('the probe is cached and a reset re-runs it', { skip: !supported }, async (
   const second = sandboxStatus()
   assert.equal(first, second, 'concurrent callers must share one probe, not launch twice')
   const status = await first
+  if (status.reason === 'timeout') {
+    // An inconclusive check is deliberately not cached, so the next command retries.
+    assert.notEqual(sandboxStatus(), first, 'a timed-out check must not be cached')
+    return
+  }
   assert.equal(await sandboxStatus(), status, 'the settled result is served from cache')
   resetSandboxStatus()
   const third = sandboxStatus()
   assert.notEqual(third, first, 'a reset must start a new probe')
   await third
+})
+
+test('a check that times out reports uncertainty and is retried instead of cached', { skip: !supported }, async (t) => {
+  // A slow first launch, cold shell startup, or an antivirus scan of the generated
+  // bootstrap must not be mistaken for a broken backend: that verdict used to be
+  // cached for the rest of the process, with no way to recover but a restart.
+  const previous = process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS
+  process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS = '1'
+  try {
+    resetSandboxStatus()
+    const timedOut = await sandboxStatus()
+    if (timedOut.available) { t.skip('this host starts a sandboxed child within 1ms'); return }
+    assert.equal(timedOut.reason, 'timeout', JSON.stringify(timedOut))
+    assert.match(timedOut.detail, /no result within 1ms|Execution timed out/)
+    assert.match(timedOut.detail, /unknown/)
+    assert.match(timedOut.detail, /blocked rather than run without isolation/)
+    // Commands stay blocked, so a timeout can never become a silent host fallback.
+    const root = await mkdtemp(join(tmpdir(), 'gllm-timeout-'))
+    try {
+      const command = await prepareNativeCommand(root, 'run_shell', { code: 'echo nope' }, [], { executionMode: 'sandbox' })
+      await assert.rejects(runNativeCommand(command, {}), /blocked rather than run without isolation/)
+      assert.deepEqual(await readdir(root), [], 'a timeout must not run the command unsandboxed')
+    } finally { await rm(root, { recursive: true, force: true }) }
+    // Budget restored, deliberately without a reset: the timeout itself must leave no
+    // cached verdict behind, otherwise one slow first launch blocks the whole session.
+    if (previous === undefined) delete process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS
+    else process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS = previous
+    const retried = await sandboxStatus()
+    assert.notEqual(retried.reason, 'timeout', `the probe did not run again: ${JSON.stringify(retried)}`)
+    assert.ok(retried.available || retried.reason === 'unverified', JSON.stringify(retried))
+  } finally {
+    if (previous === undefined) delete process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS
+    else process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS = previous
+    resetSandboxStatus()
+  }
 })
 
 test('the sandbox runtime environment carries OS paths but never host business variables', () => {

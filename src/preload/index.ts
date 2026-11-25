@@ -145,7 +145,7 @@ const api = {
   revealWorkspaceFile: (rootPath: string, relativePath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:reveal-file', rootPath, relativePath),
   checkWorkspaceExecution: (rootPath: string, options: import('../shared/types').WorkspaceDiagnosticOptions): Promise<import('../shared/types').WorkspaceDiagnosticResult> => ipcRenderer.invoke('workspace:check-execution', rootPath, options),
-  getWorkspaceAgentSettings: (rootPath: string): Promise<{ encryptionAvailable: boolean; variables: Array<{ name: string; description: string; configured: boolean }>; suggestedNames: string[]; sandbox: { backend: string; available: boolean; detail: string; reason?: 'missing' | 'unverified' }; harness: import('../shared/types').HarnessRuntimeStatus }> => ipcRenderer.invoke('workspace:agent-settings-status', rootPath),
+  getWorkspaceAgentSettings: (rootPath: string): Promise<{ encryptionAvailable: boolean; variables: Array<{ name: string; description: string; configured: boolean }>; suggestedNames: string[]; sandbox: { backend: string; available: boolean; detail: string; reason?: 'missing' | 'unverified' | 'timeout' }; harness: import('../shared/types').HarnessRuntimeStatus }> => ipcRenderer.invoke('workspace:agent-settings-status', rootPath),
   saveWorkspaceVariables: (rootPath: string, updates: Array<{ name: string; description: string; value?: string; remove?: boolean }>): Promise<void> => ipcRenderer.invoke('workspace:save-variables', rootPath, updates),
   openWorkspaceDirectory: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke('workspace:open-directory', rootPath),

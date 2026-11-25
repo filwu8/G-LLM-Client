@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { createServer } from 'node:net'
 import { prepareNativeCommand, probeNativePython, probeNativeShell, runNativeCommand } from './workspaceNative.ts'
+import { sandboxStatus } from './workspaceSandbox.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
 import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
 
@@ -140,7 +141,12 @@ test('seccomp blocks Unix IPC and cross-process access while preserving ordinary
 // real coverage into skips.
 test('sandbox backend starts a child process', { skip: !supported }, async (t) => {
   if (await probeNativeShell()) return
-  if (process.env.CI) assert.fail(`${sandboxBackend()} could not start a sandboxed child process on this runner`)
+  if (process.env.CI) {
+    // Carry the reported reason into the failure: a bare exit code 1 in CI is what
+    // made the original launcher fault take a whole session to identify.
+    const status = await sandboxStatus()
+    assert.fail(`${sandboxBackend()} could not start a sandboxed child process on this runner (reason=${status.reason ?? 'none'}): ${status.detail}`)
+  }
   t.skip('the sandbox backend cannot start a child process on this host')
 })
 

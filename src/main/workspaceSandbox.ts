@@ -16,9 +16,10 @@ export interface SandboxStatus {
   /**
    * Why the backend cannot be used; absent when available. `missing` means the
    * launcher was not shipped on this system, `unverified` means it is present but
-   * a sandboxed child process could not actually start.
+   * a sandboxed child process could not actually start, `timeout` means the check
+   * itself never finished, so the host is not known to be broken.
    */
-  reason?: 'missing' | 'unverified'
+  reason?: 'missing' | 'unverified' | 'timeout'
 }
 export function sandboxBackend(platform: string = process.platform): string {
   return ({ darwin: 'Seatbelt', linux: 'Bubblewrap + seccomp', win32: 'AppContainer + Job Object' } as Record<string, string>)[platform] ?? 'Unsupported'
@@ -55,11 +56,30 @@ async function requireLauncher(): Promise<void> {
   } else throw new Error('This OS has no supported native sandbox')
 }
 const PREFLIGHT_MARKER = '__GLLM_SANDBOX_PREFLIGHT_OK__'
-async function probeSandboxLaunch(): Promise<string | undefined> {
-  // Returns the failure detail, or undefined when a sandboxed child really ran.
+const PREFLIGHT_TIMEOUT_MS = 30_000
+interface SandboxProbeResult {
+  ok: boolean
+  failure?: string
+  /**
+   * A check that never finished is not evidence that the host is broken: the first
+   * launch on a machine pays for PowerShell startup and an antivirus scan of the
+   * generated bootstrap, which can exceed the budget on a slow or busy host.
+   */
+  timedOut?: boolean
+}
+/** Test seam: lets a regression test drive the timeout branch without waiting 30s. */
+function preflightTimeoutMs(): number {
+  const override = Number(process.env.GLLM_SANDBOX_PROBE_TIMEOUT_MS)
+  return Number.isFinite(override) && override > 0 ? override : PREFLIGHT_TIMEOUT_MS
+}
+async function probeSandboxLaunch(): Promise<SandboxProbeResult> {
+  // Answers with the failure detail, or ok when a sandboxed child really ran.
   // It goes through executeSandboxed, never runSandboxCommand, because this probe
   // is what runSandboxCommand's own gate depends on.
   let root: string | undefined
+  const budget = preflightTimeoutMs()
+  const startedAt = Date.now()
+  const expired = () => Date.now() - startedAt >= budget
   try {
     root = await mkdtemp(resolve(tmpdir(), 'gllm-sandbox-preflight-'))
     const windows = process.platform === 'win32'
@@ -69,15 +89,21 @@ async function probeSandboxLaunch(): Promise<string | undefined> {
       args: windows ? ['/d', '/s', '/c', command] : ['-c', command],
       cwd: root,
       env: { ...sandboxRuntimeEnv(), HOME: root },
-      timeoutMs: 30000
+      timeoutMs: budget
     }, root, false)
-    if (result.exitCode === 0 && result.stdout.includes(PREFLIGHT_MARKER)) return undefined
+    if (result.exitCode === 0 && result.stdout.includes(PREFLIGHT_MARKER)) return { ok: true }
     // executeSandboxed appends a note about the user's workspace not being applied.
     // The probe never had workspace changes, so that line would misdescribe it.
     const stderr = result.stderr.replace(/Sandbox execution failed; temporary workspace changes were not applied\. No host fallback was attempted\./g, '').trim().slice(0, 300)
-    return `the probe exited with code ${result.exitCode}${stderr ? `: ${stderr}` : ''}`
+    const failure = `the probe exited with code ${result.exitCode}${stderr ? `: ${stderr}` : ''}`
+    if (!expired()) return { ok: false, failure }
+    // On Windows the helper clamps its own wait to one second and then reads a stale
+    // exit code, so an answer that arrives after the budget means the check never
+    // completed: that is a timeout, not a verdict about the host.
+    return { ok: false, failure: `the check returned no result within ${budget}ms; ${failure} after ${Date.now() - startedAt}ms`, timedOut: true }
   } catch (error) {
-    return (error as Error).message
+    const message = (error as Error).message
+    return { ok: false, failure: message, timedOut: message === 'Execution timed out' || expired() }
   } finally {
     if (root) await rm(root, { recursive: true, force: true }).catch(() => undefined)
   }
@@ -95,27 +121,42 @@ async function resolveSandboxStatus(): Promise<SandboxStatus> {
       detail: process.platform === 'linux' ? 'Install bubblewrap (/usr/bin/bwrap); enable unprivileged user namespaces according to your system policy. x64/arm64 required. No host fallback.' : 'Native sandbox backend unavailable. No host fallback.'
     }
   }
-  const failure = await probeSandboxLaunch()
-  if (failure === undefined) return { backend, available: true, detail: 'Backend present and a sandboxed child process started successfully. No host fallback.' }
+  const probe = await probeSandboxLaunch()
+  if (probe.ok) return { backend, available: true, detail: 'Backend present and a sandboxed child process started successfully. No host fallback.' }
   // The launcher ships with the app, so a failed launch is a host limitation, not
   // a missing install. Distinguishing the two is the whole point: a backend that
   // cannot start a child used to look exactly like the user's command failing with
   // exit code 1, and nothing in the UI said the sandbox was the problem.
+  if (probe.timedOut) {
+    // Reporting this as a broken backend would be a lie the user cannot argue with:
+    // the check, not the sandbox, ran out of time. Say so and retry next time.
+    return {
+      backend,
+      available: false,
+      reason: 'timeout',
+      detail: `${backend} is present but could not verify a sandboxed process (${probe.failure}), so whether one can start here is unknown. Commands are blocked rather than run without isolation; the check runs again on the next command.`
+    }
+  }
   return {
     backend,
     available: false,
     reason: 'unverified',
-    detail: `${backend} is present but could not start a sandboxed process on this system (${failure}). Commands are blocked rather than run without isolation.`
+    detail: `${backend} is present but could not start a sandboxed process on this system (${probe.failure}). Commands are blocked rather than run without isolation.`
   }
 }
 /**
  * Whether the native sandbox can be used. Runs one real probe per process instead
  * of trusting that the launcher files exist: presence on disk says nothing about
- * whether the OS will accept a sandboxed child. Cached because the answer is
+ * whether the OS will accept a sandboxed child. Cached because a settled answer is
  * stable for the process lifetime and the probe is expensive on Windows.
  */
 export function sandboxStatus(): Promise<SandboxStatus> {
-  return (sandboxStatusProbe ??= resolveSandboxStatus())
+  return (sandboxStatusProbe ??= resolveSandboxStatus().then((status) => {
+    // An inconclusive check must not be cached: one slow first launch would then
+    // block every command for the rest of the process with no way back but a restart.
+    if (status.reason === 'timeout') sandboxStatusProbe = undefined
+    return status
+  }))
 }
 /** Clear the cached probe so the next call re-checks. Tests and manual retry. */
 export function resetSandboxStatus(): void {

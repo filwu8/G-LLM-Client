@@ -786,6 +786,7 @@
     "agentSandboxBoundary": "Runs in an OS-isolated temporary workspace, excluding credential files and symbolic links. Validated file changes are applied only after successful execution, never after failure or cancellation. Limit: 128 MiB / 10000 entries. An unavailable sandbox stops execution; it never falls back to the host.",
     "agentBackendPresent": "Backend verified: a sandboxed process started successfully",
     "agentBackendUnusable": "Backend present but cannot start a sandboxed process",
+    "agentBackendCheckTimedOut": "Backend present, check timed out; not verified yet",
     "agentBackendMissing": "Backend unavailable",
     "agentLoading": "Checking…",
     "agentNetworkOn": "Allow sandbox networking",
