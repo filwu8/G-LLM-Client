@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-현재 코드 버전: [V2.0.23](https://github.com/filwu8/G-LLM-Client/tree/main)
+현재 코드 버전: [V2.0.33](docs/releases/v2.0.33.md)
 
-최신 안정 버전: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), 2026년 10월 9일 출시.
+Microsoft Store 공개 버전: [V2.0.33](https://apps.microsoft.com/detail/9MVD547V4ZN9), 2026년 11월 24일 출시. 최신 GitHub 안정 버전: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), 2026년 10월 9일 출시.
 
 [클라이언트 다운로드](https://llm.gprophet.com/download) | [전체 변경 기록](https://llm.gprophet.com/download/changelog) | [GitHub Releases](https://github.com/filwu8/G-LLM-Client/releases)
 
