@@ -915,6 +915,10 @@ img.space-logo {
   isolation: isolate;
   min-height: 0;
   overflow: hidden;
+  /* An auto column would size to the widest message content: one long line of
+     JSON in a code block can widen the track past the window and push the
+     composer controls (model picker included) out of view. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   padding: 0 20px 18px;
 }
@@ -926,6 +930,7 @@ img.space-logo {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .message-viewport > .messages {
@@ -2460,7 +2465,10 @@ img.space-logo {
 
 .composer-toolbar {
   justify-content: space-between;
-  flex-wrap: wrap;
+  /* Staying on one row matters more than showing a full model name: wrapping
+     used to drop the model picker and the send button onto a second line at
+     the minimum window width. The picker truncates instead. */
+  flex-wrap: nowrap;
   min-width: 0;
   min-height: 44px;
 }
@@ -2645,6 +2653,9 @@ img.space-logo {
 }
 
 .composer-model-picker .model-dropdown-current strong {
+  /* Without this the name sizes to its content inside a justify-items:end grid
+     and is clipped by the trigger instead of ellipsising. */
+  max-width: 100%;
   font-size: 12px;
   line-height: 1.35;
   padding-bottom: 1px;
@@ -3096,8 +3107,9 @@ img.space-logo {
 
 .send-button {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
   cursor: pointer;
   place-items: center;
   border-radius: 8px;
@@ -9132,8 +9144,33 @@ img.space-logo {
 }
 
 .model-current-tier {
+  display: inline-flex;
   flex: 0 0 auto;
+  align-items: center;
+  margin-left: 4px;
   color: hsl(var(--primary));
+  white-space: nowrap;
+}
+
+/* Carried by the name instead of a badge, so the toolbar stays narrow. */
+.composer-model-picker .model-current-name.tier-paid {
+  color: hsl(var(--feature-violet));
+}
+
+.composer-model-picker .model-current-name.tier-free {
+  color: hsl(var(--feature-green));
+}
+
+/* Kept in the accessibility tree, invisible on screen. */
+.model-current-tier.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 

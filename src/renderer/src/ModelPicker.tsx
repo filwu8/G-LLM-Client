@@ -399,10 +399,18 @@ export function ModelPickerMenu({
         >
           <span className="model-dropdown-current">
             <strong>
-              <span className="model-current-name">
+              <span className={`model-current-name${compactTrigger && selectedTier ? ` tier-${selectedTier}` : ''}`}>
                 {selectedModel ? compactTitle || getModelTitle(selectedModel) : value || t('modelPicker.select')}
               </span>
-              {compactTrigger && selectedTier && <span className={`model-current-tier ${selectedTier}`}> · {t(`modelPicker.${selectedTier}`)}</span>}
+              {compactTrigger && selectedTier && (
+                // The tier is carried by the colour of the name above; the words
+                // 付费/免费 are kept only for screen readers. Spelling them out
+                // cost about 30px of a toolbar that has to stay on one row at
+                // the narrowest window.
+                <span className={`model-current-tier visually-hidden ${selectedTier}`}>
+                  {t(`modelPicker.${selectedTier}`)}
+                </span>
+              )}
               {showReasoningValue && (
                 <span
                   className="model-current-reasoning"
