@@ -103,7 +103,22 @@ jobs:
           icacls $runtime /grant '*S-1-15-2-1:(OI)(CI)RX' /T /Q
           if ($LASTEXITCODE -ne 0) { throw 'Unable to grant CI Python runtime access' }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:sandbox
+      - name: Run sandbox tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:sandbox 2>&1 | tee sandbox-tests.log
+          status=$?
+          if [ $status -ne 0 ]; then
+            # Reading this repository's job logs needs admin rights, so a red build used to
+            # say nothing but "exit code 1". Republish the failing assertions as annotations,
+            # which stay readable from the commit and pull-request views.
+            awk '/^not ok/{hit=1; left=8} hit{print; left--} left<0{hit=0}' sandbox-tests.log | head -80 | while IFS= read -r line; do
+              line=$(printf '%s' "$line" | tr -d '\r' | cut -c1-800)
+              [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ] && echo "::error::$line"
+            done
+          fi
+          exit $status
       - name: Test host context, data migration and desktop authorization
         run: node --test --experimental-strip-types src/main/hostEnvironment.test.ts src/main/dataDirectoryCopy.test.ts src/main/desktopToolPolicy.test.ts src/main/computerCommand.test.ts
       - name: Test browser interaction in Electron
