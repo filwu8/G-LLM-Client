@@ -8,7 +8,7 @@ import { createServer } from 'node:net'
 import { prepareNativeCommand, probeNativePython, probeNativeShell, runNativeCommand } from './workspaceNative.ts'
 import { sandboxStatus } from './workspaceSandbox.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
-import { bubblewrapArgs, linuxSeccomp, sandboxBackend, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
+import { bubblewrapArgs, linuxSeccomp, sandboxBackend, sandboxWorkingDirectory, seatbeltProfile, windowsAppContainerPowerShellArgs } from './workspaceSandbox.ts'
 
 const supported = ['darwin', 'linux', 'win32'].includes(process.platform)
 async function fixture() { return mkdtemp(resolve(tmpdir(), 'gllm-isolation-test-')) }
@@ -84,6 +84,27 @@ test('sandbox failure discards writes; snapshot conflicts and links never overwr
     }
   } finally { if (snapshot) await rm(snapshot.directory, { recursive: true, force: true }); await rm(root, { recursive: true, force: true }) }
 })
+test('a workspace opened through a link still runs inside the snapshot', async () => {
+  // Windows %TEMP% is a short name (C:\Users\RUNNER~1\...) and macOS temporary
+  // directories are symlinks under /var, so the caller's spelling of a workspace and the
+  // OS real path disagree. Building the child's working directory from one real path and
+  // one literal path pushed it outside the snapshot, where nothing grants the sandbox
+  // access: Windows answered "The current directory is invalid." and the backend looked
+  // broken on the only runner that spells paths that way.
+  const real = await fixture(), link = `${real}-link`
+  try {
+    await symlink(real, link, process.platform === 'win32' ? 'junction' : 'dir')
+    const work = resolve(real, 'snapshot', 'work')
+    assert.equal(await sandboxWorkingDirectory(work, link, link), work, 'the workspace root must map onto the snapshot root')
+    assert.equal(await sandboxWorkingDirectory(work, link, resolve(link, 'sub')), resolve(work, 'sub'), 'a subdirectory must stay under the snapshot')
+    // A path the caller points at outside its own workspace is refused, not followed.
+    assert.equal(await sandboxWorkingDirectory(work, link, resolve(real, '..')), work)
+  } finally {
+    await rm(link, { force: true })
+    await rm(real, { recursive: true, force: true })
+  }
+})
+
 test('platform policies default to no network, include seccomp and never invoke a host fallback', () => {
   assert.equal(sandboxBackend('win32'), 'AppContainer + Job Object')
   assert.equal(sandboxBackend('linux'), 'Bubblewrap + seccomp')

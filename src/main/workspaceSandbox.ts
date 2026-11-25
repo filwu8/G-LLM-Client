@@ -2,7 +2,7 @@
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, resolve } from 'node:path'
+import { delimiter, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runWorkspaceProcess, type WorkspaceProcessOptions } from './workspaceProcess.ts'
 import { applySandboxSnapshot, createSandboxSnapshot } from './workspaceSandboxFiles.ts'
@@ -238,11 +238,39 @@ export async function runSandboxCommand(options: WorkspaceProcessOptions, root: 
   if (!status.available) throw new Error(status.detail)
   return executeSandboxed(options, root, network)
 }
+/**
+ * Where the sandboxed child starts, expressed inside the snapshot.
+ *
+ * `root` and `options.cwd` arrive spelled the way the caller spelled them, which is not
+ * always how the OS spells them: %TEMP% on Windows returns short names
+ * (C:\Users\RUNNER~1\...) and macOS temporary directories are symlinks under /var. A
+ * relative path built from one real path and one literal path then climbs out with '..',
+ * so the child started outside the snapshot, where the AppContainer has no grant and the
+ * Seatbelt profile has no binding. Windows answered "The current directory is invalid."
+ * and the backend looked broken on that host. Both sides are normalised here, and a path
+ * that still leaves the workspace is refused rather than executed where nothing covers it.
+ */
+export async function sandboxWorkingDirectory(work: string, root: string, cwd: string): Promise<string> {
+  const realRoot = await realpath(root)
+  return resolve(work, relative(realRoot, await insideRoot(root, realRoot, cwd)))
+}
+// Windows compares paths case-insensitively; POSIX must not, or /a and /A would merge.
+const samePath = (left: string, right: string) => (process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right)
+const underPath = (value: string, prefix: string) => (process.platform === 'win32' ? value.toLowerCase().startsWith(prefix.toLowerCase()) : value.startsWith(prefix))
+async function insideRoot(root: string, realRoot: string, cwd: string): Promise<string> {
+  const prefix = root.endsWith(sep) ? root : root + sep
+  // Re-spell the caller's path under the real root before comparing, so a path that
+  // does not exist yet still maps correctly instead of failing a realpath lookup.
+  const respelled = samePath(cwd, root) ? realRoot : underPath(cwd, prefix) ? resolve(realRoot, cwd.slice(prefix.length)) : undefined
+  const target = respelled ?? await realpath(cwd).catch(() => undefined)
+  if (!target) return realRoot
+  const inside = relative(realRoot, target)
+  return inside === '' || (!inside.startsWith('..') && !isAbsolute(inside)) ? target : realRoot
+}
 async function executeSandboxed(options: WorkspaceProcessOptions, root: string, network: boolean) {
   const snapshot = await createSandboxSnapshot(root)
   try {
-    const { relative } = await import('node:path')
-    const cwd = resolve(snapshot.work, relative(await realpath(root), options.cwd))
+    const cwd = await sandboxWorkingDirectory(snapshot.work, root, options.cwd)
     await mkdir(cwd, { recursive: true })
     const env = { ...options.env, HOME: snapshot.scratch, TMPDIR: snapshot.scratch, TEMP: snapshot.scratch, TMP: snapshot.scratch }
     let result: Awaited<ReturnType<typeof runWorkspaceProcess>>
