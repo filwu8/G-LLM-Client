@@ -26,6 +26,8 @@ import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../share
 import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
 import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
 import { estimateTokenCount } from '../shared/tokenEstimate'
+import { sanitizeWorkspaceActivity } from '../shared/workspaceActivity'
+import { withoutProjectKeys, withoutProjectRecords } from '../shared/projectScope'
 import type {
   AgentExecutionPlan,
   AgentPermissionMode,
@@ -847,6 +849,24 @@ export function deleteProject(projectId: string): void {
     getProjects().filter((project) => project.id !== normalizedProjectId)
   ))
 
+  // Everything scoped to the project goes with it. Leaving these behind kept the
+  // conversations on disk (a few megabytes in practice) while the UI had no
+  // project left to open them from. Each key is written through the retrying
+  // writer; a multi-key set() is rejected by the store's deep-partial typing for
+  // the tool schema, where `Record<string, unknown>` cannot be made partial.
+  withStoreWriteRetry(() => store.set('conversations', withoutProjectRecords(getAllConversations(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('notes', withoutProjectRecords(getAllNotes(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('memories', withoutProjectRecords(getAllMemories(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('tools', withoutProjectRecords(getAllTools(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('skills', withoutProjectRecords(getAllSkills(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('assistants', withoutProjectRecords(getAllCustomAssistants(), normalizedProjectId)))
+  withStoreWriteRetry(() => store.set('deletedBuiltInAssistants', withoutProjectKeys(getDeletedBuiltInAssistantKeys(), normalizedProjectId)))
+  withStoreWriteRetry(() => {
+    const orders = { ...store.get('assistantOrders', {}) }
+    delete orders[normalizedProjectId]
+    store.set('assistantOrders', orders)
+  })
+
   if (getActiveProjectId() === normalizedProjectId) {
     setActiveProjectId(defaultProjectId)
   }
@@ -1198,26 +1218,14 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
     attachments: attachments.length > 0 ? attachments : undefined,
     knowledgeRefs: knowledgeRefs.length > 0 ? knowledgeRefs : undefined,
     webSearch: sanitizeWebSearchActivity(message.webSearch),
-    workspaceActivities: (message.workspaceActivities ?? []).slice(-80).map((activity) => ({
-      id: String(activity.id ?? '').trim() || `activity_${Date.now()}`,
-      tool: String(activity.tool ?? '').trim(),
-      label: String(activity.label ?? '').trim() || '工作区操作',
-      status: activity.status === 'running' || activity.status === 'failed' ? activity.status : 'completed',
-      detail: activity.detail ? String(activity.detail).slice(0, 500) : undefined
-    })),
+    workspaceActivities: (message.workspaceActivities ?? []).slice(-80).map((activity) => sanitizeWorkspaceActivity(activity)),
     workspaceChangedFiles: (message.workspaceChangedFiles ?? []).map(String).filter(Boolean).slice(0, 100),
     workspaceArtifactRoot: message.workspaceArtifactRoot?.trim() || undefined,
     agentPlan: sanitizeAgentPlan(message.agentPlan),
     retryAttempts: (message.retryAttempts ?? []).slice(-12).map((attempt) => ({
       attemptedAt: Number.isFinite(attempt.attemptedAt) ? Number(attempt.attemptedAt) : Date.now(),
       error: String(attempt.error ?? '').trim().slice(0, 500) || '工作区任务失败',
-      activities: (attempt.activities ?? []).slice(0, 80).map((activity) => ({
-        id: String(activity.id ?? '').trim() || `activity_${Date.now()}`,
-        tool: String(activity.tool ?? '').trim(),
-        label: String(activity.label ?? '').trim() || '工作区操作',
-        status: activity.status === 'running' || activity.status === 'failed' ? activity.status : 'completed',
-        detail: activity.detail ? String(activity.detail).slice(0, 500) : undefined
-      }))
+      activities: (attempt.activities ?? []).slice(0, 80).map((activity) => sanitizeWorkspaceActivity(activity))
     })),
     translation: translation || undefined,
     tokenCount: sanitizeTokenCount(message.tokenCount),

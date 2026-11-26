@@ -4166,6 +4166,7 @@ export default function App() {
                             error={message.error}
                             retryAt={messageIndex === activeConversation.messages.length - 1 && !message.workspaceArtifactRoot ? message.retryAt : undefined}
                             disabled={isStreaming}
+                            endpointBaseUrl={conversationProvider.apiBaseUrl}
                             onRetry={() => regenerateMessage(message.id)}
                           />
                         )}

@@ -644,7 +644,18 @@
     "moreFiles": "另有 {{count}} 个文件",
     "turns": "对话轮次",
     "sensitive": "敏感操作：执行命令或修改文件",
-    "awaitingAnswer": "等待你的回答"
+    "awaitingAnswer": "等待你的回答",
+    "retryNoticeAttempt": "模型重试中（第 {{count}} 次）",
+    "retryDetailTitle": "请求详情",
+    "retryEndpoint": "目标服务",
+    "retryEndpointUnknown": "未记录（旧数据）",
+    "retryCount": "累计重试",
+    "retryCountValue": "{{count}} 次",
+    "retryReasons": "最近原因",
+    "retryRecoveredSummary": "重试 {{count}} 次后已恢复",
+    "retryFailedSummary": "重试 {{count}} 次后仍未恢复",
+    "retryExpand": "查看请求详情",
+    "retryCollapse": "收起请求详情"
   },
   "agentPermission": {
     "label": "Agent 权限",

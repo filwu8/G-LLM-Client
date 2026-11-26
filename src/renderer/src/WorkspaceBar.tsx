@@ -8,7 +8,9 @@ import { Check, ChevronDown, CircleCheck, FileText, FolderOpen, Globe, LoaderCir
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ModelRetryNotice } from './ModelRetryNotice'
 import { WorkspaceAgentSettingsDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
+import { isModelRetryActivity, summarizeModelRetries } from '@shared/workspaceActivity'
 
 import type { AgentExecutionPlan, ConversationWorkspace, WorkspaceApprovalPrompt, WorkspaceToolActivity } from '@shared/types'
 
@@ -261,6 +263,10 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
   const { t, i18n } = useTranslation()
   const elapsedSeconds = useElapsedSeconds(running, startedAt)
   const duration = formatElapsedDuration(elapsedSeconds, i18n.resolvedLanguage ?? i18n.language)
+  // Retries are one condition, not N operations: collapse them into a single
+  // notice so a dead upstream cannot bury the rest of the run log.
+  const retrySummary = summarizeModelRetries(activities)
+  const operations = activities.filter((activity) => !isModelRetryActivity(activity))
   return (
     <div className="workspace-message-activities">
       {plan && (
@@ -285,7 +291,8 @@ export function WorkspaceActivityLog({ activities, changedFiles, running = false
       {activities.length === 0 && running && (
         <small>{model ? t('app.waitingForModel', { model }) : t('workspace.readingContext')}</small>
       )}
-      {activities.map((activity) => (
+      {retrySummary && <ModelRetryNotice summary={retrySummary} />}
+      {operations.map((activity) => (
         <div className={`workspace-message-activity ${activity.status}`} key={activity.id} title={activity.detail}>
           {activity.status === 'running' ? <LoaderCircle className="spin" size={14} /> : activity.status === 'completed' ? <CircleCheck size={14} /> : <XCircle size={14} />}
           <span>{activity.label}</span>

@@ -1408,6 +1408,14 @@ async function runWorkspaceAgentUnlocked(
   signal?.throwIfAborted()
   const language = request.settings.language
   const isEnglish = mainT('main.locale', language) === 'en-US'
+  // A retry is only actionable if the user knows who is being called: the same
+  // 502 means different things for a gateway and for a vendor endpoint. Host
+  // only — never the full path, which can carry tenant ids.
+  const modelEndpointHost = (() => {
+    const base = request.provider.apiBaseUrl?.trim()
+    if (!base) return undefined
+    try { return new URL(base).host } catch { return base.slice(0, 120) }
+  })()
   const executionStartedAt = Date.now()
   const { maxTurns, maxDurationMs } = normalizeGoalExecutionLimits(request.executionLimits)
   const continuous = !request.executionLimits
@@ -1961,7 +1969,8 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
             id: `model_retry_${randomUUID()}`,
             tool: 'model_request_retry',
             label: mainT('main.workspace.retryModel', language),
-            status: 'running'
+            status: 'running',
+            endpoint: modelEndpointHost
           }
           retryActivity.detail = mainT('main.workspace.retryProgress', language, {
             reason: info.reason,
@@ -2098,7 +2107,8 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           modelFailureCount += 1
           const activity: WorkspaceToolActivity = {
             id: `reconnect_${randomUUID()}`, tool: 'model_request_retry', label: mainT('main.workspace.retryModel', language),
-            status: 'running', detail: mainT('main.workspace.reconnectTask', language)
+            status: 'running', detail: mainT('main.workspace.reconnectTask', language),
+            endpoint: modelEndpointHost
           }
           onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
           await wait(retryDelay, signal)

@@ -1674,9 +1674,21 @@ img.space-logo {
 }
 
 .message-retry-countdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 8px;
   color: hsl(var(--muted-foreground));
   font-size: 13px;
+}
+
+.message-retry-endpoint {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
 }
 
 .message-error-detail {
@@ -10336,6 +10348,66 @@ img.space-logo {
 .workspace-changed-files button { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; padding: 5px 7px; border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--card)); color: hsl(var(--foreground)); font-size: 11px; }
 .workspace-changed-files button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-artifact-context-menu { min-width: 210px; }
+/* Model retry notice -------------------------------------------------------
+   A retrying run used to look frozen: the log filled with identical rows and
+   nothing said which upstream was being called. One line, a light sweep while
+   it moves, and the endpoint on click. */
+.model-retry-notice { display: grid; gap: 0; width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--card)); overflow: hidden; }
+.model-retry-notice.status-running { border-color: hsl(var(--primary) / 0.32); background: hsl(var(--primary) / 0.05); }
+.model-retry-notice.status-failed { border-color: hsl(var(--destructive) / 0.35); background: hsl(var(--destructive-background)); }
+.model-retry-main { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 7px 9px; border: 0; background: transparent; color: hsl(var(--foreground)); font-size: 12px; text-align: left; }
+.model-retry-main:hover { background: hsl(var(--secondary)); }
+.model-retry-icon { display: inline-flex; flex: 0 0 auto; color: hsl(var(--muted-foreground)); }
+.model-retry-notice.status-running .model-retry-icon { color: hsl(var(--primary)); }
+.model-retry-notice.status-failed .model-retry-icon { color: hsl(var(--destructive)); }
+.model-retry-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 浮光掠影: a highlight travels through the glyphs themselves, so the row reads
+   as active even when no character changes for a minute. Base and highlight are
+   theme variables, keeping contrast valid in light and dark. */
+.retry-sweep {
+  background-image: linear-gradient(
+    100deg,
+    hsl(var(--muted-foreground)) 0%,
+    hsl(var(--muted-foreground)) 32%,
+    hsl(var(--primary)) 46%,
+    hsl(var(--info)) 50%,
+    hsl(var(--primary)) 54%,
+    hsl(var(--muted-foreground)) 68%,
+    hsl(var(--muted-foreground)) 100%
+  );
+  background-size: 260% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: retry-sheen 2.2s linear infinite;
+}
+@keyframes retry-sheen {
+  from { background-position: 160% 0; }
+  to { background-position: -60% 0; }
+}
+.model-retry-endpoint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 5px; border-radius: 5px; background: hsl(var(--secondary)); color: hsl(var(--muted-foreground)); font-size: 11px; }
+.model-retry-elapsed { flex: 0 0 auto; margin-left: auto; color: hsl(var(--muted-foreground)); font-size: 11px; font-variant-numeric: tabular-nums; }
+.model-retry-main > svg { flex: 0 0 auto; margin-left: auto; color: hsl(var(--muted-foreground)); }
+.model-retry-elapsed + svg { margin-left: 2px; }
+.model-retry-detail { display: grid; gap: 4px; padding: 7px 9px 9px; border-top: 1px dashed hsl(var(--border)); font-size: 11px; line-height: 1.55; }
+.model-retry-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.model-retry-row > span { flex: 0 0 auto; color: hsl(var(--muted-foreground)); }
+.model-retry-row > code { min-width: 0; overflow-wrap: anywhere; color: hsl(var(--foreground)); }
+.model-retry-row > strong { color: hsl(var(--foreground)); font-weight: 600; }
+.model-retry-row.is-reason { display: grid; gap: 2px; }
+.model-retry-row.is-reason p { margin: 0; overflow-wrap: anywhere; color: hsl(var(--muted-foreground)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .retry-sweep {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    color: hsl(var(--primary));
+  }
+}
+
 
 .theme-gold .workspace-message-activities,
 .theme-gold .workspace-message-activities-title strong,

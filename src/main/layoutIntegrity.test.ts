@@ -100,3 +100,23 @@ test('the model name colour still tells paid from free', () => {
   assert.ok(freeColor, 'the free tier must set a colour on the name')
   assert.notEqual(paidColor, freeColor, 'paid and free must not share a colour')
 })
+
+// A retrying run fills the log with identical rows and looks frozen. The notice
+// sweeps a highlight through the text so it reads as active; the sweep is pure
+// decoration, so it must switch off for users who ask for reduced motion.
+test('the model retry notice sweeps its label and can be turned off', () => {
+  const sweep = ruleBody('.retry-sweep')
+  // Anchored at the line start: '-webkit-background-clip: text' also contains the
+  // unprefixed substring, so a loose match would pass without the real rule.
+  assert.ok(sweep.includes('\n  background-clip: text'), 'the highlight has to travel inside the glyphs, not across the row')
+  assert.ok(sweep.includes('animation: retry-sheen'), 'without the animation the row looks static again')
+
+  // The override lives in its own media block right after the rule set, so the
+  // window starts at the rule and is long enough to reach the block.
+  const raw = readFileSync(new URL('../renderer/src/styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const from = raw.indexOf('.retry-sweep')
+  const window = raw.slice(from, from + 2400)
+  assert.ok(window.includes('prefers-reduced-motion: reduce'), 'the sweep needs a reduced-motion override')
+  assert.ok(window.includes('animation: none'), 'reduced motion must stop the sweep')
+  assert.ok(window.includes('-webkit-text-fill-color: currentColor'), 'a transparent fill would leave reduced-motion users with no text at all')
+})

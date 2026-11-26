@@ -8,7 +8,9 @@ import { ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock3, FileText, KeyR
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { isModelRetryActivity, summarizeModelRetries } from '@shared/workspaceActivity'
 import type { AgentExecutionPlan, WorkspaceToolActivity } from '@shared/types'
+import { ModelRetryNotice } from './ModelRetryNotice'
 
 export interface OutlineEntry {
   id: string
@@ -126,11 +128,15 @@ export function AgentActivityPanel({
     failed: t('activityPanel.stateFailed')
   }[state]
 
+  // Retries collapse into a single notice: one dead upstream produced 32
+  // identical rows here and pushed real operations out of the compact view.
+  const retrySummary = summarizeModelRetries(activities)
+  const operations = useMemo(() => activities.filter((activity) => !isModelRetryActivity(activity)), [activities])
   const visible = useMemo(
-    () => (expanded ? activities.slice(-120) : activities.slice(-COMPACT_LIMIT)).slice().reverse(),
-    [activities, expanded]
+    () => (expanded ? operations.slice(-120) : operations.slice(-COMPACT_LIMIT)).slice().reverse(),
+    [operations, expanded]
   )
-  const hiddenCount = Math.max(0, activities.length - COMPACT_LIMIT)
+  const hiddenCount = Math.max(0, operations.length - COMPACT_LIMIT)
   const latestChangeAt = activities.at(-1)?.endedAt ?? activities.at(-1)?.startedAt ?? startedAt
 
   const currentTask = goal?.trim() || entries.at(-1)?.label || ''
@@ -203,12 +209,14 @@ export function AgentActivityPanel({
         </div>
       )}
 
+      {retrySummary && <ModelRetryNotice summary={retrySummary} compact />}
+
       <div className="aap-section-head">
         <span>{expanded ? t('activityPanel.allOperations') : t('activityPanel.recentOperations')}</span>
-        <small>{activities.length}</small>
+        <small>{operations.length}</small>
       </div>
 
-      {activities.length === 0 && (
+      {operations.length === 0 && !retrySummary && (
         <p className="aap-empty">{t('activityPanel.empty')}</p>
       )}
 
@@ -260,11 +268,11 @@ export function AgentActivityPanel({
 
       {hiddenCount > 0 && !expanded && (
         <button type="button" className="aap-more" onClick={() => setExpanded(true)}>
-          {t('activityPanel.showAll', { count: activities.length })}
+          {t('activityPanel.showAll', { count: operations.length })}
           <ChevronDown size={12} />
         </button>
       )}
-      {expanded && activities.length > COMPACT_LIMIT && (
+      {expanded && operations.length > COMPACT_LIMIT && (
         <button type="button" className="aap-more" onClick={() => setExpanded(false)}>
           {t('activityPanel.showLess')}
           <ChevronUp size={12} />

@@ -644,7 +644,18 @@
     "moreFiles": "{{count}} more files",
     "turns": "Conversation turns",
     "sensitive": "Sensitive operation: runs commands or modifies files",
-    "awaitingAnswer": "Waiting for your answer"
+    "awaitingAnswer": "Waiting for your answer",
+    "retryNoticeAttempt": "Retrying the model (#{{count}})",
+    "retryDetailTitle": "Request details",
+    "retryEndpoint": "Endpoint",
+    "retryEndpointUnknown": "Not recorded (older data)",
+    "retryCount": "Total retries",
+    "retryCountValue": "{{count}}",
+    "retryReasons": "Latest reason",
+    "retryRecoveredSummary": "Recovered after {{count}} retries",
+    "retryFailedSummary": "Still failing after {{count}} retries",
+    "retryExpand": "Show request details",
+    "retryCollapse": "Hide request details"
   },
   "agentPermission": {
     "label": "Agent permission",

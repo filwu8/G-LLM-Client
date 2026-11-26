@@ -782,6 +782,8 @@ export interface WorkspaceToolActivity {
   endedAt?: number
   /** Files touched by this activity, used by the activity panel timeline. */
   files?: string[]
+  /** Remote endpoint this activity talks to (host only), e.g. `llm.gprophet.com`. */
+  endpoint?: string
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
