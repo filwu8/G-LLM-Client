@@ -26,6 +26,12 @@ overrides:
   # argparse 2 retains Mammoth's legacy CLI aliases and removes the unpatched sprintf-js chain.
   'mammoth>argparse': 2.0.1
   undici: 7.30.1
+  # MCP TypeScript client 2.2.0 followed cross-origin redirects and re-sent custom
+  # headers and bodies (GHSA-6prh-2h8m-c8cw); 2.3.1 is the first patched release.
+  '@modelcontextprotocol/client': 2.3.1
+  # libreoffice-kit pins 0.8.2, which can loop forever on malformed ZIP64 archives
+  # (GHSA-px8p-9vwx-vf98); 0.8.3 is the patched patch release.
+  fflate: 0.8.3
   # Fixed glob parsing for the builder's modern minimatch consumers; retain
   # older callable APIs used by unrelated legacy build dependencies.
   'minimatch@9': 11.0.1
