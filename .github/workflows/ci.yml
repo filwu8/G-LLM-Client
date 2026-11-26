@@ -19,10 +19,12 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      # pnpm must resolve one store for both install and the licence inventory.
-      # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
-      # while install writes elsewhere, and the inventory dies with
-      # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
+      # Pin one store for install and the licence inventory, and never restore it
+      # from the Actions cache. pnpm records per-package metadata under
+      # <store>/v10/index only when it downloads and unpacks a tarball; a cached
+      # store comes back with the contents but without that index, and
+      # `pnpm licenses list` then fails with ERR_PNPM_MISSING_PACKAGE_INDEX_FILE.
+      # A forced relink does not help: pnpm sees the files and skips the download.
       npm_config_store_dir: ${{ github.workspace }}/../pnpm-store
 
     steps:
@@ -40,7 +42,6 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.13.0
-          cache: pnpm
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -69,13 +70,6 @@ jobs:
       - name: Reject dependency advisories at every severity
         run: pnpm audit --audit-level low
 
-      # pnpm licenses list reads per-package metadata under <store>/v10/index. A store
-      # restored from the Actions cache carries the package contents but not that index,
-      # so a warm install leaves the licence inventory unable to resolve any package and
-      # pnpm build dies on its first step with ERR_PNPM_MISSING_PACKAGE_INDEX_FILE.
-      # A forced relink rewrites the index; no other step needs it.
-      - name: Rebuild the module index the licence inventory reads
-        run: pnpm install --frozen-lockfile --force
       - name: Build application
         id: build
         shell: bash
@@ -94,10 +88,12 @@ jobs:
   native-sandbox:
     name: Native sandbox (${{ matrix.os }})
     env:
-      # pnpm must resolve one store for both install and the licence inventory.
-      # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
-      # while install writes elsewhere, and the inventory dies with
-      # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
+      # Pin one store for install and the licence inventory, and never restore it
+      # from the Actions cache. pnpm records per-package metadata under
+      # <store>/v10/index only when it downloads and unpacks a tarball; a cached
+      # store comes back with the contents but without that index, and
+      # `pnpm licenses list` then fails with ERR_PNPM_MISSING_PACKAGE_INDEX_FILE.
+      # A forced relink does not help: pnpm sees the files and skips the download.
       npm_config_store_dir: ${{ github.workspace }}/../pnpm-store
     strategy:
       fail-fast: false
@@ -115,7 +111,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24.13.0
-          cache: pnpm
       - name: Install Linux sandbox dependency
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
@@ -150,9 +145,6 @@ jobs:
       - name: Test project files and assistant configuration
         if: runner.os != 'Linux'
         run: pnpm test:workspace-experience
-      - name: Rebuild the module index the licence inventory reads
-        if: runner.os != 'Linux'
-        run: pnpm install --frozen-lockfile --force
       - name: Build and test account sign-in with OS credential persistence
         id: account-tests
         if: runner.os != 'Linux'
