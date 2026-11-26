@@ -63,6 +63,13 @@ jobs:
       - name: Reject dependency advisories at every severity
         run: pnpm audit --audit-level low
 
+      # pnpm licenses list reads per-package metadata under <store>/v10/index. A store
+      # restored from the Actions cache carries the package contents but not that index,
+      # so a warm install leaves the licence inventory unable to resolve any package and
+      # pnpm build dies on its first step with ERR_PNPM_MISSING_PACKAGE_INDEX_FILE.
+      # A forced relink rewrites the index; no other step needs it.
+      - name: Rebuild the module index the licence inventory reads
+        run: pnpm install --frozen-lockfile --force
       - name: Build application
         run: pnpm build
 
@@ -125,6 +132,9 @@ jobs:
       - name: Test project files and assistant configuration
         if: runner.os != 'Linux'
         run: pnpm test:workspace-experience
+      - name: Rebuild the module index the licence inventory reads
+        if: runner.os != 'Linux'
+        run: pnpm install --frozen-lockfile --force
       - name: Build and test account sign-in with OS credential persistence
         id: account-tests
         if: runner.os != 'Linux'
