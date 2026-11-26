@@ -23,7 +23,7 @@ jobs:
       # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
       # while install writes elsewhere, and the inventory dies with
       # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
-      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
+      npm_config_store_dir: ${{ github.workspace }}/../pnpm-store
 
     steps:
       - name: Checkout exact revision
@@ -92,7 +92,7 @@ jobs:
       # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
       # while install writes elsewhere, and the inventory dies with
       # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
-      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
+      npm_config_store_dir: ${{ github.workspace }}/../pnpm-store
     strategy:
       fail-fast: false
       matrix:
