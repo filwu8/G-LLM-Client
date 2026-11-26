@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Versão atual do código: [V2.0.33](docs/releases/v2.0.33.md)
+Versão atual do código: [V2.0.34](docs/releases/v2.0.34.md)
 
 Versão pública na Microsoft Store: [V2.0.33](https://apps.microsoft.com/detail/9MVD547V4ZN9), lançada em 24 de novembro de 2026. Versão estável mais recente no GitHub: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), lançada em 9 de outubro de 2026.
 

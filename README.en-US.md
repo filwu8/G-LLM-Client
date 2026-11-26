@@ -2,7 +2,7 @@
 
 [简体中文](./README.md) | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md) | [한국어](./README.ko-KR.md) | [Español](./README.es-ES.md) | [Português (Brasil)](./README.pt-BR.md) | [Deutsch](./README.de-DE.md) | [Français](./README.fr-FR.md) | [Русский](./README.ru-RU.md) | [العربية](./README.ar.md) | [हिन्दी](./README.hi-IN.md) | [Bahasa Indonesia](./README.id-ID.md)
 
-Current code version: [V2.0.33](docs/releases/v2.0.33.md)
+Current code version: [V2.0.34](docs/releases/v2.0.34.md)
 
 Current public Microsoft Store version: [V2.0.33](https://apps.microsoft.com/detail/9MVD547V4ZN9), released on 2026-11-24. Latest GitHub stable release: [V2.0.23](https://github.com/filwu8/G-LLM-Client/releases/tag/v2.0.23), released on 2026-10-09.
 
@@ -23,6 +23,17 @@ Local file tools can generate, modify, and compress files in a conversation. Lig
 | Dark theme | Light theme |
 | --- | --- |
 | ![PDF compression task in the dark theme](./docs/images/gllm-dark-file-tools.png) | ![PDF compression task in the light theme](./docs/images/gllm-light-file-tools.png) |
+
+## V2.0.34 MCP Servers, Native Protocols and Asking When Blocked
+
+- MCP servers now reach the workspace agent: local Stdio, Streamable HTTP and SSE servers configured in the tool centre are called for real, the tool list is fetched before every run, and a failed fetch falls back to the last cached list with a stated reason, so the model sees "cannot connect" instead of inventing tools. A local Stdio process runs outside the workspace sandbox, so every call is confirmed individually and "Always allow" is not offered; timeouts and JSON-RPC errors are not retried, to avoid repeating side effects.
+- Native Anthropic Messages and Google Gemini protocols call Claude and Gemini endpoints directly, and internal calls such as search planning, project memory and goal judging use the same protocol. The knowledge base retrieves with keywords and vectors together, and automatic retrieval can be switched off in settings.
+- A run no longer ends with "task incomplete": when information is missing, progress stalls, a tool keeps failing, acceptance fails, a background job hangs or the turn ceiling is reached, the agent pauses and asks, then continues the same run from the answer — at most three questions, never the same one twice. A model request that finally fails because of quota or an outage becomes a question too, since switching models or retrying is the user's decision.
+- Retry feedback collapses into one line, "retrying the model (attempt N) · host · seconds", with a light sweep; clicking it reveals the target service, total attempts, latest reason and when the wait started. The plain-chat countdown names the host too.
+- Fixed very long content breaking the chat panel: long JSON could stretch it past 5000 pixels and push the model picker and send button out of the window. Long code now scrolls inside its block, the toolbar stays on one row, and paid and free models are distinguished by colour.
+- Deleting a project now removes its conversations, notes, memories, tools, skills, assistants and assistant ordering instead of leaving records on disk forever.
+- Fixed the packaged About panel showing the launch moment as the build code: the code is injected at bundle time, and when no trustworthy value exists the label shows the version alone.
+- Dependencies and release tooling: two moderate advisories are fixed, the third-party notice file regains 632 production dependencies it had been missing, and the build no longer depends on `pnpm licenses list`, which cannot work in a clean environment.
 
 ## V2.0.33 File Deletion, Always Allow and Stricter Approval
 
@@ -312,7 +323,8 @@ Windows Shell uses system CMD batch syntax; macOS/Linux use sh. Python runs dire
 - Computer & browser: open Agent settings from the button beside the message input, with or without a project folder. On Windows, enable **Connect to open browsers** or **Control Windows apps** separately. The assistant can read pages, click, fill ordinary forms, navigate and switch tabs in a selected Chrome, Edge or 360 browser window. It can also click, type, press keys and scroll in a selected desktop window. Models with image input can locate controls in a window screenshot. Approved window content is sent to the current model provider.
 - Host commands and the built-in AI browser have separate switches. Host commands can inspect the environment, install software and run automation scripts. The built-in browser gives each conversation a separate single-page session. Every computer or browser operation requires approval, including in Full authorization mode. Enter passwords and handle OS elevation manually. Scripted automation on macOS may require OS Automation or Accessibility permission, which can be checked in settings.
 - Data migration and archives exclude Chromium runtime locks such as `SingletonCookie`, `SingletonLock` and `SingletonSocket`, along with symbolic links, preventing dangling links from breaking macOS migration.
-- Agent runtime persistence for both regular chat and workspace tasks, recording model requests, retries, tools, approvals, artifact verification, and terminal states locally. An app restart marks unfinished runs as interrupted instead of leaving a false running state.
+- Agent runtime persistence for both regular chat and workspace tasks, recording model requests, retries, tools, approvals, artifact verification, and terminal states locally. An app restart marks unfinished runs as interrupted instead of leaving a false running state. Upstream retries collapse into one notice that names the host being called, so a wait is never unattributable.
+- Asking when blocked: missing information, stalled progress, a repeatedly failing tool, failed acceptance, a hanging background job, the turn ceiling or a finally failed model request pauses the task and asks the user. The answer resumes the same task, at most three questions, never repeated, with files already produced kept.
 - Progressive multi-engine retrieval through Google, Bing, DuckDuckGo, and Google News, with query planning, source deduplication, evidence evaluation, and auditing before highly relevant material is organized into the conversation context.
 - Automatic system light/dark theming with manual overrides, plus a gold theme unlocked by a valid official G-LLM API key.
 - Frosted-glass modal backdrops and progressive entry animations, with reduced-motion preference support.
