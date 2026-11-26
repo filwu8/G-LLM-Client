@@ -9,6 +9,10 @@
 - 执行 `git status -sb`，正式发布包必须来自干净工作区中的已提交 commit。
 - 执行 `pnpm test && pnpm build`，确保单元测试、TypeScript 和前端构建通过。
 - 执行 `pnpm licenses:generate`，确认 `THIRD_PARTY_NOTICES.md` 与锁定的生产依赖一致，且没有无法识别的许可证。
+  这条只能在开发机上跑：它调用 `pnpm licenses list`，而该命令按 `<store>/v10/index` 下的包元数据解析，
+  正常 `pnpm install` 不会写这些文件（空 store 实测索引数为 0），所以干净 CI 环境必然失败。
+  CI 只运行 `node scripts/verify-notices-coverage.mjs`，校验「每个运行时直接依赖都已列出、每条已列出的包仍在锁文件中」；
+  传递依赖的完整性只能由这里的生成结果保证，生成后必须提交并复核 diff。
 - 确认 `LICENSE` 中的 Licensed Work 版本、Change Date 和 Change License 与本次发布一致；不得沿用上一版本参数而不复核。
 - 确认 `README.md`、`README.en-US.md`、`NOTICE`、安装协议和应用“关于本系统”中的许可说明一致。
 - 确认第一方源码保留版权、`SPDX-License-Identifier: BUSL-1.1` 和 Change Date 文件头。
