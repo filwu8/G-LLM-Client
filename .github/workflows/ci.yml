@@ -77,7 +77,13 @@ jobs:
       - name: Rebuild the module index the licence inventory reads
         run: pnpm install --frozen-lockfile --force
       - name: Build application
-        run: pnpm build
+        id: build
+        shell: bash
+        run: pnpm build 2>&1 | tee build.log
+      - name: Report build failures
+        if: failure() && steps.build.outcome == 'failure'
+        shell: bash
+        run: node scripts/report-tap-failures.mjs build.log
 
       - name: Verify generated notices are committed
         run: git diff --exit-code -- THIRD_PARTY_NOTICES.md
