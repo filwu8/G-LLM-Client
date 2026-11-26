@@ -1821,7 +1821,14 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
     if (userPauses >= MAX_USER_PAUSES) return false
     const questionText = (asked?.question || detail).trim().slice(0, 400)
     if (!questionText) return false
-    const signature = questionText.replace(/\s+/g, ' ').toLowerCase()
+    // Signature without volatile parts (request ids, timings): the same
+    // underlying blocker must not be asked twice just because the id changed.
+    const signature = questionText
+      .replace(/request[ _-]?id[:=]\s*\S+/gi, '')
+      .replace(/\b\d{6,}\b/g, '')
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      .slice(0, 160)
     if (askedQuestions.has(signature)) return false
     askedQuestions.add(signature)
     userPauses += 1
@@ -2100,7 +2107,13 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
           onProgress?.({ conversationId: request.conversationId, activity: { ...activity } })
           continue
         }
-        if (changedFiles.size > 0 || completedTurns > 1) return incomplete(detail)
+        // The provider is unusable (quota exhausted, outage). That is a
+        // condition the user owns: ask how to proceed instead of ending the
+        // task, so they learn what happened and can switch models or retry.
+        if (changedFiles.size > 0 || completedTurns > 1) {
+          if (await pauseForAnswer(detail)) continue
+          return waiting(detail)
+        }
         throw error
       }
     }

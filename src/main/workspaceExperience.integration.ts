@@ -185,6 +185,17 @@ async function main() {
       // The model keeps asking for the same parameter. The client must not
       // interrogate the user in a loop: one question, then a paused task.
       delta = { role: 'assistant', content: JSON.stringify({ workspaceStatus: 'blocked', verification: '缺少申请人名称。', question: '申请书上的申请人全名是什么？', final: '请提供申请人名称。' }) }
+    } else if (scenario === 'outage') {
+      // The provider dies after real work already produced a file. Losing the
+      // model is a condition the user owns, so the run must ask what to do
+      // instead of reporting a failed task.
+      if (step === 0) {
+        delta = call('write_file', { path: 'outputs/partial.txt', content: '部分结果' })
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'model not found' } }))
+        return
+      }
     } else if (scenario === 'freeform') {
       // The model explains its work in prose but never returns the required
       // workspaceStatus JSON; the failure must still surface that explanation.
@@ -358,6 +369,18 @@ async function main() {
     assert.equal(repeatedQuestions, 1, 'the same question is never asked twice')
     assert.equal(looped.plan.status, 'waiting')
     assert.match(looped.content, /任务暂停/)
+
+    scenario = 'outage'; step = 0
+    const outageQuestions: WorkspaceInteractionRequest[] = []
+    const outage = await runWorkspaceAgent(request('先把部分结果写出来'), undefined, undefined, undefined, undefined, undefined, async (question) => {
+      outageQuestions.push(question)
+      return { id: question.id, selectedIds: ['pause'], cancelled: false, answeredAt: Date.now() }
+    })
+    assert.equal(outageQuestions.length, 1, 'a dead provider becomes a question, not a failed task')
+    assert.match(outageQuestions[0].description!, /404|model not found|模型/)
+    assert.equal(outage.plan.status, 'waiting')
+    assert.match(outage.content, /任务暂停/)
+    assert.deepEqual(outage.changedFiles.map(file => file.replace(/\\/g, '/')), ['outputs/partial.txt'])
 
     scenario = 'fallback'; step = 0
     const fallback = await runWorkspaceAgent(request('检查项目文件夹中是否有 source.txt'))
