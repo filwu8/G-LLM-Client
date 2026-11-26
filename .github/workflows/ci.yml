@@ -126,8 +126,16 @@ jobs:
         if: runner.os != 'Linux'
         run: pnpm test:workspace-experience
       - name: Build and test account sign-in with OS credential persistence
+        id: account-tests
         if: runner.os != 'Linux'
-        run: pnpm build && pnpm test:gllm-account
+        shell: bash
+        run: (pnpm build && pnpm test:gllm-account) 2>&1 | tee account-tests.log
+      # Same reason as the sandbox job: the build can fail before any TAP is written,
+      # and job logs need admin rights, so publish the tail as an annotation instead.
+      - name: Report account test failures
+        if: failure() && steps.account-tests.outcome == 'failure'
+        shell: bash
+        run: node scripts/report-tap-failures.mjs account-tests.log
       - name: Test browser interaction in Electron (Linux display)
         if: runner.os == 'Linux'
         run: xvfb-run -a node scripts/test-agent-browser.mjs
