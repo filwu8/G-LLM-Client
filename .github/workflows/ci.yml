@@ -18,6 +18,12 @@ jobs:
     name: Test and build
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    env:
+      # pnpm must resolve one store for both install and the licence inventory.
+      # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
+      # while install writes elsewhere, and the inventory dies with
+      # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
+      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
 
     steps:
       - name: Checkout exact revision
@@ -81,6 +87,12 @@ jobs:
 
   native-sandbox:
     name: Native sandbox (${{ matrix.os }})
+    env:
+      # pnpm must resolve one store for both install and the licence inventory.
+      # Without this, licenses list looks under PNPM_HOME/node_modules/.bin/store
+      # while install writes elsewhere, and the inventory dies with
+      # ERR_PNPM_MISSING_PACKAGE_INDEX_FILE no matter how often install runs.
+      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
     strategy:
       fail-fast: false
       matrix:
