@@ -242,6 +242,20 @@ async function main() {
       } else {
         delta = { role: 'assistant', content: 'source.txt 看过了，其余仓库应该没问题。' }
       }
+    } else if (scenario === 'retry-breaker') {
+      // The same read fails twice, the client stops that operation and asks.
+      // The user answers "retry this step" — the run must actually get a new
+      // attempt. Keeping the streak at the limit meant the model's next move
+      // was answered with the same breaker, whose question was already asked,
+      // so the run ended on the spot with the model's work already done.
+      if (step <= 1) {
+        delta = call('read_file', { path: 'missing-after-retry.txt' })
+      } else if (step === 2) {
+        assert.match(JSON.stringify(request.messages), /客户端提示/, 'the retry tells the model which tool to avoid')
+        delta = call('write_file', { path: 'outputs/retry-ok.txt', content: 'retry resumed\n' })
+      } else {
+        delta = verdict('改用写入完成了任务。', '已生成 outputs/retry-ok.txt。')
+      }
     } else if (scenario === 'limit') {
       delta = step === 0 ? call('write_file', { path: 'outputs/goal-draft.txt', content: '尚待核对的草稿' })
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
@@ -505,6 +519,16 @@ async function main() {
     // position attached, the same claim comes back, and only then does the run
     // stop to ask. Closing on the first prose sentence is what this guards.
     assert.equal(step, 3, 'an unfinished checklist does not turn a prose claim into a delivery')
+
+    scenario = 'retry-breaker'; step = 0
+    const retried = await runWorkspaceAgent(
+      request('生成 outputs/retry-ok.txt 说明重试结果'),
+      undefined, undefined, undefined, undefined, 'retry-run',
+      async (question) => ({ id: question.id, selectedIds: ['retry'], cancelled: false, answeredAt: Date.now() })
+    )
+    assert.equal(retried.plan.status, 'succeeded', JSON.stringify({ plan: retried.plan, activities: retried.activities }))
+    assert.deepEqual(retried.changedFiles.map(name => name.replace(/\\/g, '/')), ['outputs/retry-ok.txt'])
+    assert.equal(step, 4, 'retrying a broken operation resumes the task instead of ending it')
 
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })

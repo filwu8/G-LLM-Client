@@ -57,6 +57,7 @@ import { supportsReasoningEffort } from '../shared/featureFlags'
 import { canGenerateImages, getModelCapabilities } from '../shared/modelCapabilities'
 import { createWorkspacePlan, finishPlan, MAX_PLAN_STEPS, MIN_PLAN_STEPS, pauseChoicesFor, pauseTitleFor, parsePlanSteps, applyPlanUpdate, planCompletionNote, planProgressText, planVouchesCompletion, readBlockedQuestion, restorePlan, updatePlanStep, type AgentPauseReason } from '../shared/agentPlanning'
 import { runWithConcurrency, selectLeadingReadBatch } from './workspaceReadBatch.ts'
+import { friendlyScriptError } from './workspaceScriptErrors.ts'
 import { permissionModeNote } from './chatMessageOrder.ts'
 import { GOAL_EXECUTION_TIME_LIMIT, normalizeGoalExecutionLimits, WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_TURN_CHECKPOINT } from '../shared/goalMode'
 import { authorizeAssistantDelegation, createDelegationContext } from '../shared/assistantDelegation'
@@ -241,7 +242,7 @@ const toolDefinitions: WorkspaceToolDefinition[] = [
   { type: 'function', function: { name: 'search_files', description: '按文件名和可选文本内容搜索工作区', parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, path: { type: 'string' }, includeContent: { type: 'boolean' } } } } },
   { type: 'function', function: { name: 'compress_image', description: '把工作区内图片压缩到指定字节数，输出为 JPEG', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' } } } } },
   { type: 'function', function: { name: 'compress_pdf', description: '在不超过目标大小的前提下搜索分辨率和 JPEG 质量，选择画质最高的 PDF；会丢失文本搜索、表单、链接和签名。minimumBytes 只是接近上限的画质偏好，绝不能通过填充无意义字节满足。', parameters: { type: 'object', required: ['source', 'output', 'targetBytes'], properties: { source: { type: 'string' }, output: { type: 'string' }, targetBytes: { type: 'number' }, minimumBytes: { type: 'number', description: '可选的期望最小大小，仅用于从真实压缩候选中择优' } } } } },
-  { type: 'function', function: { name: 'run_javascript', description: '在隔离执行器中运行临时 JavaScript，适合没有专用工具的批量文件、文本、JSON、CSV 和代码处理任务。代码中可使用异步 workspace API：list(path,{recursive,limit})、stat(path)、readText(path)、writeText(path,content)、readBase64(path)、writeBase64(path,base64)、mkdir(path)、copy(from,to)、move(from,to)，以及 console.log。不能使用 import、require、process、网络、系统命令或工作区外路径。最后可 return 简短结果。出于安全设计，沙箱无法访问 .git、.env、.ssh 等受保护路径：list/stat 会把它们当作不存在或直接报错，这并不代表文件真的不存在；探测或查看 Git 仓库必须使用 git_read 工具。', parameters: { type: 'object', required: ['purpose', 'code'], properties: { purpose: { type: 'string', description: '本次脚本要完成的工作' }, code: { type: 'string', description: '直接执行的 JavaScript 代码；顶层可使用 await 和 return' } } } } },
+  { type: 'function', function: { name: 'run_javascript', description: '在隔离执行器中运行临时 JavaScript，适合没有专用工具的批量文件、文本、JSON、CSV 和代码处理任务。代码中可使用异步 workspace API（都必须写成 workspace.xxx，例如 await workspace.readText(\"a.txt\")；直接写 readText(...) 会报未定义）：workspace.list(path,{recursive,limit})、workspace.stat(path)、workspace.readText(path)、workspace.writeText(path,content)、workspace.readBase64(path)、workspace.writeBase64(path,base64)、workspace.mkdir(path)、workspace.copy(from,to)、workspace.move(from,to)，以及 console.log。不能使用 import、require、process、网络、系统命令或工作区外路径。最后可 return 简短结果。出于安全设计，沙箱无法访问 .git、.env、.ssh 等受保护路径：list/stat 会把它们当作不存在或直接报错，这并不代表文件真的不存在；探测或查看 Git 仓库必须使用 git_read 工具。', parameters: { type: 'object', required: ['purpose', 'code'], properties: { purpose: { type: 'string', description: '本次脚本要完成的工作' }, code: { type: 'string', description: '直接执行的 JavaScript 代码；顶层可使用 await 和 return' } } } } },
   { type: 'function', function: { name: 'generate_image', description: '调用当前供应商中的图片模型，或通过支持 Responses image_generation 的对话模型生成图片，并保存到工作区。你应先理解用户需求，在 prompt 中提供完整、适合图片生成的提示词；不要只把提示词作为最终答案返回。', parameters: { type: 'object', required: ['prompt', 'output'], properties: { prompt: { type: 'string', description: '根据用户目标整理后的完整生图提示词' }, output: { type: 'string', description: '建议使用 .png 文件名' } } } } }
 ]
 
@@ -826,24 +827,6 @@ function workspaceRunnerPath(): string {
     : join(app.getAppPath(), 'resources', 'workspace-script-runner.cjs')
 }
 
-function friendlyScriptError(raw: string, language: WorkspaceAgentRequest['settings']['language']): string {
-  const isEnglish = mainT('main.locale', language) === 'en-US'
-  const missingCell = raw.match(/Error:\s*cell\s+([A-Z]+\d+)\s+not found/i)?.[1]
-  if (missingCell) {
-    return isEnglish
-      ? `The script tried to update Excel cell ${missingCell}, but that cell was not found in the workbook XML. The script needs to inspect the sheet structure before editing it.`
-      : `脚本准备修改 Excel 单元格 ${missingCell}，但在工作簿内部结构中没有找到该单元格。模板可能采用了不同的存储方式，需要先检查工作表结构再修改。`
-  }
-  const missingGlobal = raw.match(/ReferenceError:\s*([A-Za-z_$][\w$]*)\s+is not defined/i)?.[1]
-  if (missingGlobal) {
-    return isEnglish
-      ? `The script requested “${missingGlobal}”, but that capability is not available in the isolated environment. This is a compatibility issue, not a file permission problem.`
-      : `脚本使用了隔离环境尚未提供的“${missingGlobal}”功能。这属于脚本兼容性问题，不是文件权限不足。`
-  }
-  const firstLine = raw.split(/\r?\n/).find((line) => line.trim())?.replace(/^Error:\s*/i, '').trim()
-  return firstLine || (isEnglish ? 'The temporary script failed' : '临时脚本运行失败')
-}
-
 async function runWorkspaceJavascript(
   root: string,
   code: string,
@@ -871,7 +854,7 @@ async function runWorkspaceJavascript(
     signal,
     timeoutMs: 30_000
   })
-  if (execution.exitCode !== 0) throw new Error(friendlyScriptError(execution.stderr.trim().slice(-4000) || `Exit code ${execution.exitCode}`, language))
+  if (execution.exitCode !== 0) throw new Error(friendlyScriptError(execution.stderr.trim().slice(-4000) || `Exit code ${execution.exitCode}`, mainT('main.locale', language) === 'en-US'))
 
   const after = await snapshotWorkspace(root)
   const changedFiles = Array.from(after.entries())
@@ -2177,8 +2160,13 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
   // this is keyed by operation signature rather than folded into `progressMade`.
   const operationFailureCounts = new Map<string, number>()
   const operationFailureHints = new Map<string, WorkspaceFailureHint>()
-  let repeatedFailureStop: { tool: string; count: number; hint: string } | undefined
   for (let turn = 0; turn < maxTurns;) {
+    // Per-turn: this flag is raised inside the tool loop and consumed at the end
+    // of the same turn. Keeping it across turns made the "retry" answer a dead
+    // end — the user chose to continue, the model switched to another tool, and
+    // the stale flag still fired the same pause, whose blocker had already been
+    // asked, so the run ended on the spot.
+    let repeatedFailureStop: { tool: string; count: number; hint: string } | undefined
     ensureWithinExecutionTime()
     const compacting = continuous && completedTurns > lastCompactedTurn && (
       completedTurns - lastCompactedTurn >= WORKSPACE_TURN_CHECKPOINT ||
@@ -3143,7 +3131,22 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         description: detail,
         blocker: `repeated-failure:${repeatedFailureStop.tool}`,
         reason: 'engine'
-      })) continue
+      })) {
+        // "Retry this step" is the user granting another attempt. Leaving the
+        // streak at the limit would make the very next failure trip the same
+        // breaker, and its blocker is already on record — so the answer would
+        // end the run instead of continuing it.
+        const blockedTool = repeatedFailureStop.tool
+        operationFailureCounts.clear()
+        operationFailureHints.clear()
+        messages.push({
+          role: 'user',
+          content: isEnglish
+            ? `[Client note] The previous attempt used ${blockedTool} and failed the same way twice. Use a different tool or a different approach this time; repeating the same call will not help.`
+            : `[客户端提示] 上一次用的是「${blockedTool}」，同样的写法失败了两次。这次换一个工具或换一种做法，重复同样的调用不会有不同结果。`
+        })
+        continue
+      }
       return waiting(detail)
     }
     if (stalledTurns >= MAX_STALLED_WORKSPACE_TURNS) {
@@ -3155,7 +3158,14 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         description: detail,
         blocker: 'stalled-no-progress',
         reason: 'engine'
-      })) continue
+      })) {
+        // Same reason as the repeated-failure breaker: the counter is a budget
+        // for one attempt, not a permanent verdict. Retrying without resetting
+        // it stops the run on the next quiet turn, before the model can try the
+        // different route the user just approved.
+        stalledTurns = 0
+        continue
+      }
       return waiting(detail)
     }
     if (stalledTurns === 3) {
