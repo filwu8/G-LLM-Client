@@ -120,3 +120,26 @@ test('the model retry notice sweeps its label and can be turned off', () => {
   assert.ok(window.includes('animation: none'), 'reduced motion must stop the sweep')
   assert.ok(window.includes('-webkit-text-fill-color: currentColor'), 'a transparent fill would leave reduced-motion users with no text at all')
 })
+
+// Opening the activity panel is a read-only action. It used to reserve 236px of
+// right padding on the message column, so every bubble and the composer re-flowed
+// to the left the moment the panel opened — the conversation appeared to jump.
+// The panel is an overlay: absolute, above the messages, no width reservation.
+test('the activity panel floats over the conversation without reflowing it', () => {
+  assert.ok(
+    !stylesheet.includes('has-activity-panel > .messages'),
+    'reserving horizontal space for the panel moves the whole conversation when it opens'
+  )
+  const panel = ruleBody('.agent-activity-panel')
+  assert.match(panel, /position:\s*absolute/, 'the panel must be taken out of flow, not placed beside the messages')
+})
+
+// An agent question belongs to the current run: it renders at the bottom of the
+// conversation, in the composer area, and must not be a fixed overlay that hides
+// the messages the question is about.
+test('an inline agent question participates in the chat layout', () => {
+  const inline = ruleBody('.workspace-interaction-inline')
+  assert.match(inline, /width:\s*100%/, 'the inline question must fill the composer width')
+  assert.doesNotMatch(inline, /position:\s*fixed/, 'a fixed card would behave like the modal it replaced')
+  assert.doesNotMatch(inline, /position:\s*absolute/)
+})

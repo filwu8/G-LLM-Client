@@ -13,6 +13,14 @@ import type { WorkspaceInteractionRequest, WorkspaceInteractionResponse } from '
 interface WorkspaceInteractionDialogProps {
   request: WorkspaceInteractionRequest
   busy?: boolean
+  /**
+   * `modal` centres the question over the conversation; `inline` renders the
+   * same controls at the bottom of the chat, next to the composer, where the
+   * conversation is already looking. A modal interrupts typing and hides the
+   * messages the question is about, which is the wrong trade-off for a question
+   * that belongs to the current run.
+   */
+  variant?: 'modal' | 'inline'
   onRespond: (response: WorkspaceInteractionResponse) => void
   onCancel: () => void
 }
@@ -22,7 +30,7 @@ interface WorkspaceInteractionDialogProps {
  * multiple choice collects a set; text/confirm render the matching control.
  * The dialog never exposes raw tool arguments or JSON to the user.
  */
-export function WorkspaceInteractionDialog({ request, busy = false, onRespond, onCancel }: WorkspaceInteractionDialogProps) {
+export function WorkspaceInteractionDialog({ request, busy = false, variant = 'modal', onRespond, onCancel }: WorkspaceInteractionDialogProps) {
   const { t, i18n } = useTranslation()
   const [selected, setSelected] = useState<string[]>([])
   const [custom, setCustom] = useState('')
@@ -58,9 +66,8 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
 
   const createdLabel = new Date(request.createdAt).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
 
-  return (
-    <div className="assistant-modal-backdrop workspace-approval-backdrop">
-      <section aria-modal="true" className="workspace-approval-dialog workspace-interaction-dialog" role="dialog" aria-labelledby="workspace-interaction-title">
+  const content = (
+    <>
         <header>
           <div>
             <span id="workspace-interaction-title">
@@ -174,6 +181,21 @@ export function WorkspaceInteractionDialog({ request, busy = false, onRespond, o
             </>
           )}
         </footer>
+    </>
+  )
+
+  if (variant === 'inline') {
+    return (
+      <section className="workspace-interaction-inline" role="group" aria-labelledby="workspace-interaction-title">
+        {content}
+      </section>
+    )
+  }
+
+  return (
+    <div className="assistant-modal-backdrop workspace-approval-backdrop">
+      <section aria-modal="true" className="workspace-approval-dialog workspace-interaction-dialog" role="dialog" aria-labelledby="workspace-interaction-title">
+        {content}
       </section>
     </div>
   )

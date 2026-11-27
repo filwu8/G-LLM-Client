@@ -10,6 +10,7 @@ import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useRef
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { writePlainTextToClipboard } from './clipboard'
+import { codeFenceLabel, plainCodeText } from './markdownCode'
 import { normalizeMermaidSvg, svgNeedsBrowserCapture, svgToPngDataUrl } from './mermaidExport'
 import { stabilizeAdjacentStrongDelimiters } from './markdownStrongBoundary'
 import { stabilizeStreamingMarkdown } from './streamingMarkdown'
@@ -420,6 +421,68 @@ function isMermaidShell(node: ReactNode): boolean {
   return classNames.includes('mermaid-diagram-card') || classNames.includes('mermaid-diagram-shell')
 }
 
+/**
+ * A fence header is the difference between "a wall of monospace text" and a
+ * command the user can act on: it names the language and copies the block with
+ * one click, newlines intact. Copying selects the raw text rather than the
+ * rendered HTML, so a `>` or a `&` survives the round trip.
+ */
+function CodeBlock({ language, code }: { language: string; code: string }) {
+  const { t } = useTranslation()
+  const [feedback, setFeedback] = useState<'' | 'copied' | 'failed'>('')
+  const feedbackTimer = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
+  }, [])
+
+  function flash(next: 'copied' | 'failed') {
+    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
+    setFeedback(next)
+    feedbackTimer.current = window.setTimeout(() => {
+      setFeedback('')
+      feedbackTimer.current = null
+    }, 1600)
+  }
+
+  async function copyCode() {
+    try {
+      await writePlainTextToClipboard(code)
+      flash('copied')
+    } catch {
+      flash('failed')
+    }
+  }
+
+  const label = codeFenceLabel(language)
+  const buttonLabel = feedback === 'copied'
+    ? t('markdown.copied')
+    : feedback === 'failed'
+      ? t('markdown.copyFailed')
+      : t('markdown.copyCode')
+
+  return (
+    <div className={`markdown-code-block${feedback === 'failed' ? ' copy-failed' : ''}`}>
+      <div className="markdown-code-head">
+        <span className="markdown-code-lang">{label || t('markdown.code')}</span>
+        <button
+          type="button"
+          className={`markdown-code-copy${feedback ? ` is-${feedback}` : ''}`}
+          onClick={() => void copyCode()}
+          title={buttonLabel}
+          aria-label={buttonLabel}
+        >
+          {feedback === 'copied' ? <Check size={12} aria-hidden /> : <Clipboard size={12} aria-hidden />}
+          <span>{buttonLabel}</span>
+        </button>
+      </div>
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </div>
+  )
+}
+
 function markdownUrlTransform(value: string, key: string): string {
   const url = value.trim()
   if (key === 'src' && /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(url)) {
@@ -450,7 +513,17 @@ function MarkdownMessageComponent({ content, streaming = false }: { content: str
             {children}
           </a>
         ),
-        pre: ({ children, ...props }) => (isMermaidShell(getSingleChild(children)) ? <>{children}</> : <pre {...props}>{children}</pre>),
+        pre: ({ children, ...props }) => {
+          const child = getSingleChild(children)
+          if (isMermaidShell(child)) return <>{children}</>
+          if (isValidElement<{ className?: string; children?: ReactNode }>(child)) {
+            const language = /language-([A-Za-z0-9_-]+)/.exec(child.props.className ?? '')?.[1]?.toLowerCase() ?? ''
+            // Mermaid blocks are rendered by the code override below; wrapping
+            // them here would put the diagram inside a copyable code box.
+            if (language !== 'mermaid') return <CodeBlock language={language} code={plainCodeText(child.props.children)} />
+          }
+          return <pre {...props}>{children}</pre>
+        },
         code: ({ className, children, ...props }) => {
           const language = /language-([A-Za-z0-9_-]+)/.exec(className ?? '')?.[1]?.toLowerCase()
           const value = String(children ?? '').replace(/\n$/, '')

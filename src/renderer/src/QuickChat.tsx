@@ -2471,6 +2471,7 @@ export default function QuickChat() {
       )}
       {workspaceInteraction && (!conversation || workspaceInteraction.conversationId === conversation.id) && (
         <WorkspaceInteractionDialog
+          variant="inline"
           request={workspaceInteraction}
           onRespond={(response) => {
             window.gllm.respondWorkspaceInteraction(response)

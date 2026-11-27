@@ -458,6 +458,12 @@
     "analyzeAttachment": "请分析我上传的附件。",
     "settingsNotLoaded": "设置尚未加载"
   },
+  "markdown": {
+    "code": "代码",
+    "copyCode": "复制",
+    "copied": "已复制",
+    "copyFailed": "复制失败"
+  },
   "mermaid": {
     "actions": "Mermaid 图表操作",
     "copyCode": "复制 Mermaid 代码",

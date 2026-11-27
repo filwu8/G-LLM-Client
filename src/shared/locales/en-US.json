@@ -458,6 +458,12 @@
     "analyzeAttachment": "Analyze the attachment I uploaded.",
     "settingsNotLoaded": "Settings have not loaded yet"
   },
+  "markdown": {
+    "code": "Code",
+    "copyCode": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Copy failed"
+  },
   "mermaid": {
     "actions": "Mermaid diagram actions",
     "copyCode": "Copy Mermaid code",

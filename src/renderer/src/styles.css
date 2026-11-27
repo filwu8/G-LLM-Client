@@ -1365,6 +1365,66 @@ img.space-logo {
   padding: 0;
 }
 
+/* A fenced block is something the user copies, not just text to read: the
+   header names the language and carries a one-click copy for the raw source.
+   Without it a command block could only be selected by hand, and HTML entities
+   (&gt;, &amp;) came along with the drag selection. */
+.markdown-code-block {
+  max-width: 100%;
+  min-width: 0;
+  margin: 10px 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--secondary));
+  overflow: hidden;
+}
+.markdown-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 5px 3px 10px;
+  border-bottom: 1px solid hsl(var(--border) / .65);
+  background: hsl(var(--card) / .55);
+}
+.markdown-code-lang {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: hsl(var(--muted-foreground));
+}
+.markdown-code-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 10.5px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.markdown-code-copy:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.markdown-code-copy.is-copied { color: hsl(var(--success)); }
+.markdown-code-copy.is-failed { color: hsl(var(--destructive)); }
+.markdown-code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+}
+/* Inline code selects as a unit: one click then Ctrl/Cmd+C copies exactly the
+   snippet, which is how a file name or a single command gets reused. */
+.markdown-body :not(pre) > code { user-select: all; }
+
 .markdown-body table {
   display: block;
   max-width: 100%;
@@ -10023,8 +10083,11 @@ img.space-logo {
 }
 .goal-choice-send:disabled { opacity: .55; cursor: default; }
 
-/* Floating agent activity panel — right edge of the conversation */
-.message-viewport.has-activity-panel > .messages { padding-right: 236px; }
+/* Floating agent activity panel — right edge of the conversation.
+   It is an overlay: the messages keep their full width and the panel floats on
+   top of them. Reserving a right padding here re-flowed every bubble (and the
+   composer) the moment the user opened the panel, so opening a read-only
+   activity list visibly moved the whole conversation to the left. */
 .agent-activity-panel {
   position: absolute; top: 12px; right: 10px; width: 218px;
   max-height: calc(100% - 24px);
@@ -10249,6 +10312,40 @@ img.space-logo {
 .workspace-approval-dialog > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .workspace-approval-dialog > footer .secondary-action { margin-right: auto; }
 .workspace-interaction-dialog { width: min(560px, calc(100vw - 40px)); gap: 12px; }
+/* Inline question: the same controls as the dialog, rendered at the bottom of
+   the conversation instead of over it. A modal hid the messages the question
+   was about and stole focus from the composer mid-typing. */
+.workspace-interaction-inline {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  /* Four options plus a custom entry is taller than the composer itself; without
+     a ceiling the question card pushed the conversation out of the window. */
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--primary) / .45);
+  border-radius: 12px;
+  background: hsl(var(--card));
+  box-shadow: var(--elevation-panel);
+  font-size: 12px;
+}
+/* The card is one row away from the input, so its options are denser than the
+   modal's: the same list fits in half the height without losing the labels. */
+.workspace-interaction-inline .interaction-option { padding: 5px 10px; }
+.workspace-interaction-inline .interaction-option-head { font-size: 12.5px; }
+.workspace-interaction-inline .interaction-option small { font-size: 11px; line-height: 1.4; }
+.workspace-interaction-inline > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.workspace-interaction-inline > header > div { display: grid; min-width: 0; gap: 3px; }
+.workspace-interaction-inline > header span { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; }
+.workspace-interaction-inline > header small { display: inline-flex; align-items: center; gap: 4px; color: hsl(var(--muted-foreground)); font-size: 11px; }
+.workspace-interaction-inline > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.workspace-interaction-inline > footer .secondary-action { margin-right: auto; }
+.workspace-interaction-inline > footer .primary-action:disabled { opacity: .45; cursor: not-allowed; }
+.workspace-interaction-inline .workspace-code-preview { max-height: 160px; }
 .workspace-interaction-dialog header small { display: inline-flex; align-items: center; gap: 4px; }
 .interaction-description { margin: 0; color: hsl(var(--muted-foreground)); font-size: 12.5px; line-height: 1.55; }
 .interaction-options { display: grid; gap: 8px; }

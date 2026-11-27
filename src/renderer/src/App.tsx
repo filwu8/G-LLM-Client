@@ -124,6 +124,7 @@ import { ResponseDuration } from './ResponseDuration'
 import { GoalSetupDialog, GoalTaskPanel, type GoalSetupValue } from './GoalMode'
 import { GoalChoiceCards } from './GoalChoiceCards'
 import { AgentActivityPanel, type OutlineEntry } from './AgentActivityPanel'
+import { shouldCollapseActivityPanelForQuestion } from './agentPanelVisibility'
 import { UsageAnalyticsPanel } from './UsageAnalytics'
 import { calculateLocalUsageStats } from './localUsageStats'
 import { LocalTaskPanel } from './LocalTaskPanel'
@@ -1171,10 +1172,18 @@ export default function App() {
     Boolean(activeInteraction)
   )
   // Runs no longer force the panel open: the collapsed handle already reports
-  // progress. Only a request that blocks on the user justifies interrupting.
+  // progress. A blocking approval still does. A question does the opposite now —
+  // it renders inline at the composer, so opening the panel as well would put a
+  // second surface over the conversation and cover the context being asked about.
   useEffect(() => {
-    if (workspaceApprovalPrompt || activeInteraction) setOutlineOpen(true)
-  }, [workspaceApprovalPrompt?.id, activeInteraction?.id])
+    if (workspaceApprovalPrompt) setOutlineOpen(true)
+  }, [workspaceApprovalPrompt?.id])
+  const lastQuestionIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const questionId = activeInteraction?.id ?? null
+    if (shouldCollapseActivityPanelForQuestion(lastQuestionIdRef.current, questionId)) setOutlineOpen(false)
+    lastQuestionIdRef.current = questionId
+  }, [activeInteraction?.id])
   const conversationProvider = useMemo(
     () => (activeConversation ? getEffectiveProvider(activeConversation, assistantDefaultProvider, providers) : assistantDefaultProvider),
     [activeConversation, assistantDefaultProvider, providers]
@@ -4470,6 +4479,20 @@ export default function App() {
               sendMessage()
             }}
           >
+            {activeInteraction && (
+              <WorkspaceInteractionDialog
+                variant="inline"
+                request={activeInteraction}
+                onRespond={(response: WorkspaceInteractionResponse) => {
+                  window.gllm.respondWorkspaceInteraction(response)
+                  setWorkspaceInteractions((current) => current.filter((item) => item.id !== response.id))
+                }}
+                onCancel={() => {
+                  window.gllm.cancelWorkspaceInteraction(activeInteraction.id)
+                  setWorkspaceInteractions((current) => current.filter((item) => item.id !== activeInteraction.id))
+                }}
+              />
+            )}
             {(goalModeArmed || goalAssessing || activeConversation?.goalDraft?.status === 'clarifying') && (
               <section className="goal-intake-status" aria-live="polite" role="status">
                 <Target size={14} />
@@ -4882,19 +4905,6 @@ export default function App() {
           onRespond={(approved, remember) => {
             window.gllm.respondWorkspaceApproval(workspaceApprovalPrompt.id, approved, remember)
             setWorkspaceApprovalPrompts((current) => current.filter((prompt) => prompt.id !== workspaceApprovalPrompt.id))
-          }}
-        />
-      )}
-      {activeInteraction && (
-        <WorkspaceInteractionDialog
-          request={activeInteraction}
-          onRespond={(response: WorkspaceInteractionResponse) => {
-            window.gllm.respondWorkspaceInteraction(response)
-            setWorkspaceInteractions((current) => current.filter((item) => item.id !== response.id))
-          }}
-          onCancel={() => {
-            window.gllm.cancelWorkspaceInteraction(activeInteraction.id)
-            setWorkspaceInteractions((current) => current.filter((item) => item.id !== activeInteraction.id))
           }}
         />
       )}
