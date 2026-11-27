@@ -130,3 +130,67 @@ export function readBlockedQuestion(
   if (!question) return undefined
   return { question, ...(title ? { title } : {}), ...(selection ? { selection } : {}), ...(options ? { options } : {}) }
 }
+
+/**
+ * Why a run stopped to ask. The three cases look identical in code and nothing
+ * alike to the person answering them:
+ *
+ * - `missing-info` — the run needs a fact only they have (a name, an address, a
+ *   choice between two viable plans).
+ * - `unconfirmed` — the model answered, but not in a form the client can check,
+ *   so the question is "accept this or tell me what is wrong", not "add data".
+ * - `provider` / `engine` — an upstream failure or a stalled step. Nothing the
+ *   user types can help; only retrying or stopping can.
+ *
+ * Offering "I will add the missing information" in the last two is what made the
+ * card impossible to answer: there was no missing information to add.
+ */
+export type AgentPauseReason = 'missing-info' | 'unconfirmed' | 'provider' | 'engine'
+
+export interface AgentPauseChoice {
+  id: string
+  label: string
+  description: string
+}
+
+export function pauseChoicesFor(reason: AgentPauseReason, language: 'zh' | 'en' = 'zh'): AgentPauseChoice[] {
+  const en = language === 'en'
+  if (reason === 'unconfirmed') {
+    return en ? [
+      { id: 'accept', label: 'Take this as done', description: 'I accept the answer above; close the task here' },
+      { id: 'continue', label: 'Finish the missing part', description: 'Retry using the note I type below' },
+      { id: 'pause', label: 'Stop here for now', description: 'Keep the work already done and resume later' }
+    ] : [
+      { id: 'accept', label: '就这样算完成', description: '我接受上面的答复，任务到此收尾' },
+      { id: 'continue', label: '继续补完', description: '带着我下面写的补充再试一次' },
+      { id: 'pause', label: '先停在这里', description: '保留已完成的工作，稍后继续' }
+    ]
+  }
+  if (reason === 'provider' || reason === 'engine') {
+    return en ? [
+      { id: 'retry', label: 'Retry this step', description: 'Resume from the saved checkpoint without repeating finished work' },
+      { id: 'pause', label: 'Stop here for now', description: 'Keep the work already done and resume later' }
+    ] : [
+      { id: 'retry', label: '再试这一步', description: '从已保存的进度重试，不重复已经完成的动作' },
+      { id: 'pause', label: '先停在这里', description: '保留已完成的工作，稍后继续' }
+    ]
+  }
+  return en ? [
+    { id: 'provide', label: 'I will add the missing information', description: 'Type it in the box below and the task continues with it' },
+    { id: 'retry', label: 'Continue another way', description: 'Do not wait for me; retry with a different approach' },
+    { id: 'pause', label: 'Stop here for now', description: 'Keep the work already done and resume later' }
+  ] : [
+    { id: 'provide', label: '我来补充信息', description: '在下面直接填写缺少的信息，我会带着它继续' },
+    { id: 'retry', label: '换一种方式继续', description: '不用等我，换一条可用路径再试一次' },
+    { id: 'pause', label: '先停在这里', description: '保留已完成的工作，稍后继续' }
+  ]
+}
+
+/** A title that states the situation, so the choices underneath it make sense. */
+export function pauseTitleFor(reason: AgentPauseReason, language: 'zh' | 'en' = 'zh'): string {
+  const en = language === 'en'
+  if (reason === 'unconfirmed') return en ? 'The answer could not be verified' : '这一轮没通过自动核对'
+  if (reason === 'provider') return en ? 'The model service did not answer' : '模型服务这次没有响应'
+  if (reason === 'engine') return en ? 'This step stopped making progress' : '这一步没有取得进展'
+  return en ? 'The task needs one more thing from you' : '需要你补充一点信息'
+}

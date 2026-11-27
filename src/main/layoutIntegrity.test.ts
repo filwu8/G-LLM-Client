@@ -143,3 +143,35 @@ test('an inline agent question participates in the chat layout', () => {
   assert.doesNotMatch(inline, /position:\s*fixed/, 'a fixed card would behave like the modal it replaced')
   assert.doesNotMatch(inline, /position:\s*absolute/)
 })
+
+// The question card sits directly above the composer, so every extra line of
+// option height is conversation the user cannot see. A four-option question used
+// to be ~35px per option; each one is now a single row: the label never wraps,
+// the description takes the leftover width and truncates (full text is in the
+// button's `title`), and the list gap is tightened to match.
+test('the inline question keeps every option on one line', () => {
+  const option = ruleBody('.workspace-interaction-inline .interaction-option')
+  assert.match(option, /display:\s*flex/, 'a grid option stacks the label over its description')
+  assert.match(option, /align-items:\s*center/)
+  const label = ruleBody('.workspace-interaction-inline .interaction-option-head strong')
+  assert.match(label, /white-space:\s*nowrap/, 'a wrapping label silently grows the card')
+  assert.match(label, /text-overflow:\s*ellipsis/)
+  const description = ruleBody('.workspace-interaction-inline .interaction-option small')
+  assert.match(description, /white-space:\s*nowrap/)
+  assert.match(description, /text-overflow:\s*ellipsis/)
+})
+
+// A long answer quote or six options made the card taller than its ceiling, and
+// the scroll used to live on the card itself — so "暂时跳过" sat below the fold.
+// The scroll belongs to the middle section; the actions keep their own row.
+test('the inline question scrolls its body, not its actions', () => {
+  const card = ruleBody('.workspace-interaction-inline')
+  assert.match(card, /overflow:\s*hidden/, 'a scrolling card takes the submit button with it')
+  assert.doesNotMatch(card, /overflow-y:\s*auto/)
+  const body = ruleBody('.workspace-interaction-inline > .interaction-body')
+  assert.match(body, /overflow-y:\s*auto/, 'the middle section is what scrolls')
+  assert.match(body, /flex:\s*1 1 auto/, 'without this the body cannot shrink below its content')
+  const footer = ruleBody('.workspace-interaction-inline > footer')
+  assert.match(footer, /flex:\s*0 0 auto/, 'the action row must keep its full height')
+  assert.doesNotMatch(footer, /position:\s*sticky/, 'a sticky footer covers the options it floats over')
+})

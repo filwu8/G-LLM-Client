@@ -77,72 +77,82 @@ export function WorkspaceInteractionDialog({ request, busy = false, variant = 'm
             <small><Clock3 size={11} />{createdLabel}</small>
           </div>
         </header>
-        {request.description && <p className="interaction-description">{request.description}</p>}
-        {request.context && <pre className="workspace-code-preview"><code>{request.context}</code></pre>}
+        {/*
+          The scroll lives here, not on the card, so the actions at the bottom
+          stay put. Scrolling the whole card pushed the submit button out of
+          sight, and a sticky footer covered the options it floated over.
+        */}
+        <div className="interaction-body">
+          {request.description && <p className="interaction-description">{request.description}</p>}
+          {request.context && <pre className="workspace-code-preview"><code>{request.context}</code></pre>}
 
-        {expired ? (
-          <p className="interaction-expired">{t('interaction.expired')}</p>
-        ) : textOnly ? (
-          <label className="interaction-text">
-            <span>{t('interaction.textHint')}</span>
-            <textarea
-              autoFocus
-              disabled={disabled}
-              onChange={(event) => setCustom(event.target.value)}
-              placeholder={t('interaction.textPlaceholder')}
-              rows={3}
-              value={custom}
-            />
-          </label>
-        ) : confirm ? (
-          <p className="interaction-description">{t('interaction.confirmHint')}</p>
-        ) : (
-          <div className="interaction-options" role={multiple ? 'group' : 'radiogroup'}>
-            {request.options.map((option) => {
-              const active = selected.includes(option.id)
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`interaction-option${active ? ' is-selected' : ''}${option.recommended ? ' is-recommended' : ''}`}
-                  aria-checked={active}
-                  role={multiple ? 'checkbox' : 'radio'}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (disabled) return
-                    if (multiple) { toggle(option.id); return }
-                    submit([option.id])
-                  }}
-                >
-                  <span className="interaction-option-head">
-                    <strong>{option.label}</strong>
-                    {option.recommended && <em><Sparkles size={10} />{t('interaction.recommended')}</em>}
-                    {active && <Check size={13} />}
-                  </span>
-                  {option.description && <small>{option.description}</small>}
+          {expired ? (
+            <p className="interaction-expired">{t('interaction.expired')}</p>
+          ) : textOnly ? (
+            <label className="interaction-text">
+              <span>{t('interaction.textHint')}</span>
+              <textarea
+                autoFocus
+                disabled={disabled}
+                onChange={(event) => setCustom(event.target.value)}
+                placeholder={t('interaction.textPlaceholder')}
+                rows={3}
+                value={custom}
+              />
+            </label>
+          ) : confirm ? (
+            <p className="interaction-description">{t('interaction.confirmHint')}</p>
+          ) : (
+            <div className="interaction-options" role={multiple ? 'group' : 'radiogroup'}>
+              {request.options.map((option) => {
+                const active = selected.includes(option.id)
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`interaction-option${active ? ' is-selected' : ''}${option.recommended ? ' is-recommended' : ''}`}
+                    // The inline card keeps every option on one line and truncates
+                    // the description, so the full text has to stay reachable.
+                    title={option.description ? `${option.label} — ${option.description}` : option.label}
+                    aria-checked={active}
+                    role={multiple ? 'checkbox' : 'radio'}
+                    disabled={disabled}
+                    onClick={() => {
+                      if (disabled) return
+                      if (multiple) { toggle(option.id); return }
+                      submit([option.id])
+                    }}
+                  >
+                    <span className="interaction-option-head">
+                      <strong>{option.label}</strong>
+                      {option.recommended && <em><Sparkles size={10} />{t('interaction.recommended')}</em>}
+                      {active && <Check size={13} />}
+                    </span>
+                    {option.description && <small>{option.description}</small>}
+                  </button>
+                )
+              })}
+              {request.allowCustom && !showCustom && (
+                <button type="button" className="interaction-option interaction-custom-toggle" disabled={disabled} title={t('interaction.customHint')} onClick={() => setShowCustom(true)}>
+                  <span className="interaction-option-head"><strong>{t('interaction.custom')}</strong></span>
+                  <small>{t('interaction.customHint')}</small>
                 </button>
-              )
-            })}
-            {request.allowCustom && !showCustom && (
-              <button type="button" className="interaction-option interaction-custom-toggle" disabled={disabled} onClick={() => setShowCustom(true)}>
-                <span className="interaction-option-head"><strong>{t('interaction.custom')}</strong></span>
-                <small>{t('interaction.customHint')}</small>
-              </button>
-            )}
-            {showCustom && (
-              <label className="interaction-text">
-                <textarea
-                  autoFocus
-                  disabled={disabled}
-                  onChange={(event) => setCustom(event.target.value)}
-                  placeholder={t('interaction.textPlaceholder')}
-                  rows={2}
-                  value={custom}
-                />
-              </label>
-            )}
-          </div>
-        )}
+              )}
+              {showCustom && (
+                <label className="interaction-text">
+                  <textarea
+                    autoFocus
+                    disabled={disabled}
+                    onChange={(event) => setCustom(event.target.value)}
+                    placeholder={t('interaction.textPlaceholder')}
+                    rows={2}
+                    value={custom}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
 
         <footer>
           {request.allowSkip && !confirm && (
