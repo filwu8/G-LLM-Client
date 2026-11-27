@@ -294,3 +294,48 @@ export class WorkspaceInteractionStore {
     }
   }
 }
+
+/**
+ * Persist the answer even when a live waiter consumed it.
+ *
+ * The IPC handler resolves the pending promise first and returns, which used to
+ * leave the stored record at `pending`. The next time the UI loaded, the store
+ * handed the same question back, so a question the user had already answered was
+ * asked again — and again, because each answer repeated the mistake.
+ */
+export function persistInteractionAnswer(
+  store: WorkspaceInteractionStore,
+  id: string,
+  response: WorkspaceInteractionResponse
+): boolean {
+  const record = store.get(id)
+  if (!record || record.status !== 'pending') return false
+  return Boolean(store.resolve(id, response))
+}
+
+/**
+ * Render the answer as a transcript line. The run injects `[用户回答]` into the
+ * model's private messages, which the chat never shows, so the choice a user
+ * just made left no trace in the conversation.
+ */
+export function describeInteractionAnswer(
+  request: WorkspaceInteractionRequest,
+  response: WorkspaceInteractionResponse,
+  language: 'zh' | 'en' = 'zh'
+): string {
+  if (response.cancelled) return ''
+  const zh = language === 'zh'
+  const labels = response.selectedIds
+    .map((id) => request.options.find((option) => option.id === id))
+    .filter((option): option is WorkspaceInteractionOption => Boolean(option))
+    .map((option) => option.label)
+  const lines: string[] = []
+  if (labels.length > 0) lines.push(zh ? `选择：${labels.join('、')}` : `Selected: ${labels.join(', ')}`)
+  if (response.customText) lines.push(zh ? `补充：${response.customText}` : `Note: ${response.customText}`)
+  if (lines.length === 0) {
+    if (request.selection !== 'confirm') return ''
+    return zh ? `已回答「${request.title}」` : `Answered "${request.title}"`
+  }
+  const head = zh ? `已回答「${request.title}」` : `Answered "${request.title}"`
+  return `${head}\n${lines.join('\n')}`
+}

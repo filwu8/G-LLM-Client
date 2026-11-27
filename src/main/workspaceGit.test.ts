@@ -302,3 +302,30 @@ test('isIndexLockConflict matches git stale-lock output but not unrelated failur
   assert.equal(isIndexLockConflict('Exit code: 128 fatal: Cannot do hard reset with paths.'), false)
   assert.equal(isIndexLockConflict(''), false)
 })
+
+// A missing git identity used to stop the run: the model was handed a hint
+// telling it to ask the user to paste `git config` commands, and asked again
+// with new wording on every attempt. The repository already knows who commits
+// to it, so the commit reuses that author instead.
+test('commit reuses the repository author when no git identity is configured', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-git-ident-'))
+  try {
+    const { execFileSync } = await import('node:child_process')
+    const git = (...argv: string[]) => execFileSync('git', argv, { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+    git('init')
+    await writeFile(resolve(root, 'a.txt'), 'one\n')
+    git('add', 'a.txt')
+    git('-c', 'user.name=Gordon', '-c', 'user.email=gordon@example.com', 'commit', '-m', 'seed')
+    // Blank values in the repository override any global identity, which is the
+    // exact state the Windows machine was in: git refuses, nothing else is set.
+    git('config', 'user.name', '')
+    git('config', 'user.email', '')
+    await writeFile(resolve(root, 'a.txt'), 'two\n')
+    git('add', 'a.txt')
+
+    const result = await runGitWrite(root, { operation: 'commit', message: 'second' })
+    assert.equal(result.exitCode, 0, result.output)
+    assert.match(result.output, /沿用该仓库最近一次提交的作者/)
+    assert.equal(git('log', '-1', '--format=%an <%ae>').trim(), 'Gordon <gordon@example.com>')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

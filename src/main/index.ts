@@ -85,7 +85,7 @@ import {
 import { ActiveResponseRegistry } from './activeResponse'
 import { AgentRunLedger } from './agentRunLedger'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
-import { WorkspaceInteractionStore } from './workspaceInteractions'
+import { WorkspaceInteractionStore, describeInteractionAnswer, persistInteractionAnswer } from './workspaceInteractions'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
@@ -2285,6 +2285,9 @@ app.whenReady().then(() => {
     if (pending) {
       if (pending.senderId !== event.sender.id) return
       pending.resolve(response)
+      // Resolving the live promise is not enough: the record on disk stays
+      // `pending`, so the next load offers the same question again.
+      persistInteractionAnswer(workspaceInteractionStore(), response.id, response)
       return
     }
     // No live waiter: the answer was given after the run ended or the app
@@ -2302,6 +2305,8 @@ app.whenReady().then(() => {
     if (pending) {
       if (pending.senderId !== event.sender.id) return
       pending.resolve(response)
+      // Same reason as above: a dismissed question must not come back on reload.
+      workspaceInteractionStore().cancel(id)
       return
     }
     workspaceInteractionStore().cancel(id)
@@ -2563,7 +2568,7 @@ app.whenReady().then(() => {
             kind: interaction.kind
           })
           for (const sender of targets) sender.send('workspace-agent:interaction-requested', interaction)
-          return await new Promise<WorkspaceInteractionResponse | undefined>((resolvePromise) => {
+          const response = await new Promise<WorkspaceInteractionResponse | undefined>((resolvePromise) => {
             let timer: NodeJS.Timeout | undefined
             const finish = (response: WorkspaceInteractionResponse) => {
               if (!pendingWorkspaceInteractions.has(interaction.id)) return
@@ -2589,6 +2594,34 @@ app.whenReady().then(() => {
             pendingWorkspaceInteractions.set(interaction.id, { senderId: targets[0].id, resolve: finish })
             interactionSignal.addEventListener('abort', handleAbort, { once: true })
           })
+          // Write the choice into the conversation itself. The run injects
+          // `[用户回答]` into the model's private message list, which never
+          // reaches the transcript, so the answer used to vanish from the UI
+          // the moment the card closed.
+          if (response && !response.cancelled) {
+            const transcript = describeInteractionAnswer(
+              interaction,
+              response,
+              String(request.settings?.language ?? '').startsWith('en') ? 'en' : 'zh'
+            )
+            const conversation = transcript ? getConversationById(interaction.conversationId) : undefined
+            if (transcript && conversation) {
+              const saved = saveConversation({
+                ...conversation,
+                messages: [...conversation.messages, {
+                  id: `msg_${randomUUID()}`,
+                  role: 'user',
+                  content: transcript,
+                  createdAt: Date.now(),
+                  inputTokens: 0,
+                  outputTokens: 0
+                }],
+                updatedAt: Date.now()
+              }, conversation.projectId)
+              broadcastConversationChange(saved.id, 'saved', saved)
+            }
+          }
+          return response
         },
         // Read the live mode so a switch in the composer applies to the very
         // next tool call of this running task.

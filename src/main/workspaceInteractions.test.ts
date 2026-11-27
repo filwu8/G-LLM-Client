@@ -13,8 +13,10 @@ import test from 'node:test'
 import {
   WORKSPACE_INTERACTION_TTL_MS,
   WorkspaceInteractionStore,
+  describeInteractionAnswer,
   formatInteractionAnswer,
   isInteractionExpired,
+  persistInteractionAnswer,
   normalizeInteractionRequest,
   normalizeInteractionResponse
 } from './workspaceInteractions.ts'
@@ -175,4 +177,52 @@ test('cancel marks a pending request and blocks later answers', () => {
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+// The IPC handler resolves the in-flight promise first. Before this, it then
+// returned without touching the store, so the record stayed `pending` and the
+// next load offered the same question again — the user answered the same thing
+// over and over while every answer looked accepted.
+test('an answer consumed by a live waiter is still persisted', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gllm-interactions-persist-'))
+  try {
+    const store = new WorkspaceInteractionStore(dir)
+    // Real clock: a request older than the 24h TTL is expired on read, which
+    // would make this test pass for the wrong reason.
+    const now = Date.now()
+    const request = normalizeInteractionRequest(
+      { title: '提交身份未配置，如何继续', options: [{ id: 'diy', label: '我自己配置' }], selection: 'single' },
+      { ...base, now }
+    )
+    store.create(request)
+    const response = normalizeInteractionResponse(request, { selectedIds: ['diy'], answeredAt: now + 1000 })
+
+    assert.equal(persistInteractionAnswer(store, request.id, response), true)
+    assert.equal(store.get(request.id)?.status, 'answered')
+    assert.deepEqual(store.pending('conv_1'), [], 'an answered question must not be offered again')
+    // A second click on the same card must not rewrite a settled record.
+    assert.equal(persistInteractionAnswer(store, request.id, response), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// The run injects `[用户回答]` into the model's private messages only, so the
+// transcript lost every choice the user made. The transcript line is derived
+// from the request and the response, not from the model's summary.
+test('the answer is rendered as a transcript line', () => {
+  const request = normalizeInteractionRequest(
+    {
+      title: '根仓库本地改动如何处理',
+      options: [{ id: 'commit-push', label: '提交并推送' }, { id: 'keep', label: '先保留' }],
+      selection: 'single'
+    },
+    base
+  )
+  const response = normalizeInteractionResponse(request, { selectedIds: ['commit-push'], answeredAt: base.now })
+  assert.equal(describeInteractionAnswer(request, response), '已回答「根仓库本地改动如何处理」\n选择：提交并推送')
+
+  const withNote = normalizeInteractionResponse(request, { customText: '改用 squash 再推', answeredAt: base.now })
+  assert.equal(describeInteractionAnswer(request, withNote), '已回答「根仓库本地改动如何处理」\n补充：改用 squash 再推')
+  assert.equal(describeInteractionAnswer(request, { ...response, cancelled: true }), '')
 })

@@ -385,6 +385,8 @@ function writeEnvironment(operation: GitWriteOperation): NodeJS.ProcessEnv {
   return { ...base, GCM_INTERACTIVE: 'never', GIT_ASKPASS: 'echo' }
 }
 
+const IDENTITY_FAILURE = /author identity unknown|please tell me who you are|empty ident name|unable to auto-detect email address|auto-detection is disabled/i
+
 /**
  * Turn the two failures a fresh clone hits most often into instructions the
  * model can act on in the same turn. Both are configuration problems the user
@@ -392,13 +394,45 @@ function writeEnvironment(operation: GitWriteOperation): NodeJS.ProcessEnv {
  * would "fix" the error by doing something we must never do.
  */
 export function gitFailureHint(operation: GitWriteOperation | string, output: string): string {
-  if (operation === 'commit' && /author identity unknown|please tell me who you are|empty ident name|unable to auto-detect email address/i.test(output)) {
-    return '\n提示：本机尚未配置提交身份（user.name / user.email），所以这次提交被 git 拒绝。请让用户本人执行 `git config --global user.name "<名字>"` 与 `git config --global user.email "<邮箱>"` 后重试；不要替用户编造身份，也不要改用其他工具绕过。'
+  if (operation === 'commit' && IDENTITY_FAILURE.test(output)) {
+    return '\n提示：本机没有配置 user.name / user.email，且这个仓库没有可沿用的历史作者，所以提交被 git 拒绝。请让用户本人执行 `git config --global user.name "<名字>"` 与 `git config --global user.email "<邮箱>"` 后重试；不要替用户编造身份，也不要改用其他工具绕过。'
   }
   if (operation === 'push' && /authentication failed|could not read username|terminal prompts disabled|could not read password|invalid username or password|permission denied \(publickey\)/i.test(output)) {
     return '\n提示：远端鉴权失败，本机没有可用于该远端的凭据（客户端不会在后台弹出登录框）。请让用户先在本机完成一次 `git push` 或配置凭据助手，之后重试；不要在对话里询问密码或令牌。'
   }
   return ''
+}
+
+/**
+ * The author of the repository's most recent commit.
+ *
+ * When git refuses a commit because no `user.name` / `user.email` is
+ * configured, this is the one identity we may reuse without inventing
+ * anything: it is already in the history of the repository being committed to.
+ * Reading it here keeps the agent from stopping the whole task to ask the user
+ * to paste `git config` commands for a repository that already knows who has
+ * been committing to it.
+ */
+async function readRepositoryAuthor(cwd: string): Promise<{ name: string; email: string } | undefined> {
+  try {
+    const result = await runWorkspaceProcess({
+      executable: process.platform === 'win32' ? 'git.exe' : 'git',
+      args: ['-c', 'core.pager=cat', '--no-pager', 'log', '-1', '--format=%an%x00%ae'],
+      cwd,
+      env: gitEnvironment(),
+      timeoutMs: 20_000,
+      maxOutputBytes: 4096,
+      outputOverflow: 'truncate'
+    })
+    if (result.exitCode !== 0) return undefined
+    const [rawName = '', rawEmail = ''] = result.stdout.split('\u0000')
+    const name = rawName.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+    const email = rawEmail.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+    if (!name || !email || name.length > 120 || email.length > 160) return undefined
+    return { name, email }
+  } catch {
+    return undefined
+  }
 }
 
 export interface GitWriteResult {
@@ -466,9 +500,37 @@ export async function runGitWrite(root: string, args: Record<string, unknown>, s
       throw error
     }
   }
+  // A missing `user.name` / `user.email` is not a permission problem, and the
+  // repository usually already answers it: its last commit names an author.
+  // Reuse that identity for this commit instead of stopping the run to ask the
+  // user for a name we would have to invent anyway.
+  let identityNote = ''
+  if (operation === 'commit' && result.exitCode !== 0 && IDENTITY_FAILURE.test(`${result.stdout}\n${result.stderr}`)) {
+    const author = await readRepositoryAuthor(cwd)
+    if (author) {
+      try {
+        const retried = await runWorkspaceProcess({
+          executable: process.platform === 'win32' ? 'git.exe' : 'git',
+          args: ['-c', `user.name=${author.name}`, '-c', `user.email=${author.email}`, ...argv],
+          cwd,
+          env: writeEnvironment(operation),
+          signal,
+          timeoutMs: gitWriteTimeoutMs(operation),
+          maxOutputBytes: MAX_OUTPUT_BYTES,
+          outputOverflow: 'truncate'
+        })
+        if (retried.exitCode === 0) {
+          result = retried
+          identityNote = `\n提示：本机没有 user.name / user.email，本次提交沿用该仓库最近一次提交的作者（${author.name} <${author.email}>）。这是仓库历史里已有的身份，不是新编造的；如需更换，请让用户本人配置 git 身份。`
+        }
+      } catch {
+        // Keep the original failure so the caller still sees git's own error.
+      }
+    }
+  }
   const raw = `Exit code: ${result.exitCode}${repo !== '.' ? `\nrepo: ${repo}` : ''}\ngit ${argv.slice(argv.indexOf(operation)).join(' ')}\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
   const failureHint = result.exitCode === 0 ? '' : gitFailureHint(operation, raw)
-  return { output: redactGitOutput(`${raw}${failureHint}`).slice(0, maxCharacters), exitCode: result.exitCode }
+  return { output: redactGitOutput(`${raw}${failureHint}${identityNote}`).slice(0, maxCharacters), exitCode: result.exitCode }
 }
 
 export interface ProjectCheckPlan {
