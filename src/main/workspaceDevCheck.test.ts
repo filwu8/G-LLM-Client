@@ -20,6 +20,7 @@ import {
   devCheckSummary,
   isCodeFile,
   looksLikeMissingToolchain,
+  missingToolchainMessage,
   pendingDevChecks,
   requiredDevChecks
 } from './workspaceDevCheck.ts'
@@ -150,4 +151,19 @@ test('reads which checks a project can answer without throwing on a missing mani
   assert.deepEqual(await availableProjectChecks(root), [])
   writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node --test', 'type-check': 'tsc --noEmit', lint: 'eslint .' } }))
   assert.deepEqual(await availableProjectChecks(root), ['test', 'typecheck', 'lint'])
+})
+
+// Observed in a blind run: the machine had no `npm` on PATH, the check reported
+// the raw CMD text, and the model spent five minutes trying other shells and
+// approval prompts on a missing binary. The message has to rule that out.
+test('a check that cannot start is reported as missing, not as a red build', () => {
+  const output = "Exit code: 1 Active code page: 65001 'npm' is not recognized as an internal or external command, operable program or batch file."
+  assert.equal(looksLikeMissingToolchain(output), true)
+  const zh = missingToolchainMessage(describeCheckFailure(output, 2), false)
+  assert.match(zh, /没能启动/)
+  assert.match(zh, /不是检查失败/)
+  assert.match(zh, /不要用 run_shell/)
+  const en = missingToolchainMessage('', true)
+  assert.match(en, /could not start/)
+  assert.match(en, /run_shell/)
 })

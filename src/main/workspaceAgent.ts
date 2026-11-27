@@ -121,6 +121,7 @@ import {
   devCheckRequestMessage,
   devCheckSummary,
   looksLikeMissingToolchain,
+  missingToolchainMessage,
   pendingDevChecks,
   requiredDevChecks,
   type DevCheckResult
@@ -3038,6 +3039,12 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         // version it actually saw.
         if (!isScript && !isBackground && (result.changedFiles?.length || result.supersededFiles?.length)) codeVersion += 1
         if (isProjectCheck && result.exitCode === 0) passedDevChecks.set(String(args.check ?? ''), codeVersion)
+        // A check that never started is not a failed check. Handing the raw
+        // "'npm' is not recognized" text to the model makes it hunt for a code
+        // bug and try other shells; say what actually happened instead.
+        if (isProjectCheck && result.exitCode !== 0 && looksLikeMissingToolchain(result.output)) {
+          result.output = missingToolchainMessage(describeCheckFailure(result.output, 2), isEnglish)
+        }
         const executionFailed = result.exitCode !== undefined && result.exitCode !== 0
         hasExecutionEvidence ||= result.exitCode === 0 || (!executionFailed && canWrite && !isBackground)
         // Consecutive-failure guard: a write tool that keeps failing the same way

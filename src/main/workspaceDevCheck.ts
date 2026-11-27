@@ -131,6 +131,23 @@ export function looksLikeMissingToolchain(output: string): boolean {
   return /is not recognized as an internal or external command|command not found|不是内部或外部命令|(?:pnpm|npm|yarn|bun|node|tsc|npx):\s*not found|no such file or directory:\s*\S*(?:pnpm|npm|yarn|bun|node|tsc|npx)|Cannot find module ['"]?(?:typescript|tsc)['"]?|ENOENT: no such file or directory, posix_spawn/i.test(output)
 }
 
+/**
+ * What the model should hear when a project check cannot start at all.
+ *
+ * The raw CMD text ("'npm' is not recognized…") reads like a wrong shell, so a
+ * real run answered it by trying run_shell, then run_javascript, then another
+ * approval prompt — five minutes spent looking for a code bug inside a missing
+ * binary. The cause is environmental and no other shell will fix it, so the
+ * message says that outright and points at the one useful action: tell the user
+ * which command to run, and do not claim process-level verification.
+ */
+export function missingToolchainMessage(detail: string, isEnglish: boolean): string {
+  const first = detail.trim().split(/\r?\n/).find((line) => line.trim())?.slice(0, 200) ?? ''
+  return isEnglish
+    ? `The project check could not start: its runner is missing (${first}).\nThis is not a failing check, and another shell will not fix it: the package manager or toolchain is not installed, or not on PATH. Neither is it a reason to edit the source. Do not retry the same command through run_shell or run_javascript. Tell the user which command to run in which directory, and state plainly that the result is not verified by a process exit code.`
+    : `项目自检没能启动：运行器缺失（${first}）。\n这不是检查失败，换一个 shell 也不会变好：项目需要的包管理器或工具链没有安装，或者不在 PATH 上；也不是改源码能解决的问题。不要用 run_shell 或 run_javascript 反复重试同一条命令。请如实告诉用户需要在哪个目录运行哪条命令，并说明这次结果没有经过进程退出码验证。`
+}
+
 function header(language: 'zh' | 'en', attempt: number, limit: number): string {
   return language === 'en'
     ? `[Client verification] The code changed, but the project's own check did not pass, so this turn cannot be reported as complete (attempt ${attempt}/${limit}).`
