@@ -171,9 +171,16 @@ export function resolveApprovalTarget(
   const values = args ?? {}
   if (name === 'set_docx_header_image') return String(values.document ?? '').trim()
   if (name === 'git_write') {
-    // The repository and the path filter are both part of the identity so an
-    // approval for one repository never covers another.
-    return `${String(values.repo ?? '').trim()}│${String(values.path ?? '').trim()}`
+    // The operation is part of the identity, not just the repository: once a
+    // declined push was recorded, a shared identity also gated the commit and
+    // the stage that were supposed to happen before it. Repository and path
+    // filter stay in the key so an approval for one repository never covers
+    // another.
+    return [
+      String(values.operation ?? '').trim(),
+      String(values.repo ?? '').trim(),
+      String(values.path ?? '').trim()
+    ].join('│')
   }
   if (name === 'run_project_check') return `check:${String(values.check ?? '').trim()}`
   if (name === 'delegate_to_harness') return String(values.task ?? '').trim().slice(0, 120)

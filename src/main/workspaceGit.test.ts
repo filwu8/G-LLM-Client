@@ -9,7 +9,7 @@ import test from 'node:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { redactGitOutput, runGitRead, runGitWrite, planProjectCheck, discoverWorkspaceRepositories, clearStaleIndexLock, gitWriteTimeoutMs, isIndexLockConflict } from './workspaceGit.ts'
+import { redactGitOutput, runGitRead, runGitWrite, planProjectCheck, discoverWorkspaceRepositories, clearStaleIndexLock, gitWriteTimeoutMs, isIndexLockConflict, gitFailureHint, GIT_WRITE_OPERATIONS } from './workspaceGit.ts'
 
 test('git output redacts URL credentials and secret assignments', () => {
   assert.match(redactGitOutput('origin https://user:token123@github.com/a/b.git (fetch)'), /\[REDACTED\]@github\.com/)
@@ -37,10 +37,20 @@ test('git_read reports a clean failure for a directory that is not a repository'
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('the git write allowlist covers committing without accepting arbitrary verbs', () => {
+  // Committing used to be absent, so "commit this" could only be answered with
+  // "run it yourself". The allowlist is deliberately a closed set: nothing here
+  // takes raw flags or shell text, and adding a verb is a reviewable change.
+  assert.deepEqual(
+    [...GIT_WRITE_OPERATIONS].sort(),
+    ['add', 'checkout', 'clean', 'commit', 'fetch', 'pull', 'push', 'reset', 'stash']
+  )
+})
+
 test('git_write rejects unsupported operations and unsafe parameters', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'gllm-git-write-test-'))
   try {
-    await assert.rejects(runGitWrite(root, { operation: 'push' }), /不支持的 Git 写操作/)
+    await assert.rejects(runGitWrite(root, { operation: 'rebase' }), /不支持的 Git 写操作/)
     await assert.rejects(runGitWrite(root, { operation: 'fetch', remote: '--upload-pack=calc' }), /无效的 Git remote/)
     await assert.rejects(runGitWrite(root, { operation: 'reset' }), /需要提供 ref/)
     await assert.rejects(runGitWrite(root, { operation: 'reset', ref: '--exec=calc' }), /无效的 Git 引用/)
@@ -48,7 +58,78 @@ test('git_write rejects unsupported operations and unsafe parameters', async () 
     await assert.rejects(runGitWrite(root, { operation: 'clean' }), /force=true/)
     await assert.rejects(runGitWrite(root, { operation: 'clean', force: true }), /相对路径/)
     await assert.rejects(runGitWrite(root, { operation: 'pull', rebase: 'maybe' }), /无效的布尔参数/)
+    // add/commit/push take only semantic fields; every path is a workspace
+    // relative path and no argument can smuggle a git flag.
+    await assert.rejects(runGitWrite(root, { operation: 'add' }), /paths/)
+    await assert.rejects(runGitWrite(root, { operation: 'add', paths: ['-A'] }), /相对路径/)
+    await assert.rejects(runGitWrite(root, { operation: 'add', paths: ['.git/config'] }), /受保护/)
+    await assert.rejects(runGitWrite(root, { operation: 'add', paths: ['a.ts', 'a.ts'] }), /重复路径/)
+    await assert.rejects(runGitWrite(root, { operation: 'add', paths: ['../escape'] }), /超出/)
+    await assert.rejects(runGitWrite(root, { operation: 'commit' }), /message/)
+    await assert.rejects(runGitWrite(root, { operation: 'commit', message: '   ' }), /message/)
+    await assert.rejects(runGitWrite(root, { operation: 'commit', message: 'x'.repeat(4001) }), /4000/)
+    await assert.rejects(runGitWrite(root, { operation: 'push', remote: '../evil' }), /无效的 Git remote/)
+    await assert.rejects(runGitWrite(root, { operation: 'push', ref: '--force' }), /无效的 Git 引用/)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('git_write stages and commits exactly the requested paths', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-git-commit-test-'))
+  try {
+    const { execFileSync } = await import('node:child_process')
+    const git = (...argv: string[]) => execFileSync('git', argv, { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+    git('init', '-q')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    await writeFile(resolve(root, 'wanted.txt'), 'wanted\n')
+    await writeFile(resolve(root, 'unrelated.txt'), 'unrelated\n')
+
+    const staged = await runGitWrite(root, { operation: 'add', paths: ['wanted.txt'] })
+    assert.equal(staged.exitCode, 0, staged.output)
+    assert.doesNotMatch(git('status', '--porcelain'), /^A\s+unrelated\.txt/m)
+
+    const message = 'Add wanted file\n\nWith a body line.'
+    const committed = await runGitWrite(root, { operation: 'commit', message })
+    assert.equal(committed.exitCode, 0, committed.output)
+    assert.equal(git('log', '-1', '--pretty=%B').trim(), message)
+    // The unrelated file is still untracked: committing must not sweep it in.
+    assert.match(git('status', '--porcelain'), /^\?\? unrelated\.txt/m)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('git_write push publishes to the configured remote', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-git-push-test-'))
+  const remote = await mkdtemp(resolve(tmpdir(), 'gllm-git-bare-test-'))
+  try {
+    const { execFileSync } = await import('node:child_process')
+    const git = (...argv: string[]) => execFileSync('git', argv, { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+    execFileSync('git', ['init', '--bare', '-q', remote], { encoding: 'utf8', stdio: 'pipe' })
+    git('init', '-q')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    git('remote', 'add', 'origin', remote)
+    await writeFile(resolve(root, 'pushed.txt'), 'pushed\n')
+    assert.equal((await runGitWrite(root, { operation: 'add', paths: ['pushed.txt'] })).exitCode, 0)
+    assert.equal((await runGitWrite(root, { operation: 'commit', message: 'publish me' })).exitCode, 0)
+
+    const pushed = await runGitWrite(root, { operation: 'push', remote: 'origin', ref: 'HEAD', setUpstream: true })
+    assert.equal(pushed.exitCode, 0, pushed.output)
+    const refs = execFileSync('git', ['--git-dir', remote, 'for-each-ref', '--format=%(refname)'], { encoding: 'utf8', stdio: 'pipe' })
+    assert.match(refs, /refs\/heads\//)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+  }
+})
+
+test('a failed commit explains the missing identity instead of inventing one', () => {
+  const output = 'Exit code: 128\n*** Please tell me who you are.\n\nRun\n\n  git config --global user.email "you@example.com"'
+  const hint = gitFailureHint('commit', output)
+  assert.match(hint, /git config --global user\.name/)
+  assert.match(hint, /不要替用户编造身份/)
+  // Unrelated failures must not be decorated with a wrong explanation.
+  assert.equal(gitFailureHint('commit', 'Exit code: 1\nnothing to commit'), '')
+  assert.match(gitFailureHint('push', 'fatal: Authentication failed for https://example.com/repo.git'), /远端鉴权失败/)
 })
 
 test('git_write runs an allowlisted reset against a real repository and reports exit code', async () => {

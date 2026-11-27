@@ -10,11 +10,22 @@ import { isProtectedWorkspacePath } from './workspaceAgentPolicy.ts'
 import { runWorkspaceProcess } from './workspaceProcess.ts'
 
 export type GitReadOperation = 'status' | 'log' | 'diff' | 'branch' | 'remote' | 'show'
-export type GitWriteOperation = 'fetch' | 'pull' | 'reset' | 'checkout' | 'clean' | 'stash'
+/**
+ * Committing used to be missing entirely: the agent could inspect a repository
+ * and even align a branch, but had no way to stage or record a change, so the
+ * only honest answer to "commit this" was "please run it yourself" — after the
+ * model had already burned several turns looking for a way. `add` / `commit` /
+ * `push` close that gap with the same semantic-only arguments as the rest.
+ */
+export type GitWriteOperation = 'fetch' | 'pull' | 'reset' | 'checkout' | 'clean' | 'stash' | 'add' | 'commit' | 'push'
 
 const OPERATIONS: GitReadOperation[] = ['status', 'log', 'diff', 'branch', 'remote', 'show']
-const WRITE_OPERATIONS: GitWriteOperation[] = ['fetch', 'pull', 'reset', 'checkout', 'clean', 'stash']
+const WRITE_OPERATIONS: GitWriteOperation[] = ['fetch', 'pull', 'reset', 'checkout', 'clean', 'stash', 'add', 'commit', 'push']
+/** Operations the model may request; exported so tests and the tool schema stay in step. */
+export const GIT_WRITE_OPERATIONS: readonly GitWriteOperation[] = Object.freeze([...WRITE_OPERATIONS])
 const MAX_OUTPUT_BYTES = 160_000
+const MAX_COMMIT_MESSAGE_CHARACTERS = 4000
+const MAX_STAGED_PATHS = 64
 
 function safeLogLimit(value: unknown): number {
   const n = Math.round(Number(value))
@@ -257,14 +268,49 @@ function safeBoolean(value: unknown, fallback = false): boolean {
 }
 
 /**
+ * A commit message is free text, but it is still a value git will read. Strip
+ * control characters that would split it into unexpected trailer lines, cap the
+ * length so one call cannot fill the object with a megabyte message, and refuse
+ * a blank message instead of letting git fail with its own wording.
+ */
+function safeCommitMessage(value: unknown): string {
+  const message = String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .trim()
+  if (!message) throw new Error('commit 操作需要提供 message（提交说明）')
+  if (message.length > MAX_COMMIT_MESSAGE_CHARACTERS) throw new Error(`提交说明不能超过 ${MAX_COMMIT_MESSAGE_CHARACTERS} 个字符`)
+  return message
+}
+
+/** Paths for `git add` / `git commit -- <paths>`: workspace-relative, never protected, never absolute. */
+function safeRelativePaths(root: string, value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('paths 必须是工作区相对路径数组')
+  if (value.length === 0 || value.length > MAX_STAGED_PATHS) throw new Error(`paths 需要 1-${MAX_STAGED_PATHS} 个路径`)
+  const seen = new Set<string>()
+  for (const entry of value) {
+    const path = safeRelativePath(root, entry)
+    if (seen.has(path)) throw new Error(`paths 中有重复路径：${path}`)
+    seen.add(path)
+  }
+  return [...seen]
+}
+
+/**
  * Build a fixed git write command from a small allowlist. The model supplies
  * only semantic fields (operation, remote, ref, path, flags); raw flags and
  * shell text are never accepted. Global -c overrides block hooks, pagers and
  * credential helpers that could otherwise be abused through config.
  */
 function buildWriteArguments(operation: GitWriteOperation, args: Record<string, unknown>, root: string): string[] {
-  const common = ['-c', 'core.hooksPath=gllm-disabled-hooks', '-c', 'core.pager=cat', '-c', 'core.askPass=echo', '-c', 'credential.helper=', '-c', 'safe.directory=*', '--no-pager']
+  // Hooks, pagers and external drivers are disabled through config overrides so
+  // a repository cannot execute code on our behalf. The credential-helper wipe
+  // is deliberately NOT part of the shared tail: `push` has to reuse whatever
+  // helper the user configured, otherwise it can never authenticate at all.
+  const commonSafe = ['-c', 'core.hooksPath=gllm-disabled-hooks', '-c', 'core.pager=cat', '-c', 'safe.directory=*', '--no-pager']
+  const common = [...commonSafe, '-c', 'core.askPass=echo', '-c', 'credential.helper=']
   const path = args.path === undefined ? '' : safeRelativePath(root, args.path)
+  const paths = args.paths === undefined ? [] : safeRelativePaths(root, args.paths)
   switch (operation) {
     case 'fetch': {
       const remote = safeRemote(args.remote)
@@ -301,7 +347,58 @@ function buildWriteArguments(operation: GitWriteOperation, args: Record<string, 
       if (action === 'push') return [...common, 'stash', 'push', ...(String(args.message ?? '').trim() ? ['-m', String(args.message).trim().slice(0, 200)] : [])]
       return [...common, 'stash', action]
     }
+    case 'add': {
+      // `-A` stages modifications, additions and deletions in the whole
+      // repository; explicit paths stage exactly what was named. Neither form
+      // accepts a ref, so a commit cannot be built from unreviewed history.
+      if (paths.length > 0) return [...common, 'add', '--', ...paths]
+      if (safeBoolean(args.all)) return [...common, 'add', '-A']
+      throw new Error('add 操作需要提供 paths（工作区相对路径数组）或 all=true')
+    }
+    case 'commit': {
+      const message = safeCommitMessage(args.message)
+      // A configured signing key can block on a passphrase prompt that no user
+      // is watching; the commit itself is what was approved, not the signature.
+      const signing = ['-c', 'commit.gpgsign=false']
+      const stageAll = safeBoolean(args.all) ? ['--all'] : []
+      return [...common, ...signing, 'commit', '-m', message, ...stageAll, ...(paths.length > 0 ? ['--', ...paths] : [])]
+    }
+    case 'push': {
+      const remote = safeRemote(args.remote)
+      const ref = safeRef(args.ref)
+      const upstream = safeBoolean(args.setUpstream) ? ['--set-upstream'] : []
+      return [...commonSafe, 'push', ...upstream, remote, ...(ref ? [ref] : [])]
+    }
   }
+}
+
+/**
+ * `push` is the only write operation that talks to a remote with credentials.
+ * It keeps the user's credential helper (so cached credentials work) but both
+ * git and Git Credential Manager are forced non-interactive: a credential
+ * prompt inside a headless main process would hang until the timeout instead of
+ * telling the user what is missing.
+ */
+function writeEnvironment(operation: GitWriteOperation): NodeJS.ProcessEnv {
+  const base = gitEnvironment()
+  if (operation !== 'push') return base
+  return { ...base, GCM_INTERACTIVE: 'never', GIT_ASKPASS: 'echo' }
+}
+
+/**
+ * Turn the two failures a fresh clone hits most often into instructions the
+ * model can act on in the same turn. Both are configuration problems the user
+ * must solve: fabricating an author identity or asking for a password in chat
+ * would "fix" the error by doing something we must never do.
+ */
+export function gitFailureHint(operation: GitWriteOperation | string, output: string): string {
+  if (operation === 'commit' && /author identity unknown|please tell me who you are|empty ident name|unable to auto-detect email address/i.test(output)) {
+    return '\n提示：本机尚未配置提交身份（user.name / user.email），所以这次提交被 git 拒绝。请让用户本人执行 `git config --global user.name "<名字>"` 与 `git config --global user.email "<邮箱>"` 后重试；不要替用户编造身份，也不要改用其他工具绕过。'
+  }
+  if (operation === 'push' && /authentication failed|could not read username|terminal prompts disabled|could not read password|invalid username or password|permission denied \(publickey\)/i.test(output)) {
+    return '\n提示：远端鉴权失败，本机没有可用于该远端的凭据（客户端不会在后台弹出登录框）。请让用户先在本机完成一次 `git push` 或配置凭据助手，之后重试；不要在对话里询问密码或令牌。'
+  }
+  return ''
 }
 
 export interface GitWriteResult {
@@ -339,7 +436,7 @@ export async function runGitWrite(root: string, args: Record<string, unknown>, s
     executable: process.platform === 'win32' ? 'git.exe' : 'git',
     args: argv,
     cwd,
-    env: gitEnvironment(),
+    env: writeEnvironment(operation),
     signal,
     timeoutMs: gitWriteTimeoutMs(operation),
     maxOutputBytes: MAX_OUTPUT_BYTES,
@@ -370,7 +467,8 @@ export async function runGitWrite(root: string, args: Record<string, unknown>, s
     }
   }
   const raw = `Exit code: ${result.exitCode}${repo !== '.' ? `\nrepo: ${repo}` : ''}\ngit ${argv.slice(argv.indexOf(operation)).join(' ')}\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`
-  return { output: redactGitOutput(raw).slice(0, maxCharacters), exitCode: result.exitCode }
+  const failureHint = result.exitCode === 0 ? '' : gitFailureHint(operation, raw)
+  return { output: redactGitOutput(`${raw}${failureHint}`).slice(0, maxCharacters), exitCode: result.exitCode }
 }
 
 export interface ProjectCheckPlan {

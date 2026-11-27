@@ -135,9 +135,14 @@ test('a tool whose identity is a path keeps resolving to that path', () => {
   assert.equal(resolveApprovalTarget('write_file', { path: ' src/a.ts ' }), 'src/a.ts')
   assert.equal(resolveApprovalTarget('create_docx', { output: 'out.docx' }), 'out.docx')
   assert.equal(resolveApprovalTarget('move_file', { to: 'dest/b.txt' }), 'dest/b.txt')
-  // Git approvals stay scoped per repository, and the two halves stay distinct.
-  assert.equal(resolveApprovalTarget('git_write', { repo: 'sub', path: 'src' }), 'sub│src')
-  assert.notEqual(resolveApprovalTarget('git_write', { repo: 'a' }), resolveApprovalTarget('git_write', { repo: 'b' }))
+  // Git approvals stay scoped per repository and path filter, and every part
+  // stays distinct.
+  assert.equal(resolveApprovalTarget('git_write', { operation: 'reset', repo: 'sub', path: 'src' }), 'reset│sub│src')
+  assert.notEqual(resolveApprovalTarget('git_write', { operation: 'reset', repo: 'a' }), resolveApprovalTarget('git_write', { operation: 'reset', repo: 'b' }))
+  // The operation is part of the identity: a declined push must not gate the
+  // commit that produces it, and a declined reset must not gate a checkout.
+  assert.notEqual(resolveApprovalTarget('git_write', { operation: 'push', repo: 'a' }), resolveApprovalTarget('git_write', { operation: 'commit', repo: 'a' }))
+  assert.notEqual(resolveApprovalTarget('git_write', { operation: 'reset', repo: 'a' }), resolveApprovalTarget('git_write', { operation: 'checkout', repo: 'a' }))
 })
 
 test('a project check is identified by the check, not by the planned command', () => {
