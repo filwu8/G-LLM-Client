@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  canEditTranscriptMessage,
   describeInteractionAnswer,
   interactionAnswerMessage,
   interactionAnswerMessageId,
@@ -83,6 +84,16 @@ test('the transcript message carries the stable id and the question text', () =>
   assert.match(message.content, /保留分支不动/)
   // Nothing to say means no message at all, so an empty bubble never appears.
   assert.equal(interactionAnswerMessage(question(), answer({ cancelled: true })), undefined)
+})
+
+test('an answer record is a receipt, so it cannot be edited and resent', () => {
+  // The bubble looked like a user turn and offered "编辑并重发". Editing it would
+  // put words in the user's mouth after the fact and resend them as a fresh
+  // prompt, which is not what a record of a decision is for.
+  assert.equal(canEditTranscriptMessage(message('msg_1795777598952_ad1ab6800a78b8')), true)
+  assert.equal(canEditTranscriptMessage(message(interactionAnswerMessageId('q1'))), false)
+  // Assistant output was never editable either; that must not change.
+  assert.equal(canEditTranscriptMessage(message('msg_reply', 'assistant')), false)
 })
 
 function message(id: string, role: ChatMessage['role'] = 'user'): ChatMessage {

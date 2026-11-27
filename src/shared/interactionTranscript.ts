@@ -31,6 +31,20 @@ export function isInteractionAnswerMessageId(id: string): boolean {
 }
 
 /**
+ * Can this transcript message be edited and resent?
+ *
+ * Only a message the user typed themselves. An answer record is written by the
+ * client when a question is answered, so it is a receipt rather than a prompt:
+ * editing it would put words in the user's mouth and rewrite the history the
+ * model already reasoned over, and resending it would start a fresh turn from a
+ * line nobody typed. Deleting stays available — removing a stale receipt is a
+ * legitimate thing to want.
+ */
+export function canEditTranscriptMessage(message: Pick<ChatMessage, 'id' | 'role'>): boolean {
+  return message.role === 'user' && !isInteractionAnswerMessageId(message.id)
+}
+
+/**
  * Render an answer as a conversation line.
  *
  * The run injects `[用户回答]` into the model's private message list, which the

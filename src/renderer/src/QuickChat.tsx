@@ -85,7 +85,7 @@ import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
 import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
-import { interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
+import { canEditTranscriptMessage, interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
 import { droppedFileInputs } from './droppedFiles'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
@@ -1557,7 +1557,7 @@ export default function QuickChat() {
   }
 
   function editQuickMessage(message: ChatMessage) {
-    if (isStreaming || message.role !== 'user') return
+    if (isStreaming || !canEditTranscriptMessage(message)) return
     setEditingMessageId(message.id)
     setEditingMessageContent(message.content)
   }
@@ -2328,7 +2328,7 @@ export default function QuickChat() {
                   <button title={t('app.copyMarkdown')} type="button" onClick={() => void copyQuickMessage(message)}>
                     <Copy size={14} />
                   </button>
-                  {message.role === 'user' && (
+                  {canEditTranscriptMessage(message) && (
                     <button disabled={isStreaming} title={t('app.editAndResend')} type="button" onClick={() => editQuickMessage(message)}>
                       <Pencil size={14} />
                     </button>

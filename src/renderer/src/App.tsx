@@ -226,7 +226,7 @@ import type {
   WorkspaceToolActivity
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
-import { interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
+import { canEditTranscriptMessage, interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
 import { estimateTokenCount } from '@shared/tokenEstimate'
 import { extractChoicesFromReply } from '@shared/choiceExtraction'
 import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
@@ -2719,7 +2719,7 @@ export default function App() {
   }
 
   function editMessage(message: ChatMessage) {
-    if (isStreaming || message.role !== 'user') return
+    if (isStreaming || !canEditTranscriptMessage(message)) return
     setEditingMessageId(message.id)
     setEditingMessageContent(message.content)
   }
@@ -4276,7 +4276,7 @@ export default function App() {
                           <button title={t('app.copyMarkdown')} type="button" onClick={() => void copyMessage(message.content)}>
                             <Copy size={16} />
                           </button>
-                          {message.role === 'user' && (
+                          {canEditTranscriptMessage(message) && (
                             <button
                               disabled={isStreaming}
                               title={t('app.editAndResend')}
