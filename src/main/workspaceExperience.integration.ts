@@ -202,6 +202,46 @@ async function main() {
       } else {
         delta = verdict('已读取 a.txt 与 b.txt 并汇总。', '结论：alpha 与 beta。')
       }
+    } else if (scenario === 'prose-plan') {
+      // The model kept its checklist current and then answers in prose. Every
+      // step is ticked and the artifact check passes, so this answer IS the
+      // result: sending it back to restate itself as JSON only produced a pause
+      // the user had to click through, with nothing left to check.
+      if (step === 0) {
+        delta = call('update_plan', {
+          steps: [
+            { title: '读取 source.txt', status: 'in_progress' },
+            { title: '写出 outputs/prose-summary.txt', status: 'pending' },
+            { title: '汇报结论', status: 'pending' }
+          ]
+        })
+      } else if (step === 1) {
+        delta = call('write_file', { path: 'outputs/prose-summary.txt', content: 'source.txt 共 48 段\n' })
+      } else if (step === 2) {
+        delta = call('update_plan', {
+          steps: [
+            { title: '读取 source.txt', status: 'completed' },
+            { title: '写出 outputs/prose-summary.txt', status: 'completed' },
+            { title: '汇报结论', status: 'completed' }
+          ]
+        })
+      } else {
+        delta = { role: 'assistant', content: '已读完 source.txt，结论写进 outputs/prose-summary.txt 了。' }
+      }
+    } else if (scenario === 'prose-open') {
+      // Same prose answer, but the checklist still has an open step. The list is
+      // the only thing that could vouch for completion, and it says part of the
+      // work is not done — so the run must not close on the sentence alone.
+      if (step === 0) {
+        delta = call('update_plan', {
+          steps: [
+            { title: '读取 source.txt', status: 'completed' },
+            { title: '核对其余仓库', status: 'pending' }
+          ]
+        })
+      } else {
+        delta = { role: 'assistant', content: 'source.txt 看过了，其余仓库应该没问题。' }
+      }
     } else if (scenario === 'limit') {
       delta = step === 0 ? call('write_file', { path: 'outputs/goal-draft.txt', content: '尚待核对的草稿' })
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
@@ -446,6 +486,25 @@ async function main() {
     // Saved with the checkpoint, so a resumed run continues the same checklist
     // instead of presenting the generic lifecycle as if nothing had happened.
     assert.equal(plannedProgress?.plan?.steps[1].title, '汇总两份内容')
+
+    scenario = 'prose-plan'; step = 0
+    const prose = await runWorkspaceAgent(request('读取 source.txt 并生成 outputs/prose-summary.txt 汇总结果'))
+    assert.equal(prose.plan.status, 'succeeded', JSON.stringify({ plan: prose.plan, activities: prose.activities }))
+    // The checklist is what the client accepted in place of a verdict, and the
+    // verification line says so — it is not the model's own wording.
+    assert.match(prose.plan.verification!, /任务清单 3\/3/)
+    assert.match(prose.content, /outputs\/prose-summary\.txt/)
+    assert.deepEqual(prose.changedFiles.map(name => name.replace(/\\/g, '/')), ['outputs/prose-summary.txt'])
+    assert.equal(step, 4, 'a finished checklist plus a passing artifact check closes the run without a pause')
+
+    scenario = 'prose-open'; step = 0
+    const openPlan = await runWorkspaceAgent(request('读取 source.txt 并核对其他仓库'))
+    assert.equal(openPlan.plan.status, 'waiting', JSON.stringify({ plan: openPlan.plan, activities: openPlan.activities }))
+    assert.match(openPlan.content, /任务暂停/)
+    // Two model turns: the prose claim is sent back once with the checklist
+    // position attached, the same claim comes back, and only then does the run
+    // stop to ask. Closing on the first prose sentence is what this guards.
+    assert.equal(step, 3, 'an unfinished checklist does not turn a prose claim into a delivery')
 
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })

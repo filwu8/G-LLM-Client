@@ -804,6 +804,14 @@ export interface AgentExecutionPlan {
    * and the run can continue from the checkpoint.
    */
   status: 'planning' | 'executing' | 'verifying' | 'waiting' | 'succeeded' | 'failed'
+  /**
+   * `derived` is the generic lifecycle the client writes before it has read
+   * anything; `checklist` is a list the model wrote for this task. Only a
+   * checklist can vouch for completion: the lifecycle says "understand, inspect,
+   * execute, verify, deliver" about every job, so ticking it proves nothing.
+   * Missing on checkpoints written before this field existed — read as derived.
+   */
+  source?: 'derived' | 'checklist'
   steps: AgentPlanStep[]
   verification?: string
   startedAt: number

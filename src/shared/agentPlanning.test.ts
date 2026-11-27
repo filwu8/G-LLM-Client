@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createWorkspacePlan, finishPlan, pauseChoicesFor, pauseTitleFor, readBlockedQuestion, updatePlanStep } from './agentPlanning.ts'
-import { applyPlanUpdate, MAX_PLAN_STEPS, parsePlanSteps, planProgressText, restorePlan } from './agentPlanning.ts'
+import { applyPlanUpdate, MAX_PLAN_STEPS, parsePlanSteps, planCompletionNote, planProgressText, planVouchesCompletion, restorePlan } from './agentPlanning.ts'
 
 test('workspace plans expose the full understand-execute-verify-deliver lifecycle', () => {
   const plan = createWorkspacePlan('  ship a result  ', 10)
@@ -177,4 +177,39 @@ test('the checklist reports a position a user can read at a glance', () => {
   // A deliberate skip stays skipped; success must not claim it happened.
   const skipped = finishPlan({ ...plan, steps: plan.steps.map((step) => ({ ...step, status: 'skipped' as const })) }, 'succeeded', 'done', 20)
   assert.ok(skipped.steps.every((step) => step.status === 'skipped'))
+})
+
+test('only a finished checklist the model wrote can stand in for a verdict', () => {
+  // The generic lifecycle says the same five things about every job, so even a
+  // fully ticked one proves nothing about this task.
+  const derived = finishPlan(createWorkspacePlan('goal', 10), 'succeeded', 'done', 20)
+  assert.equal(planVouchesCompletion(derived), false)
+
+  const done = applyPlanUpdate(createWorkspacePlan('goal', 10), parsePlanSteps([
+    { title: '同步三个仓库到 origin/main', status: 'completed' },
+    { title: '确认工作区只剩预期改动', status: 'completed' }
+  ])!)
+  assert.equal(planVouchesCompletion(done), true)
+  assert.match(planCompletionNote(done), /2\/2/)
+  assert.match(planCompletionNote(done, 'en'), /2 checklist steps/)
+
+  // Part of the work not done, or deliberately skipped, is not finished work.
+  const open = { ...done, steps: done.steps.map((step, index) => index === 1 ? { ...step, status: 'pending' as const } : step) }
+  assert.equal(planVouchesCompletion(open), false)
+  const skipped = { ...done, steps: done.steps.map((step, index) => index === 1 ? { ...step, status: 'skipped' as const } : step) }
+  assert.equal(planVouchesCompletion(skipped), false)
+  const failed = { ...done, steps: done.steps.map((step, index) => index === 1 ? { ...step, status: 'failed' as const } : step) }
+  assert.equal(planVouchesCompletion(failed), false)
+})
+
+test('a checkpoint remembers whether its steps were model-written', () => {
+  const checklist = applyPlanUpdate(createWorkspacePlan('goal', 10), parsePlanSteps(['读 a.txt', '读 b.txt'])!)
+  assert.equal(restorePlan(JSON.parse(JSON.stringify(checklist)))?.source, 'checklist')
+  assert.equal(restorePlan(JSON.parse(JSON.stringify(createWorkspacePlan('goal', 10))))?.source, 'derived')
+  // Checkpoints written before the flag existed carry a model list without it.
+  // Reading those as derived is the conservative choice: they still resume with
+  // their steps, they just cannot close the run on their own.
+  const legacy = JSON.parse(JSON.stringify({ ...checklist, source: undefined }))
+  assert.equal(restorePlan(legacy)?.source, 'derived')
+  assert.equal(planVouchesCompletion(restorePlan(legacy)!), false)
 })

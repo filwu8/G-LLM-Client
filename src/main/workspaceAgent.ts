@@ -55,7 +55,7 @@ import type {
 } from '../shared/types'
 import { supportsReasoningEffort } from '../shared/featureFlags'
 import { canGenerateImages, getModelCapabilities } from '../shared/modelCapabilities'
-import { createWorkspacePlan, finishPlan, MAX_PLAN_STEPS, MIN_PLAN_STEPS, pauseChoicesFor, pauseTitleFor, parsePlanSteps, applyPlanUpdate, planProgressText, readBlockedQuestion, restorePlan, updatePlanStep, type AgentPauseReason } from '../shared/agentPlanning'
+import { createWorkspacePlan, finishPlan, MAX_PLAN_STEPS, MIN_PLAN_STEPS, pauseChoicesFor, pauseTitleFor, parsePlanSteps, applyPlanUpdate, planCompletionNote, planProgressText, planVouchesCompletion, readBlockedQuestion, restorePlan, updatePlanStep, type AgentPauseReason } from '../shared/agentPlanning'
 import { runWithConcurrency, selectLeadingReadBatch } from './workspaceReadBatch.ts'
 import { permissionModeNote } from './chatMessageOrder.ts'
 import { GOAL_EXECUTION_TIME_LIMIT, normalizeGoalExecutionLimits, WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_TURN_CHECKPOINT } from '../shared/goalMode'
@@ -2469,7 +2469,16 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         return finishRun('succeeded', isEnglish ? 'Answered directly' : '已直接答复', finalContent)
       }
       const status = instruction?.workspaceStatus
-      const verification = typeof instruction?.verification === 'string' ? instruction.verification.trim() : ''
+      let verification = typeof instruction?.verification === 'string' ? instruction.verification.trim() : ''
+      // A model that kept its own checklist up to date has already reported
+      // finishing each step, tool by tool, before it wrote this answer. Sending
+      // it back to restate the same result as `workspaceStatus` JSON produced a
+      // pause the user had to click through — with the answer on screen and
+      // nothing left to check. Accept the prose, but keep every client-side
+      // check below: the checklist only replaces the *claim*, never the proof.
+      const checklistVouches = !truncated && !verification && Boolean(finalContent) && planVouchesCompletion(executionPlan)
+      if (checklistVouches) verification = planCompletionNote(executionPlan, isEnglish ? 'en' : 'zh')
+      const claimsCompleted = status === 'completed' || checklistVouches
       let issue = mainT('main.workspace.completionUnconfirmed', language)
       // Handled before the full-verdict check on purpose: a blocked model may
       // omit `final`, and the missing parameter is exactly what the user must
@@ -2480,8 +2489,10 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         if (await pauseForAnswer(verification || finalContent, blockedQuestion)) continue
         return waiting(verification || finalContent, finalContent || verification)
       }
-      if (!truncated && typeof instruction?.final === 'string' && finalContent && verification) {
-        if (status === 'completed') {
+      // `final` is the model's own field, but a checklist-backed answer arrives
+      // as plain prose — that is exactly the case this branch now admits.
+      if (!truncated && finalContent && verification) {
+        if (claimsCompleted) {
           onRuntimeEvent?.({ type: 'verification_started', status: 'verifying', details: { changedFiles: changedFiles.size } })
           try {
             if (artifactRequested && changedFiles.size === 0) throw new Error(fileFailureMessage())
@@ -2543,9 +2554,16 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
         // check, not a fact. Show them the answer, name the two real choices.
         acceptedResult = undefined
         if (await pauseForAnswer(issue, {
-          question: isEnglish
-            ? 'The answer is ready, but it did not come back in a form the client can check, so the task cannot be closed automatically. Read the quoted answer below: accept it to finish here, or say what is still missing.'
-            : '答复已经生成，但没有按可核对的形式返回，所以客户端无法自动收尾。请直接看下面引用的原话：如果这就是你要的结果，选「就这样算完成」；还差什么，选「继续补完」并写清楚。',
+          // "Did not come back in a checkable form" is wrong when the model did
+          // claim completion and the check itself failed: the answer is there,
+          // the work is not. Same card, different reason, so say which it is.
+          question: claimsCompleted
+            ? (isEnglish
+              ? 'The answer says the work is done, but the client\'s own check still fails, so it cannot be closed automatically. Read the answer and the reason below: accept it to finish here, or say what is still missing.'
+              : '答复说已经完成，但客户端核对仍未通过，所以无法自动收尾。请看下面的原话和停下来的原因：如果当前状态就是你要的结果，选「就这样算完成」；还差什么，选「继续补完」并写清楚。')
+            : (isEnglish
+              ? 'The answer is ready, but it did not come back in a form the client can check, so the task cannot be closed automatically. Read the quoted answer below: accept it to finish here, or say what is still missing.'
+              : '答复已经生成，但没有按可核对的形式返回，所以客户端无法自动收尾。请直接看下面引用的原话：如果这就是你要的结果，选「就这样算完成」；还差什么，选「继续补完」并写清楚。'),
           description: isEnglish
             ? `Why it stopped: ${issue}`
             : `停在这里的原因：${issue}`,
@@ -2565,9 +2583,21 @@ ${needsCompletionCheck ? '本轮需要验收。' : '没有调用工具的普通�
       }
       previousCompletionIssue = issue
       if (turn === maxTurns) break
+      // Two different problems reach this point and they need different first
+      // sentences: a reply the client could not read as a verdict, and a verdict
+      // (or a finished checklist) whose own checks did not pass. Telling a model
+      // with valid JSON that it "did not return valid JSON" sends it to fix the
+      // wrong thing.
+      const diagnosis = claimsCompleted
+        ? (isEnglish
+          ? 'The previous answer reported the work as finished, but the client\'s own check did not pass, so it cannot be delivered yet.'
+          : '上一条答复说已经完成，但客户端核对没有通过，所以还不能交付。')
+        : (isEnglish
+          ? 'The previous answer cannot be delivered: it was not recognised as a valid workspaceStatus JSON.'
+          : '上一条答复尚不能作为交付：它没有被识别为有效的 workspaceStatus JSON。')
       messages.push({
         role: 'user',
-        content: `[客户端验收检查] ${issue}\n上一条答复尚不能作为交付：它没有被识别为有效的 workspaceStatus JSON。必须只返回一个 JSON 对象，包含 workspaceStatus（completed 或 blocked）、verification、final 三个字段；纯文字说明或缺少字段都不算交付。需要用户提供才能继续时用 blocked，并在 question 里写明要问用户什么（客户端会直接向用户提问）；question 可以是字符串，也可以是 {title, question, blocker} 对象，blocker 是这类阻塞的稳定标识（如 git-identity、git-index-lock），同一 blocker 在一个任务里只会问用户一次。请按原始用户请求逐项核对现有结果。有待办且可执行时立即调用合适的工具；已完成或确实阻塞时，按上述 JSON 结构返回。`
+        content: `[客户端验收检查] ${issue}\n${diagnosis}必须只返回一个 JSON 对象，包含 workspaceStatus（completed 或 blocked）、verification、final 三个字段；纯文字说明或缺少字段都不算交付。需要用户提供才能继续时用 blocked，并在 question 里写明要问用户什么（客户端会直接向用户提问）；question 可以是字符串，也可以是 {title, question, blocker} 对象，blocker 是这类阻塞的稳定标识（如 git-identity、git-index-lock），同一 blocker 在一个任务里只会问用户一次。请按原始用户请求逐项核对现有结果。有待办且可执行时立即调用合适的工具；已完成或确实阻塞时，按上述 JSON 结构返回。`
       })
       continue
     }

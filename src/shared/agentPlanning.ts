@@ -23,6 +23,7 @@ export function createWorkspacePlan(goal: string, now = Date.now()): AgentExecut
   return {
     goal: goal.trim().slice(0, 500) || '完成当前工作区任务',
     status: 'planning',
+    source: 'derived',
     startedAt: now,
     steps: [
       { id: 'understand', title: '理解目标与约束', status: 'running' },
@@ -96,7 +97,33 @@ export function parsePlanSteps(value: unknown): AgentPlanStep[] | undefined {
 
 /** Replace the derived lifecycle with the model's own checklist. */
 export function applyPlanUpdate(plan: AgentExecutionPlan, steps: AgentPlanStep[]): AgentExecutionPlan {
-  return { ...plan, status: 'executing', steps: steps.map((step) => ({ ...step })) }
+  return { ...plan, status: 'executing', source: 'checklist', steps: steps.map((step) => ({ ...step })) }
+}
+
+/**
+ * A checklist the model ticked to the last step is its own account of what it
+ * did, written step by step as the work happened — not a summary composed at
+ * the end. That is enough to accept a plain answer as the result, provided the
+ * client's own artifact and evidence checks pass as well; those still run
+ * separately, so this never stands in for proof that a file exists.
+ *
+ * Deliberately strict about the parts that would let it launder a stalled run:
+ * only a model-authored list counts, every step must be completed (a `skipped`
+ * step is the model saying it did not do that part), and at least two steps are
+ * required so "the goal, restated" cannot pass as a plan.
+ */
+export function planVouchesCompletion(plan: AgentExecutionPlan): boolean {
+  if (plan.source !== 'checklist') return false
+  if (plan.steps.length < MIN_PLAN_STEPS) return false
+  return plan.steps.every((step) => step.status === 'completed')
+}
+
+/** What the client writes as `verification` when the checklist is the evidence. */
+export function planCompletionNote(plan: AgentExecutionPlan, language: 'zh' | 'en' = 'zh'): string {
+  const done = plan.steps.filter((step) => step.status === 'completed').length
+  return language === 'en'
+    ? `All ${done} checklist steps completed and checked against tool output`
+    : `任务清单 ${done}/${plan.steps.length} 步全部完成，逐项按工具结果核对`
 }
 
 /**
@@ -125,6 +152,11 @@ export function restorePlan(value: unknown): AgentExecutionPlan | undefined {
   return {
     goal: record.goal.slice(0, 500),
     status: resuming ? 'executing' : status,
+    // Checkpoints written before the source flag existed carry a model list
+    // without it. Reading those as derived is the conservative choice: the run
+    // still resumes with the saved steps, it just cannot use them to close
+    // itself without the usual verification.
+    source: record.source === 'checklist' ? 'checklist' : 'derived',
     startedAt: record.startedAt,
     steps: resumedSteps,
     ...(typeof record.completedAt === 'number' ? { completedAt: record.completedAt } : {}),
