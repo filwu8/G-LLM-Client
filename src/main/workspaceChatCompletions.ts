@@ -1,5 +1,7 @@
 /* Copyright (c) 2026 GPROPHET LIMITED — SPDX-License-Identifier: BUSL-1.1 */
 
+import { demoteLateSystemMessages } from './chatMessageOrder.ts'
+
 export interface WorkspaceChatCompletionToolCall {
   id: string
   type: 'function'
@@ -29,7 +31,7 @@ export function buildWorkspaceChatCompletionRequest(input: WorkspaceChatCompleti
   return {
     ...input.maxTokenOption,
     model: input.model,
-    messages: input.messages,
+    messages: demoteLateSystemMessages(input.messages as Array<{ role: string; content: unknown }>),
     ...(input.tools ? { tools: input.tools, tool_choice: 'auto' } : {}),
     ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
     stream: input.stream,

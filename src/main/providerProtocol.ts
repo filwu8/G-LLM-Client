@@ -6,6 +6,7 @@
 
 import type { ApiProvider, ProviderProtocol } from '../shared/types'
 import { PROVIDER_TEMPLATES } from '../shared/providers.ts'
+import { demoteLateSystemMessages } from './chatMessageOrder.ts'
 
 /**
  * "openai" covers every /chat/completions-compatible gateway, which is what
@@ -320,7 +321,7 @@ export function buildChatRequest(
     },
     body: {
       model: options.model,
-      messages: options.messages,
+      messages: demoteLateSystemMessages(options.messages),
       ...(typeof options.temperature === 'number' ? { temperature: options.temperature } : {}),
       ...(typeof options.maxTokens === 'number' ? { max_tokens: Math.round(options.maxTokens) } : {}),
       ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
