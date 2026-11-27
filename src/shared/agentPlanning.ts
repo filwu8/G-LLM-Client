@@ -4,7 +4,20 @@
  * Change Date: 2030-08-01
  */
 
-import type { AgentExecutionPlan, AgentPlanStepStatus } from './types'
+import type { AgentExecutionPlan, AgentPlanStep, AgentPlanStepStatus } from './types'
+
+/**
+ * The fixed lifecycle above is what the client knows before it has read
+ * anything. It is not a task list: "调用工具并完成任务" says nothing about what
+ * this particular job needs. On any task with more than one real step the model
+ * replaces it with its own checklist through the `update_plan` tool, and that
+ * checklist is what survives compaction and resume.
+ */
+export const MAX_PLAN_STEPS = 8
+/** One step is not a plan; it is the goal restated. */
+export const MIN_PLAN_STEPS = 2
+const MAX_PLAN_STEP_TITLE = 120
+const MAX_PLAN_STEP_DETAIL = 300
 
 export function createWorkspacePlan(goal: string, now = Date.now()): AgentExecutionPlan {
   return {
@@ -34,6 +47,98 @@ export function updatePlanStep(
   }
 }
 
+/**
+ * Read the checklist a model sends to `update_plan`.
+ *
+ * The client owns this shape because the list is rendered as progress and
+ * carried across resumes: a list of fifteen steps, five of them "running", or a
+ * step titled "步骤 2" is not progress, it is noise. Everything that cannot be
+ * shown as a usable checklist is rejected here, once, instead of leaking into
+ * the UI and the checkpoint.
+ *
+ * Models write `in_progress` (the common convention); the plan model calls it
+ * `running`. Both are accepted, aliases included.
+ */
+export function parsePlanSteps(value: unknown): AgentPlanStep[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const steps: AgentPlanStep[] = []
+  let runningSeen = false
+  for (const item of value) {
+    if (steps.length >= MAX_PLAN_STEPS) break
+    const record = typeof item === 'string'
+      ? { title: item } as Record<string, unknown>
+      : item && typeof item === 'object' ? item as Record<string, unknown> : undefined
+    if (!record) continue
+    const title = String(record.title ?? record.step ?? record.name ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_PLAN_STEP_TITLE)
+    if (!title) continue
+    // Repeating the same line twice makes the ticker look like progress while
+    // the run stands still, so identical titles collapse to the first one.
+    if (steps.some((step) => step.title.toLowerCase() === title.toLowerCase())) continue
+    const requested = String(record.status ?? 'pending').trim().toLowerCase()
+    const status: AgentPlanStepStatus = requested === 'completed' || requested === 'done'
+      ? 'completed'
+      : requested === 'failed'
+        ? 'failed'
+        : requested === 'skipped'
+          ? 'skipped'
+          : requested === 'running' || requested === 'in_progress' || requested === 'active'
+            ? 'running'
+            : 'pending'
+    // Exactly one step can be in flight. When a model marks several, the first
+    // one is the real position; the rest are just not started yet.
+    const settled: AgentPlanStepStatus = status === 'running' && runningSeen ? 'pending' : status
+    if (settled === 'running') runningSeen = true
+    const detail = typeof record.detail === 'string' ? record.detail.trim().slice(0, MAX_PLAN_STEP_DETAIL) : ''
+    steps.push({ id: `step-${steps.length + 1}`, title, status: settled, ...(detail ? { detail } : {}) })
+  }
+  return steps.length >= MIN_PLAN_STEPS ? steps : undefined
+}
+
+/** Replace the derived lifecycle with the model's own checklist. */
+export function applyPlanUpdate(plan: AgentExecutionPlan, steps: AgentPlanStep[]): AgentExecutionPlan {
+  return { ...plan, status: 'executing', steps: steps.map((step) => ({ ...step })) }
+}
+
+/**
+ * Rebuild a plan read from a checkpoint.
+ *
+ * Checkpoints outlive the code that wrote them, so this validates instead of
+ * trusting: a corrupted or truncated list must fall back to a fresh plan, never
+ * render as a half-broken checklist that resume then treats as authoritative.
+ */
+export function restorePlan(value: unknown): AgentExecutionPlan | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const steps = parsePlanSteps(record.steps)
+  if (!steps || typeof record.startedAt !== 'number' || typeof record.goal !== 'string') return undefined
+  const known: AgentExecutionPlan['status'][] = ['planning', 'executing', 'verifying', 'waiting', 'succeeded', 'failed']
+  const status = known.find((item) => item === record.status) ?? 'executing'
+  // A resumed run is working again, whatever it was doing when it stopped. If
+  // the saved list has no step in flight, the first unfinished one is where the
+  // run continues — otherwise the checklist shows nothing as current and the
+  // model reads it as "nothing was being worked on".
+  const resuming = status !== 'succeeded' && status !== 'failed'
+  const activeIndex = resuming
+    ? (steps.some((step) => step.status === 'running') ? -1 : steps.findIndex((step) => step.status === 'pending'))
+    : -1
+  const resumedSteps = steps.map((step, index) => index === activeIndex ? { ...step, status: 'running' as const } : step)
+  return {
+    goal: record.goal.slice(0, 500),
+    status: resuming ? 'executing' : status,
+    startedAt: record.startedAt,
+    steps: resumedSteps,
+    ...(typeof record.completedAt === 'number' ? { completedAt: record.completedAt } : {}),
+    ...(typeof record.verification === 'string' ? { verification: record.verification.slice(0, 1000) } : {})
+  }
+}
+
+/** One-line position of the checklist, for the activity row and the checkpoint. */
+export function planProgressText(plan: AgentExecutionPlan): string {
+  const done = plan.steps.filter((step) => step.status === 'completed').length
+  const active = plan.steps.find((step) => step.status === 'running')
+  return active ? `${done}/${plan.steps.length} · ${active.title}` : `${done}/${plan.steps.length}`
+}
+
 export function finishPlan(
   plan: AgentExecutionPlan,
   outcome: 'succeeded' | 'failed' | 'waiting',
@@ -46,7 +151,9 @@ export function finishPlan(
     verification: verification.trim().slice(0, 1000),
     completedAt: now,
     steps: plan.steps.map((step) => {
-      if (outcome === 'succeeded') return { ...step, status: 'completed' as const }
+      // `skipped` is the model saying it deliberately did not do this. A
+      // verified-successful run must not paint that as work that happened.
+      if (outcome === 'succeeded') return step.status === 'skipped' ? step : { ...step, status: 'completed' as const }
       // A waiting plan is not a dead end: the step that was running is what
       // the user's answer unblocks, so it must not be painted as failed.
       if (outcome === 'waiting') return step

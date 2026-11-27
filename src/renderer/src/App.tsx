@@ -223,7 +223,8 @@ import type {
   WorkspaceApprovalPrompt,
   WorkspaceInteractionRequest,
   WorkspaceInteractionResponse,
-  WorkspaceToolActivity
+  WorkspaceToolActivity,
+  AgentExecutionPlan
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
 import { canEditTranscriptMessage, interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
@@ -896,6 +897,10 @@ export default function App() {
   const [workspaceInteractions, setWorkspaceInteractions] = useState<WorkspaceInteractionRequest[]>([])
   const [workspaceActivitiesByConversation, setWorkspaceActivitiesByConversation] = useState<Record<string, WorkspaceToolActivity[]>>({})
   const [workspaceChangedFilesByConversation, setWorkspaceChangedFilesByConversation] = useState<Record<string, string[]>>({})
+  // The checklist arrives during the run, not with the saved message. Keeping
+  // it per conversation lets the bubble show progress while the task works
+  // instead of only after it ends.
+  const [workspacePlanByConversation, setWorkspacePlanByConversation] = useState<Record<string, AgentExecutionPlan>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('providers')
   const [assistantCenterOpen, setAssistantCenterOpen] = useState(false)
@@ -973,6 +978,7 @@ export default function App() {
   const workspaceChangedFiles = activeConversationId
     ? workspaceChangedFilesByConversation[activeConversationId] ?? []
     : []
+  const workspacePlan = activeConversationId ? workspacePlanByConversation[activeConversationId] : undefined
   const isStreaming = isConversationRunning(conversationRunStates, activeConversationId)
 
   function setDraft(update: SessionStateUpdate<string>) {
@@ -1066,6 +1072,12 @@ export default function App() {
     workspaceChangedFilesRef.current[conversationId] = []
     setWorkspaceActivitiesByConversation((current) => ({ ...current, [conversationId]: [] }))
     setWorkspaceChangedFilesByConversation((current) => ({ ...current, [conversationId]: [] }))
+    setWorkspacePlanByConversation((current) => {
+      if (!(conversationId in current)) return current
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
   }
 
   const activeSpace = useMemo(
@@ -1272,6 +1284,7 @@ export default function App() {
 
   function applyAppState(state: AppStateSnapshot, options: { selectFirstConversation?: boolean } = {}) {
     const nextProviders = state.providers.length > 0 ? state.providers : [DEFAULT_PROVIDER]
+    const restoredPlans: Record<string, AgentExecutionPlan> = {}
     const nextAssistants = state.assistants.length > 0 ? state.assistants : DEFAULT_ASSISTANTS
     const nextVisibleAssistants = nextAssistants.filter((assistant) => !assistant.hidden)
     const firstAssistant = sortAssistantsForSidebar(nextVisibleAssistants, state.conversations)[0] ?? null
@@ -1299,7 +1312,9 @@ export default function App() {
       if (!isConversationRunning(conversationRunStatesRef.current, run.conversationId)) beginConversationRun(run.conversationId, run.startedAt)
       workspaceActivitiesRef.current[run.conversationId] = run.activities
       workspaceChangedFilesRef.current[run.conversationId] = run.changedFiles
+      if (run.plan) restoredPlans[run.conversationId] = run.plan
     }
+    if (Object.keys(restoredPlans).length) setWorkspacePlanByConversation((current) => ({ ...current, ...restoredPlans }))
     if (state.workspaceRuns.length) {
       setWorkspaceActivitiesByConversation({ ...workspaceActivitiesRef.current })
       setWorkspaceChangedFilesByConversation({ ...workspaceChangedFilesRef.current })
@@ -1659,6 +1674,9 @@ export default function App() {
           ...current,
           [progress.conversationId]: progress.changedFiles ?? []
         }))
+      }
+      if (progress.plan) {
+        setWorkspacePlanByConversation((current) => ({ ...current, [progress.conversationId]: progress.plan as AgentExecutionPlan }))
       }
     }),
     []
@@ -4362,6 +4380,7 @@ export default function App() {
                         <WorkspaceActivityLog
                           activities={workspaceActivities}
                           changedFiles={workspaceChangedFiles}
+                          plan={workspacePlan}
                           artifactRoot={currentWorkspace.rootPath}
                           model={conversationProvider.defaultModel}
                           onArtifactOpen={(rootPath, relativePath) => void openWorkspaceArtifact(rootPath, relativePath)}
@@ -4383,7 +4402,7 @@ export default function App() {
             <AgentActivityPanel
               activities={panelActivities}
               changedFiles={panelChangedFiles}
-              plan={outlinePlan}
+              plan={isStreaming ? workspacePlan ?? outlinePlan : outlinePlan}
               running={Boolean(isStreaming)}
               startedAt={activeRunStartedAt}
               goal={panelGoal}

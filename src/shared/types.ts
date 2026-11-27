@@ -931,6 +931,12 @@ export interface WorkspaceAgentProgress {
   conversationId: string
   activity: WorkspaceToolActivity
   changedFiles?: string[]
+  /**
+   * Present when the checklist moved. The run's plan is otherwise only visible
+   * once the result is saved, which meant a task planned into six steps showed
+   * nothing until it was already over.
+   */
+  plan?: AgentExecutionPlan
 }
 
 export interface WorkspaceRunSnapshot {
@@ -938,6 +944,8 @@ export interface WorkspaceRunSnapshot {
   startedAt: number
   activities: WorkspaceToolActivity[]
   changedFiles: string[]
+  /** Survives a renderer reload, so an interrupted run keeps its checklist. */
+  plan?: AgentExecutionPlan
 }
 
 export interface WorkspaceAgentResult {

@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
+import type { AgentExecutionPlan, WorkspaceInteractionRequest, WorkspaceToolActivity } from '../shared/types.ts'
 import { withStoreWriteRetry } from './storageWriteRetry.ts'
 
 export const WORKSPACE_EVIDENCE_HISTORY = 128
@@ -39,6 +39,12 @@ export interface WorkspaceCheckpoint {
    * across resumes and are never auto-approved by a permission-mode change.
    */
   deniedApprovals?: string[]
+  /**
+   * The task's own checklist. It is saved because a resumed run must not start
+   * from the generic lifecycle again: the user already watched it finish four
+   * of six steps, and re-planning them reads as "nothing was done".
+   */
+  plan?: AgentExecutionPlan
 }
 
 export function workspaceTaskId(messageId: string, goalId?: string): string {

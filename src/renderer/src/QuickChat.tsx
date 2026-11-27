@@ -127,7 +127,8 @@ import type {
   WorkspaceApprovalPrompt,
   WorkspaceInteractionRequest,
   WorkspaceRunSnapshot,
-  WorkspaceToolActivity
+  WorkspaceToolActivity,
+  AgentExecutionPlan
 } from '@shared/types'
 
 const quickBottomFollowThreshold = 72
@@ -382,6 +383,7 @@ export default function QuickChat() {
   const [workspaceInteraction, setWorkspaceInteraction] = useState<WorkspaceInteractionRequest | null>(null)
   const [workspaceActivities, setWorkspaceActivities] = useState<WorkspaceToolActivity[]>([])
   const [workspaceChangedFiles, setWorkspaceChangedFiles] = useState<string[]>([])
+  const [workspacePlan, setWorkspacePlan] = useState<AgentExecutionPlan | undefined>(undefined)
   const [goalSetupOpen, setGoalSetupOpen] = useState(false)
   const [goalModeArmed, setGoalModeArmed] = useState(false)
   const [goalAssessing, setGoalAssessing] = useState(false)
@@ -421,6 +423,7 @@ export default function QuickChat() {
       workspaceChangedFilesRef.current = run.changedFiles
       setWorkspaceActivities(run.activities)
       setWorkspaceChangedFiles(run.changedFiles)
+      setWorkspacePlan(run.plan)
     } else {
       responseStartedAtRef.current = null
       updateStreaming(false)
@@ -662,6 +665,7 @@ export default function QuickChat() {
         workspaceChangedFilesRef.current = progress.changedFiles
         setWorkspaceChangedFiles(progress.changedFiles)
       }
+      if (progress.plan) setWorkspacePlan(progress.plan)
     })
   }, [])
 
@@ -2394,6 +2398,7 @@ export default function QuickChat() {
                 <WorkspaceActivityLog
                   activities={workspaceActivities}
                   changedFiles={workspaceChangedFiles}
+                  plan={workspacePlan}
                   artifactRoot={currentWorkspace.rootPath}
                   model={selectedProvider.defaultModel}
                   onArtifactOpen={(rootPath, relativePath) => void window.gllm.revealWorkspaceFile(rootPath, relativePath)}

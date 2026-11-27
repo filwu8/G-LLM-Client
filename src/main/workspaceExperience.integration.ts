@@ -162,6 +162,46 @@ async function main() {
         if (step >= 2) assert.match(request.messages.at(-1).content, /run_project_check\(check: "typecheck"\)/)
         delta = verdict('已写入 src/answer.ts。', '已把答案写成 42。')
       }
+    } else if (scenario === 'plan') {
+      // Two reads in one turn: the client may run them concurrently, but the
+      // transcripts it sends back must keep the order the model issued, or the
+      // model pairs the wrong result with the wrong file.
+      const batchedReads = {
+        role: 'assistant',
+        tool_calls: [
+          { index: 0, id: 'plan-read-a', type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: 'a.txt' }) } },
+          { index: 1, id: 'plan-read-b', type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: 'b.txt' }) } }
+        ]
+      }
+      if (step === 0) {
+        delta = call('update_plan', {
+          steps: [
+            { title: '读取 a.txt 与 b.txt', status: 'in_progress' },
+            { title: '汇总两份内容', status: 'pending' },
+            { title: '交付结论', status: 'pending' }
+          ]
+        })
+      } else if (step === 1) {
+        delta = batchedReads
+      } else if (step === 2) {
+        const toolMessages = request.messages.filter((item: { role: string }) => item.role === 'tool')
+        assert.deepEqual(
+          toolMessages.slice(-2).map((item: { tool_call_id: string }) => item.tool_call_id),
+          ['plan-read-a', 'plan-read-b'],
+          'a batched read keeps the order the model issued'
+        )
+        assert.match(String(toolMessages.at(-2).content), /alpha/, 'the first result belongs to a.txt')
+        assert.match(String(toolMessages.at(-1).content), /beta/, 'the second result belongs to b.txt')
+        delta = call('update_plan', {
+          steps: [
+            { title: '读取 a.txt 与 b.txt', status: 'completed' },
+            { title: '汇总两份内容', status: 'completed' },
+            { title: '交付结论', status: 'in_progress' }
+          ]
+        })
+      } else {
+        delta = verdict('已读取 a.txt 与 b.txt 并汇总。', '结论：alpha 与 beta。')
+      }
     } else if (scenario === 'limit') {
       delta = step === 0 ? call('write_file', { path: 'outputs/goal-draft.txt', content: '尚待核对的草稿' })
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
@@ -379,6 +419,33 @@ async function main() {
       assert.equal(gated.changedFiles.map(file => file.replace(/\\/g, '/')).includes('src/answer.ts'), true)
     }
     await rm(join(workspace.rootPath, 'package.json'), { force: true })
+
+    scenario = 'plan'; step = 0
+    await writeFile(join(workspace.rootPath, 'a.txt'), 'alpha\n')
+    await writeFile(join(workspace.rootPath, 'b.txt'), 'beta\n')
+    const plannedRequest = request('阅读工作区里的 a.txt 和 b.txt 两个文件并汇总')
+    const readProgress: Array<{ tool: string; status: string }> = []
+    const planned = await runWorkspaceAgent(plannedRequest, (progress) => {
+      readProgress.push({ tool: progress.activity.tool, status: progress.activity.status })
+    })
+    // Both reads were announced before either finished, so they ran as one
+    // batch. A serial loop reports running/completed/running/completed.
+    assert.deepEqual(
+      readProgress.filter((entry) => entry.tool === 'read_file').slice(0, 2).map((entry) => entry.status),
+      ['running', 'running'],
+      'independent reads in one turn are executed concurrently'
+    )
+    assert.equal(planned.plan.status, 'succeeded', JSON.stringify({ plan: planned.plan, activities: planned.activities }))
+    // The checklist is the task's own work, not the generic lifecycle it
+    // replaces: the user must be able to read what this run is doing.
+    assert.deepEqual(planned.plan.steps.map((step) => step.title), ['读取 a.txt 与 b.txt', '汇总两份内容', '交付结论'])
+    assert.equal(planned.plan.steps.filter((step) => step.status === 'completed').length, 3)
+    assert.equal(step, 4)
+    const plannedProgress = new WorkspaceCheckpointStore(storage.getDataLocationInfo().activePath, plannedRequest.conversationId)
+      .load(workspaceTaskId(plannedRequest.messages[0].id), await realpath(workspace.rootPath))
+    // Saved with the checkpoint, so a resumed run continues the same checklist
+    // instead of presenting the generic lifecycle as if nothing had happened.
+    assert.equal(plannedProgress?.plan?.steps[1].title, '汇总两份内容')
 
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })

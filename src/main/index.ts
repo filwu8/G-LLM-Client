@@ -2491,6 +2491,7 @@ app.whenReady().then(() => {
           if (index < 0) snapshot.activities = [...snapshot.activities, progress.activity].slice(-WORKSPACE_ACTIVITY_HISTORY)
           else snapshot.activities[index] = progress.activity
           if (progress.changedFiles) snapshot.changedFiles = progress.changedFiles
+          if (progress.plan) snapshot.plan = progress.plan
           for (const sender of new Set([event.sender, mainWindow?.webContents, quickWindow?.webContents])) {
             if (sender && !sender.isDestroyed() && !sender.isCrashed()) sender.send('workspace-agent:progress', progress)
           }

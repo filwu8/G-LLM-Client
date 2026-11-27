@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createWorkspacePlan, finishPlan, pauseChoicesFor, pauseTitleFor, readBlockedQuestion, updatePlanStep } from './agentPlanning.ts'
+import { applyPlanUpdate, MAX_PLAN_STEPS, parsePlanSteps, planProgressText, restorePlan } from './agentPlanning.ts'
 
 test('workspace plans expose the full understand-execute-verify-deliver lifecycle', () => {
   const plan = createWorkspacePlan('  ship a result  ', 10)
@@ -90,4 +91,90 @@ test('the title names the situation instead of asking for information by default
     assert.doesNotMatch(pauseTitleFor(reason, 'zh'), /补充/, `${reason} must not imply the user owes data`)
   }
   assert.match(pauseTitleFor('missing-info', 'en'), /one more thing/i)
+})
+
+// The checklist is not decoration: it is rendered as progress and replayed to
+// the model after a compaction, so a list that lies about where the run is
+// costs a user's trust once and the model's context twice.
+test('a model checklist is accepted only in a shape that can be shown as progress', () => {
+  const steps = parsePlanSteps([
+    { title: '  读取  AGENTS.md  ', status: 'in_progress' },
+    '列出受影响的测试文件',
+    { title: '修改 workspaceAgent.ts', status: 'in_progress' },
+    { title: '读取 AGENTS.md' },
+    { title: '', status: 'completed' },
+    { name: '跑 typecheck', status: 'done' }
+  ])
+  assert.deepEqual(steps?.map(({ title, status }) => [title, status]), [
+    ['读取 AGENTS.md', 'running'],
+    ['列出受影响的测试文件', 'pending'],
+    // A second "in progress" is not progress: only the first step is current.
+    ['修改 workspaceAgent.ts', 'pending'],
+    ['跑 typecheck', 'completed']
+  ])
+  // Ids are positional and stable, so a resume can point at the same line.
+  assert.deepEqual(steps?.map(({ id }) => id), ['step-1', 'step-2', 'step-3', 'step-4'])
+
+  // Restating the goal is not a plan, and an empty list is not a plan either.
+  assert.equal(parsePlanSteps(['打开文件']), undefined)
+  assert.equal(parsePlanSteps([]), undefined)
+  assert.equal(parsePlanSteps(undefined), undefined)
+  assert.equal(parsePlanSteps({ steps: [] }), undefined)
+
+  const many = parsePlanSteps(Array.from({ length: 20 }, (_, index) => `步骤 ${index + 1}`))
+  assert.equal(many?.length, MAX_PLAN_STEPS)
+  const long = parsePlanSteps([`${'很长'.repeat(200)}`, '第二步'])
+  assert.ok((long?.[0].title.length ?? 0) <= 120)
+})
+
+test('a model plan replaces the derived lifecycle and keeps its goal', () => {
+  const derived = createWorkspacePlan('把三个仓库同步到远端', 10)
+  const steps = parsePlanSteps(['检查三个仓库的状态', '逐个 fetch 并快进', '确认没有落后分支'])
+  assert.ok(steps)
+  const applied = applyPlanUpdate(derived, steps)
+  assert.equal(applied.goal, '把三个仓库同步到远端')
+  assert.equal(applied.startedAt, 10)
+  assert.equal(applied.status, 'executing')
+  assert.deepEqual(applied.steps.map(({ title }) => title), ['检查三个仓库的状态', '逐个 fetch 并快进', '确认没有落后分支'])
+  // The input array is not shared with the plan: a later mutation by the caller
+  // must not silently rewrite what the UI already rendered.
+  steps[0].status = 'completed'
+  assert.equal(applied.steps[0].status, 'pending')
+})
+
+test('a plan read back from a checkpoint is validated, not trusted', () => {
+  const saved = applyPlanUpdate(createWorkspacePlan('goal', 10), parsePlanSteps([
+    { title: '检查仓库状态', status: 'completed' },
+    { title: '同步远端', status: 'running' },
+    { title: '确认结果', status: 'pending' }
+  ])!)
+  const restored = restorePlan(JSON.parse(JSON.stringify(saved)))
+  assert.deepEqual(restored, saved)
+
+  // A run that stopped with nothing in flight resumes at the first open step,
+  // otherwise the checklist would show no current line at all.
+  const paused = { ...saved, steps: saved.steps.map((step) => ({ ...step, status: 'completed' as const })).map((step, index) => index === 2 ? { ...step, status: 'pending' as const } : step) }
+  assert.equal(restorePlan(paused)?.steps.find((step) => step.status === 'running')?.title, '确认结果')
+  assert.equal(restorePlan(paused)?.status, 'executing')
+
+  // Old checkpoints and truncated writes carry no usable plan: falling back to
+  // a fresh lifecycle is the only safe answer.
+  assert.equal(restorePlan({ goal: 'goal', startedAt: 10 }), undefined)
+  assert.equal(restorePlan({ goal: 'goal', startedAt: 10, steps: 'nope' }), undefined)
+  assert.equal(restorePlan({ steps: saved.steps }), undefined)
+  assert.equal(restorePlan(null), undefined)
+})
+
+test('the checklist reports a position a user can read at a glance', () => {
+  const plan = applyPlanUpdate(createWorkspacePlan('goal', 10), parsePlanSteps([
+    { title: '检查仓库状态', status: 'completed' },
+    { title: '同步远端', status: 'running' },
+    { title: '确认结果' }
+  ])!)
+  assert.equal(planProgressText(plan), '1/3 · 同步远端')
+  const finished = finishPlan(plan, 'succeeded', 'done', 20)
+  assert.equal(planProgressText(finished), '3/3')
+  // A deliberate skip stays skipped; success must not claim it happened.
+  const skipped = finishPlan({ ...plan, steps: plan.steps.map((step) => ({ ...step, status: 'skipped' as const })) }, 'succeeded', 'done', 20)
+  assert.ok(skipped.steps.every((step) => step.status === 'skipped'))
 })
