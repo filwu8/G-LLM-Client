@@ -226,6 +226,7 @@ import type {
   WorkspaceToolActivity
 } from '@shared/types'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '@shared/goalMode'
+import { interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
 import { estimateTokenCount } from '@shared/tokenEstimate'
 import { extractChoicesFromReply } from '@shared/choiceExtraction'
 import { resolveGoalContextMode, selectGoalContextMessages } from '@shared/goalContext'
@@ -2426,6 +2427,26 @@ export default function App() {
     void window.gllm.saveConversation(nextConversation)
   }
 
+  /**
+   * Record an answered question as a line in the conversation.
+   *
+   * The main process also writes this message, but it writes from its own copy
+   * of the conversation while the renderer keeps saving its own — the answer was
+   * reliably overwritten a few seconds later and the user saw nothing. Writing
+   * it here puts the record into the copy that survives, and the shared message
+   * id makes both writes the same message instead of a duplicate.
+   */
+  function recordInteractionAnswer(request: WorkspaceInteractionRequest, response: WorkspaceInteractionResponse) {
+    if (activeConversation?.id !== request.conversationId) return
+    const message = interactionAnswerMessage(request, response, i18n.language.startsWith('en') ? 'en' : 'zh')
+    if (!message || activeConversation.messages.some((item) => item.id === message.id)) return
+    saveConversationUpdate({
+      ...activeConversation,
+      messages: [...activeConversation.messages, message],
+      updatedAt: Date.now()
+    })
+  }
+
   function changeActiveConversationModel(modelId: string) {
     const nextModelId = modelId.trim()
     if (!nextModelId) return
@@ -4086,7 +4107,7 @@ export default function App() {
                 return (
                   <article
                     key={message.id}
-                    className={`message ${message.role} ${message.error ? 'message-error' : ''}`}
+                    className={`message ${message.role} ${message.error ? 'message-error' : ''}${isInteractionAnswerMessageId(message.id) ? ' message-answer' : ''}`}
                     data-message-id={message.id}
                     onContextMenu={(event) => openSelectionContextMenu(event, message)}
                   >
@@ -4484,6 +4505,7 @@ export default function App() {
                 variant="inline"
                 request={activeInteraction}
                 onRespond={(response: WorkspaceInteractionResponse) => {
+                  recordInteractionAnswer(activeInteraction, response)
                   window.gllm.respondWorkspaceInteraction(response)
                   setWorkspaceInteractions((current) => current.filter((item) => item.id !== response.id))
                 }}

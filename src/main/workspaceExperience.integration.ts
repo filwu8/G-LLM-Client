@@ -7,6 +7,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import type { Conversation, WorkspaceAgentRequest, WorkspaceInteractionRequest } from '../shared/types'
+import { interactionAnswerMessage } from '../shared/interactionTranscript.ts'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
 
 const fixture = process.argv[2]
@@ -344,7 +345,9 @@ async function main() {
 
     scenario = 'blocked'; step = 0
     const asked: WorkspaceInteractionRequest[] = []
-    const blocked = await runWorkspaceAgent(request('请把申请书保存为 outputs/application.txt'), undefined, undefined, undefined, undefined, undefined, async (question) => {
+    const blockedRequest = request('请把申请书保存为 outputs/application.txt')
+    storage.saveConversation({ ...makeConversation(blockedRequest.conversationId), messages: blockedRequest.messages })
+    const blocked = await runWorkspaceAgent(blockedRequest, undefined, undefined, undefined, undefined, undefined, async (question) => {
       asked.push(question)
       return { id: question.id, selectedIds: [], customText: '张伟', cancelled: false, answeredAt: Date.now() }
     })
@@ -358,6 +361,19 @@ async function main() {
     assert.equal(await readFile(join(workspace.rootPath, 'outputs/application.txt'), 'utf8'), '申请人：张伟')
     assert.ok(blocked.activities.some(activity => activity.tool === 'ask_user' && activity.status === 'completed'), 'the question is part of the visible run log')
     assert.equal(step, 3, 'the same task continues after the answer instead of restarting')
+
+    // The answer is written into the conversation while the run is still alive.
+    // That write used to make the run look stale ("the last message is no longer
+    // the user's request"), so the result was thrown away and the user got
+    // 任务已停止 right after answering.
+    const blockedStored = storage.getConversations(project.id).find(item => item.id === blockedRequest.conversationId)
+    assert.ok(blockedStored)
+    const answerRecord = interactionAnswerMessage(asked[0], { id: asked[0].id, selectedIds: [], customText: '张伟', cancelled: false, answeredAt: Date.now() })
+    assert.ok(answerRecord)
+    storage.saveConversation({ ...blockedStored, messages: [...blockedStored.messages, answerRecord] })
+    const blockedSaved = storage.saveWorkspaceAgentResult(blockedRequest, blocked, now, 'blocked-run')
+    assert.ok(blockedSaved, 'answering a question must not invalidate the running task')
+    assert.deepEqual(blockedSaved.messages.map(message => message.id).slice(-2), [answerRecord.id, 'workspace_blocked-run'])
 
     scenario = 'blocked-loop'; step = 0
     let repeatedQuestions = 0

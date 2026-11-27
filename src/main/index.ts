@@ -85,7 +85,8 @@ import {
 import { ActiveResponseRegistry } from './activeResponse'
 import { AgentRunLedger } from './agentRunLedger'
 import { WorkspaceCheckpointStore, workspaceTaskId } from './workspaceCheckpoint'
-import { WorkspaceInteractionStore, describeInteractionAnswer, persistInteractionAnswer } from './workspaceInteractions'
+import { WorkspaceInteractionStore, persistInteractionAnswer } from './workspaceInteractions'
+import { interactionAnswerMessage } from '../shared/interactionTranscript'
 import { WORKSPACE_ACTIVITY_HISTORY, WORKSPACE_ALREADY_RUNNING } from '../shared/goalMode'
 import { StorageTasks } from './storageTasks'
 import { DOWNLOAD_PAGE_URL } from './appUpdate'
@@ -2597,25 +2598,19 @@ app.whenReady().then(() => {
           // Write the choice into the conversation itself. The run injects
           // `[用户回答]` into the model's private message list, which never
           // reaches the transcript, so the answer used to vanish from the UI
-          // the moment the card closed.
+          // the moment the card closed. The renderer writes the same message on
+          // click; this covers the case where it could not (reloaded window).
           if (response && !response.cancelled) {
-            const transcript = describeInteractionAnswer(
+            const answer = interactionAnswerMessage(
               interaction,
               response,
               String(request.settings?.language ?? '').startsWith('en') ? 'en' : 'zh'
             )
-            const conversation = transcript ? getConversationById(interaction.conversationId) : undefined
-            if (transcript && conversation) {
+            const conversation = answer ? getConversationById(interaction.conversationId) : undefined
+            if (answer && conversation && !conversation.messages.some((message) => message.id === answer.id)) {
               const saved = saveConversation({
                 ...conversation,
-                messages: [...conversation.messages, {
-                  id: `msg_${randomUUID()}`,
-                  role: 'user',
-                  content: transcript,
-                  createdAt: Date.now(),
-                  inputTokens: 0,
-                  outputTokens: 0
-                }],
+                messages: [...conversation.messages, answer],
                 updatedAt: Date.now()
               }, conversation.projectId)
               broadcastConversationChange(saved.id, 'saved', saved)

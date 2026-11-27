@@ -85,6 +85,7 @@ import { WorkspaceInteractionDialog } from './WorkspaceInteractionDialog'
 import { GllmAccountPanel, isManagedGllmProvider } from './GllmAccountPanel'
 import { DesktopAccessSetupDialog, type WorkspaceAgentSettings } from './WorkspaceAgentSettings'
 import { hasUnfinishedWorkspaceTask, projectWorkspace, relocateWorkspaceLocation, usesWorkspaceAgent } from '@shared/workspaceRouting'
+import { interactionAnswerMessage, isInteractionAnswerMessageId } from '@shared/interactionTranscript'
 import { droppedFileInputs } from './droppedFiles'
 import { WebSearchModePicker } from './WebSearchModePicker'
 import { WebSearchActivityCard } from './WebSearchActivityCard'
@@ -2206,7 +2207,7 @@ export default function QuickChat() {
             return (
               <article
               key={message.id}
-              className={`quick-message ${message.role} ${message.error ? 'message-error' : ''}`}
+              className={`quick-message ${message.role} ${message.error ? 'message-error' : ''}${isInteractionAnswerMessageId(message.id) ? ' message-answer' : ''}`}
               data-message-id={message.id}
               onContextMenu={(event) => openSelectionContextMenu(event, message)}
             >
@@ -2474,6 +2475,17 @@ export default function QuickChat() {
           variant="inline"
           request={workspaceInteraction}
           onRespond={(response) => {
+            // Keep the answer in the copy this window owns; the main process
+            // writes the same message, but a later whole-conversation save from
+            // here would otherwise drop it.
+            const current = conversationRef.current
+            const message = interactionAnswerMessage(workspaceInteraction, response, i18n.language.startsWith('en') ? 'en' : 'zh')
+            if (message && current?.id === workspaceInteraction.conversationId && !current.messages.some((item) => item.id === message.id)) {
+              const next = { ...current, messages: [...current.messages, message], updatedAt: Date.now() }
+              conversationRef.current = next
+              setConversation(next)
+              void window.gllm.saveConversation(next)
+            }
             window.gllm.respondWorkspaceInteraction(response)
             setWorkspaceInteraction(null)
           }}

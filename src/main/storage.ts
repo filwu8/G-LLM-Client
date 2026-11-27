@@ -25,6 +25,7 @@ import { DEFAULT_PROVIDER, DEFAULT_PROVIDER_ID } from '../shared/providers'
 import { sanitizeAssistantSystemPrompt, universalFallbackPrompt } from '../shared/assistantPromptPolicy'
 import { filterAvailableAssistantDelegations, removeAssistantDelegationReferences } from '../shared/assistantDelegation'
 import { normalizeGoalWebSearchDomains } from '../shared/goalWebSearch'
+import { isLatestUserTurn } from '../shared/interactionTranscript'
 import { estimateTokenCount } from '../shared/tokenEstimate'
 import { sanitizeWorkspaceActivity } from '../shared/workspaceActivity'
 import { withoutProjectKeys, withoutProjectRecords } from '../shared/projectScope'
@@ -1924,7 +1925,11 @@ export function saveConversation(conversation: Conversation, projectId = getActi
 export function getWorkspaceRunConversation(request: WorkspaceAgentRequest): Conversation | undefined {
   const conversation = getAllConversations().find(item => item.id === request.conversationId)
   const userMessage = request.messages.findLast(message => message.role === 'user')
-  if (!conversation?.workspace || !userMessage || conversation.messages.at(-1)?.id !== userMessage.id ||
+  // The request must still be the newest user turn. Answer transcripts are
+  // written while the run is alive, so they are the one thing allowed after it;
+  // without that exemption a run that asked a question could never save its
+  // result and died with 任务已停止 right after the user replied.
+  if (!conversation?.workspace || !userMessage || !isLatestUserTurn(conversation.messages, userMessage.id) ||
     !isSamePath(conversation.workspace.rootPath, request.workspace.rootPath)) return undefined
 
   if (request.goalId && (conversation.goalTask?.id !== request.goalId || conversation.goalTask.status !== 'running')) return undefined

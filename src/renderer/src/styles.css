@@ -1607,6 +1607,21 @@ img.space-logo {
   box-shadow: 0 6px 18px hsl(var(--shadow-color) / 0.04);
 }
 
+/* A record of the answer the user gave to a question. It is a user turn in the
+   transcript, but the client wrote it, so it reads as a note rather than a
+   message the user typed. The `.message-stack >` step is not decoration: the
+   gold theme styles user bubbles through four classes as well, and equal
+   specificity would let its `border: solid` win. */
+.message.user.message-answer .message-stack > .message-bubble {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+
+.message.user.message-answer .markdown-body p {
+  color: hsl(var(--muted-foreground));
+}
+
 .message.user .markdown-body p {
   white-space: pre-wrap;
 }

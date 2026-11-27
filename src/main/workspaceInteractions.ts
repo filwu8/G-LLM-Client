@@ -314,28 +314,8 @@ export function persistInteractionAnswer(
 }
 
 /**
- * Render the answer as a transcript line. The run injects `[用户回答]` into the
- * model's private messages, which the chat never shows, so the choice a user
- * just made left no trace in the conversation.
+ * Render the answer as a transcript line (shared with the renderer, which writes
+ * the same message when the user clicks so the record is never lost to a later
+ * whole-conversation save).
  */
-export function describeInteractionAnswer(
-  request: WorkspaceInteractionRequest,
-  response: WorkspaceInteractionResponse,
-  language: 'zh' | 'en' = 'zh'
-): string {
-  if (response.cancelled) return ''
-  const zh = language === 'zh'
-  const labels = response.selectedIds
-    .map((id) => request.options.find((option) => option.id === id))
-    .filter((option): option is WorkspaceInteractionOption => Boolean(option))
-    .map((option) => option.label)
-  const lines: string[] = []
-  if (labels.length > 0) lines.push(zh ? `选择：${labels.join('、')}` : `Selected: ${labels.join(', ')}`)
-  if (response.customText) lines.push(zh ? `补充：${response.customText}` : `Note: ${response.customText}`)
-  if (lines.length === 0) {
-    if (request.selection !== 'confirm') return ''
-    return zh ? `已回答「${request.title}」` : `Answered "${request.title}"`
-  }
-  const head = zh ? `已回答「${request.title}」` : `Answered "${request.title}"`
-  return `${head}\n${lines.join('\n')}`
-}
+export { describeInteractionAnswer } from '../shared/interactionTranscript.ts'
