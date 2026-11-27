@@ -60,6 +60,12 @@ export function finishPlan(
 export interface AgentBlockedQuestion {
   title?: string
   question: string
+  /**
+   * Stable name of the underlying blocker. The client asks about a given
+   * blocker at most once per run, so a model that keeps restating the same
+   * problem cannot turn it into a series of questions.
+   */
+  blocker?: string
   selection?: 'single' | 'multiple' | 'text' | 'confirm'
   options?: Array<{ id?: string; label: string; description?: string; recommended?: boolean }>
 }
@@ -112,6 +118,7 @@ export function readBlockedQuestion(
   const raw = record.question ?? record.missingInformation ?? record.needs
   let question: string
   let title: string | undefined
+  let blocker = nonEmptyString(record.blocker, 80)
   let selection: AgentBlockedQuestion['selection']
   let options: AgentBlockedQuestion['options']
   if (typeof raw === 'string') {
@@ -119,6 +126,7 @@ export function readBlockedQuestion(
   } else if (raw && typeof raw === 'object') {
     const nested = raw as Record<string, unknown>
     title = nonEmptyString(nested.title, 120) || undefined
+    blocker = nonEmptyString(nested.blocker, 80) || blocker
     question = nonEmptyString(nested.question ?? nested.description ?? nested.text ?? nested.prompt)
     selection = selections.has(String(nested.selection)) ? nested.selection as AgentBlockedQuestion['selection'] : undefined
     options = readOptions(nested.options)
@@ -128,7 +136,7 @@ export function readBlockedQuestion(
   if (!question) question = nonEmptyString(record.verification) || nonEmptyString(record.final)
   if (!question) question = fallback.trim()
   if (!question) return undefined
-  return { question, ...(title ? { title } : {}), ...(selection ? { selection } : {}), ...(options ? { options } : {}) }
+  return { question, ...(title ? { title } : {}), ...(blocker ? { blocker } : {}), ...(selection ? { selection } : {}), ...(options ? { options } : {}) }
 }
 
 /**

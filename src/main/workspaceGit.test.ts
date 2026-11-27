@@ -6,10 +6,10 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { redactGitOutput, runGitRead, runGitWrite, planProjectCheck, discoverWorkspaceRepositories, clearStaleIndexLock, gitWriteTimeoutMs, isIndexLockConflict, gitFailureHint, GIT_WRITE_OPERATIONS } from './workspaceGit.ts'
+import { redactGitOutput, runGitRead, runGitWrite, runGitSync, planProjectCheck, discoverWorkspaceRepositories, clearStaleIndexLock, gitWriteTimeoutMs, isIndexLockConflict, gitFailureHint, GIT_WRITE_OPERATIONS } from './workspaceGit.ts'
 
 test('git output redacts URL credentials and secret assignments', () => {
   assert.match(redactGitOutput('origin https://user:token123@github.com/a/b.git (fetch)'), /\[REDACTED\]@github\.com/)
@@ -43,7 +43,7 @@ test('the git write allowlist covers committing without accepting arbitrary verb
   // takes raw flags or shell text, and adding a verb is a reviewable change.
   assert.deepEqual(
     [...GIT_WRITE_OPERATIONS].sort(),
-    ['add', 'checkout', 'clean', 'commit', 'fetch', 'pull', 'push', 'reset', 'stash']
+    ['add', 'checkout', 'clean', 'commit', 'fetch', 'pull', 'push', 'reset', 'stash', 'sync']
   )
 })
 
@@ -122,11 +122,73 @@ test('git_write push publishes to the configured remote', async () => {
   }
 })
 
+test('git_write sync fast-forwards a behind repository and leaves a dirty tree alone', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'gllm-git-sync-test-'))
+  const remote = await mkdtemp(resolve(tmpdir(), 'gllm-git-sync-bare-'))
+  const peer = await mkdtemp(resolve(tmpdir(), 'gllm-git-sync-peer-'))
+  try {
+    const { execFileSync } = await import('node:child_process')
+    const git = (cwd: string, ...argv: string[]) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: 'pipe' })
+    execFileSync('git', ['init', '--bare', '-q', '-b', 'main', remote], { encoding: 'utf8', stdio: 'pipe' })
+    git(root, 'init', '-q', '-b', 'main')
+    git(root, 'config', 'user.email', 'test@example.com')
+    git(root, 'config', 'user.name', 'Test')
+    await writeFile(resolve(root, 'a.txt'), 'v1\n')
+    git(root, 'add', 'a.txt')
+    git(root, 'commit', '-qm', 'first')
+    git(root, 'remote', 'add', 'origin', remote)
+    git(root, 'push', '-q', '-u', 'origin', 'main')
+
+    // Nothing to do yet: the one call must say so instead of merging anything.
+    const clean = await runGitSync(root, {})
+    assert.match(clean.output, /RESULT: complete/)
+    assert.match(clean.output, /up-to-date/)
+
+    // A peer push moves the remote one commit ahead of the workspace clone.
+    execFileSync('git', ['clone', '-q', remote, peer], { encoding: 'utf8', stdio: 'pipe' })
+    git(peer, 'config', 'user.email', 'test@example.com')
+    git(peer, 'config', 'user.name', 'Peer')
+    await writeFile(resolve(peer, 'b.txt'), 'v2\n')
+    git(peer, 'add', 'b.txt')
+    git(peer, 'commit', '-qm', 'second')
+    git(peer, 'push', '-q', 'origin', 'main')
+
+    const synced = await runGitSync(root, {})
+    assert.match(synced.output, /RESULT: complete/)
+    assert.match(synced.output, /fast-forward/)
+    // The checked-out file carries the host line ending (core.autocrlf), so
+    // compare the content, not the bytes.
+    assert.match(await readFile(resolve(root, 'b.txt'), 'utf8'), /^v2\r?\n$/)
+
+    // The remote moves again, but this time the local tree has an edit that a
+    // fast-forward would overwrite. Sync must report it and change nothing.
+    await writeFile(resolve(peer, 'c.txt'), 'v3\n')
+    git(peer, 'add', 'c.txt')
+    git(peer, 'commit', '-qm', 'third')
+    git(peer, 'push', '-q', 'origin', 'main')
+    await writeFile(resolve(root, 'a.txt'), 'local edit\n')
+
+    const blocked = await runGitSync(root, {})
+    assert.match(blocked.output, /RESULT: partial/)
+    assert.match(blocked.output, /blocked-dirty/)
+    assert.equal(await readFile(resolve(root, 'a.txt'), 'utf8'), 'local edit\n')
+    assert.equal(await readFile(resolve(root, 'c.txt'), 'utf8').catch(() => 'absent'), 'absent')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(remote, { recursive: true, force: true })
+    await rm(peer, { recursive: true, force: true })
+  }
+})
+
 test('a failed commit explains the missing identity instead of inventing one', () => {
   const output = 'Exit code: 128\n*** Please tell me who you are.\n\nRun\n\n  git config --global user.email "you@example.com"'
   const hint = gitFailureHint('commit', output)
-  assert.match(hint, /git config --global user\.name/)
+  // The hint is only reached when the repository itself has no author to reuse.
+  // It must ask for the one thing only a human can supply, with commands that
+  // work as typed, and must not read as a permissions problem.
+  assert.match(hint, /git config user\.name/)
   assert.match(hint, /不要替用户编造身份/)
+  assert.match(hint, /不要把这解释成权限问题/)
   // Unrelated failures must not be decorated with a wrong explanation.
   assert.equal(gitFailureHint('commit', 'Exit code: 1\nnothing to commit'), '')
   assert.match(gitFailureHint('push', 'fatal: Authentication failed for https://example.com/repo.git'), /远端鉴权失败/)

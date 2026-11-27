@@ -262,6 +262,57 @@ export function repeatedFailureSignature(tool: string, argumentsJson: string | u
   return `${String(tool ?? '').trim()}:${JSON.stringify(stable)}`
 }
 
+/** Questions one run may ask the user, across every entry point. */
+export const MAX_USER_QUESTIONS_PER_RUN = 3
+
+export type UserQuestionAdmission =
+  | { admitted: true; signature: string }
+  | { admitted: false; reason: 'duplicate'; signature: string }
+  | { admitted: false; reason: 'exhausted' }
+
+/**
+ * Normalize a free-text question into a signature that survives rewording of
+ * the volatile parts only. This is the weak fallback key: a model that rewords
+ * the question every turn defeats it, which is why callers should pass a
+ * structured blocker code whenever they have one.
+ */
+export function questionTextSignature(text: string): string {
+  return `text:${String(text ?? '')
+    .replace(/request[ _-]?id[:=]\s*\S+/gi, '')
+    .replace(/\b[0-9a-f]{8,}\b/gi, '')
+    .replace(/\b\d{4,}\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .slice(0, 160)}`
+}
+
+/**
+ * Decide whether a run may ask the user another question.
+ *
+ * Two independent limits, both of which were missing on the `ask_user` tool
+ * path and let one run interrogate the user five times about the same git
+ * identity problem: a hard cap per run, and one question per underlying
+ * blocker. A repeated blocker is refused rather than re-asked, because a second
+ * identical question tells the user nothing new — the run is looping, not
+ * progressing.
+ *
+ * The blocker code is the primary key. When the model omits it, the normalized
+ * question text is used instead, so a verbatim retry is still caught.
+ */
+export function admitUserQuestion(
+  askedSignatures: Set<string>,
+  askedCount: number,
+  blocker: string | undefined,
+  questionText: string
+): UserQuestionAdmission {
+  if (askedCount >= MAX_USER_QUESTIONS_PER_RUN) return { admitted: false, reason: 'exhausted' }
+  const code = String(blocker ?? '').trim().toLowerCase().replace(/\s+/g, '-').slice(0, 80)
+  const signature = code ? `blocker:${code}` : questionTextSignature(questionText)
+  if (askedSignatures.has(signature)) return { admitted: false, reason: 'duplicate', signature }
+  return { admitted: true, signature }
+}
+
 /**
  * Failure counter keyed by operation signature. A success for the same
  * operation clears its streak; unrelated successful reads never do, so a model

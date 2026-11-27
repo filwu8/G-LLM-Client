@@ -17,13 +17,27 @@ export type GitReadOperation = 'status' | 'log' | 'diff' | 'branch' | 'remote' |
  * model had already burned several turns looking for a way. `add` / `commit` /
  * `push` close that gap with the same semantic-only arguments as the rest.
  */
-export type GitWriteOperation = 'fetch' | 'pull' | 'reset' | 'checkout' | 'clean' | 'stash' | 'add' | 'commit' | 'push'
+export type GitWriteOperation = 'sync' | 'fetch' | 'pull' | 'reset' | 'checkout' | 'clean' | 'stash' | 'add' | 'commit' | 'push'
 
 const OPERATIONS: GitReadOperation[] = ['status', 'log', 'diff', 'branch', 'remote', 'show']
-const WRITE_OPERATIONS: GitWriteOperation[] = ['fetch', 'pull', 'reset', 'checkout', 'clean', 'stash', 'add', 'commit', 'push']
+const WRITE_OPERATIONS: GitWriteOperation[] = ['sync', 'fetch', 'pull', 'reset', 'checkout', 'clean', 'stash', 'add', 'commit', 'push']
 /** Operations the model may request; exported so tests and the tool schema stay in step. */
 export const GIT_WRITE_OPERATIONS: readonly GitWriteOperation[] = Object.freeze([...WRITE_OPERATIONS])
 const MAX_OUTPUT_BYTES = 160_000
+
+/**
+ * Config overrides applied to every git command this module runs: no repository
+ * hook, pager or external driver may execute code on our behalf.
+ */
+const SAFE_GIT_FLAGS = ['-c', 'core.hooksPath=gllm-disabled-hooks', '-c', 'core.pager=cat', '-c', 'safe.directory=*', '--no-pager']
+
+/**
+ * Local-only commands additionally blank the credential helper and askpass so
+ * nothing can ever block on a prompt no user is watching. Remote-facing
+ * commands (fetch / push) must keep the user's helper, or they could never
+ * authenticate; they force non-interactivity through the environment instead.
+ */
+const SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS = [...SAFE_GIT_FLAGS, '-c', 'core.askPass=echo', '-c', 'credential.helper=']
 const MAX_COMMIT_MESSAGE_CHARACTERS = 4000
 const MAX_STAGED_PATHS = 64
 
@@ -35,7 +49,7 @@ function safeLogLimit(value: unknown): number {
 function safeRef(value: unknown): string {
   const ref = String(value ?? '').trim()
   if (!ref) return ''
-  if (!/^[0-9A-Za-z][0-9A-Za-z._\-/^~]{0,119}$/.test(ref)) throw new Error('无效的 Git 引用')
+  if (!/^[0-9A-Za-z][0-9A-Za-z._\-/^~]{0,119}$/.test(ref)) throw new Error(`无效的 Git 引用：${ref.slice(0, 60)}。ref 只能是单个分支、标签或提交名（可带 origin/ 前缀或 ~ ^ 后缀），不接受 A...B / A..B 范围语法；要比较两个提交，请分别按各自的 ref 读一次。`)
   return ref
 }
 
@@ -307,11 +321,14 @@ function buildWriteArguments(operation: GitWriteOperation, args: Record<string, 
   // a repository cannot execute code on our behalf. The credential-helper wipe
   // is deliberately NOT part of the shared tail: `push` has to reuse whatever
   // helper the user configured, otherwise it can never authenticate at all.
-  const commonSafe = ['-c', 'core.hooksPath=gllm-disabled-hooks', '-c', 'core.pager=cat', '-c', 'safe.directory=*', '--no-pager']
-  const common = [...commonSafe, '-c', 'core.askPass=echo', '-c', 'credential.helper=']
+  const commonSafe = SAFE_GIT_FLAGS
+  const common = SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS
   const path = args.path === undefined ? '' : safeRelativePath(root, args.path)
   const paths = args.paths === undefined ? [] : safeRelativePaths(root, args.paths)
   switch (operation) {
+    case 'sync':
+      // Handled by runGitSync before this builder is reached.
+      throw new Error('sync 由 runGitSync 编排，不经过单条命令构造')
     case 'fetch': {
       const remote = safeRemote(args.remote)
       const ref = safeRef(args.ref)
@@ -395,7 +412,7 @@ const IDENTITY_FAILURE = /author identity unknown|please tell me who you are|emp
  */
 export function gitFailureHint(operation: GitWriteOperation | string, output: string): string {
   if (operation === 'commit' && IDENTITY_FAILURE.test(output)) {
-    return '\n提示：本机没有配置 user.name / user.email，且这个仓库没有可沿用的历史作者，所以提交被 git 拒绝。请让用户本人执行 `git config --global user.name "<名字>"` 与 `git config --global user.email "<邮箱>"` 后重试；不要替用户编造身份，也不要改用其他工具绕过。'
+    return '\n提示：本机没有配置 user.name / user.email，且这个仓库没有可沿用的历史作者（空仓库或历史被清空），所以工具无法自行决定提交身份。这是唯一需要用户本人做的一步，只需执行一次（二选一，用仓库内局部配置即可）：\n  git config user.name "<你的名字>"\n  git config user.email "<你的邮箱>"\n完成后回到对话说一声，提交会继续。不要替用户编造身份，也不要改用其他工具绕过；不要把这解释成权限问题。'
   }
   if (operation === 'push' && /authentication failed|could not read username|terminal prompts disabled|could not read password|invalid username or password|permission denied \(publickey\)/i.test(output)) {
     return '\n提示：远端鉴权失败，本机没有可用于该远端的凭据（客户端不会在后台弹出登录框）。请让用户先在本机完成一次 `git push` 或配置凭据助手，之后重试；不要在对话里询问密码或令牌。'
@@ -440,6 +457,147 @@ export interface GitWriteResult {
   exitCode: number
 }
 
+interface GitSyncRepoOutcome {
+  repo: string
+  branch: string | null
+  behind: number
+  ahead: number
+  /** Tracked files with uncommitted changes; sync never touches them. */
+  localChanges?: number
+  action: 'up-to-date' | 'fast-forward' | 'blocked-dirty' | 'skipped'
+  detail?: string
+}
+
+async function runGitCommand(
+  cwd: string,
+  argv: string[],
+  signal?: AbortSignal,
+  timeoutMs = 60_000,
+  env?: NodeJS.ProcessEnv
+): Promise<{ code: number; out: string }> {
+  const result = await runWorkspaceProcess({
+    executable: process.platform === 'win32' ? 'git.exe' : 'git',
+    args: argv,
+    cwd,
+    env: env ?? gitEnvironment(),
+    signal,
+    timeoutMs,
+    maxOutputBytes: MAX_OUTPUT_BYTES,
+    outputOverflow: 'truncate'
+  })
+  return { code: result.exitCode, out: `${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}`.trim() }
+}
+
+/**
+ * Bring every repository in the workspace to its upstream, in one call.
+ *
+ * "Sync the repositories" is a single intention, but the primitive allowlist
+ * exposes fetch / compare / merge separately. Doing it by hand meant
+ * discovering each repository, fetching, counting commits, deciding what to do
+ * about a dirty tree, and repeating that per repository — twenty-odd calls,
+ * each one a chance to stall. This operation fixes the strategy instead:
+ * fetch, then fast-forward only. History is never rewritten, nothing is
+ * stashed behind the user's back, and a dirty working tree is reported with
+ * the exact paths rather than being discarded.
+ */
+export async function runGitSync(root: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<GitWriteResult> {
+  signal?.throwIfAborted()
+  const rootReal = await realpath(root)
+  const remote = safeRemote(args.remote)
+  const requested = Array.isArray(args.repos) ? args.repos : undefined
+  const targets: string[] = []
+  if (requested && requested.length > 0) {
+    if (requested.length > 16) throw new Error('repos 一次最多 16 个仓库')
+    for (const entry of requested) targets.push((await resolveGitCwd(rootReal, { repo: entry })).repo)
+  } else {
+    for (const entry of await discoverWorkspaceRepositories(rootReal, 3, 32)) targets.push(entry.path)
+  }
+  if (targets.length === 0) throw new Error('工作区里没有找到 git 仓库')
+
+  // Fetch talks to the remote, so it keeps the user's credential helper but
+  // must never open a prompt: a headless main process would hang instead of
+  // reporting a missing credential.
+  const fetchEnv = writeEnvironment('push')
+  const outcomes: GitSyncRepoOutcome[] = []
+  for (const repo of targets) {
+    signal?.throwIfAborted()
+    const cwd = repo === '.' ? rootReal : resolve(rootReal, repo)
+    const outcome: GitSyncRepoOutcome = { repo, branch: null, behind: 0, ahead: 0, action: 'skipped' }
+    outcomes.push(outcome)
+    const head = await runGitCommand(cwd, [...SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS, 'rev-parse', '--abbrev-ref', 'HEAD'], signal)
+    if (head.code !== 0) {
+      outcome.detail = '无法读取当前分支，可能不是完整的仓库'
+      continue
+    }
+    const branch = head.out.split('\n')[0].trim()
+    if (!branch || branch === 'HEAD') {
+      outcome.detail = '处于游离 HEAD，未做任何改动'
+      continue
+    }
+    outcome.branch = branch
+    const fetched = await runGitCommand(cwd, [...SAFE_GIT_FLAGS, 'fetch', remote], signal, 180_000, fetchEnv)
+    if (fetched.code !== 0) {
+      outcome.detail = `fetch 失败：${fetched.out.split('\n').slice(-3).join(' ').slice(0, 300)}`
+      continue
+    }
+    const upstream = `${remote}/${branch}`
+    const behindCount = await runGitCommand(cwd, [...SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS, 'rev-list', '--count', `HEAD..${upstream}`], signal)
+    if (behindCount.code !== 0) {
+      outcome.detail = `远端没有对应分支 ${upstream}`
+      continue
+    }
+    outcome.behind = Number.parseInt(behindCount.out.trim(), 10) || 0
+    const aheadCount = await runGitCommand(cwd, [...SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS, 'rev-list', '--count', `${upstream}..HEAD`], signal)
+    outcome.ahead = aheadCount.code === 0 ? Number.parseInt(aheadCount.out.trim(), 10) || 0 : 0
+    // Read the working tree before deciding anything: it answers "is there
+    // local work the user has not committed", which is the question the model
+    // kept re-deriving with extra status calls in the ERPv3 run.
+    // Tracked changes only: an untracked file never blocks a fast-forward.
+    const status = await runGitCommand(cwd, [...SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS, 'status', '--porcelain', '--untracked-files=no'], signal)
+    const dirty = status.code === 0 ? status.out.split('\n').filter((line) => line.trim()) : []
+    outcome.localChanges = dirty.length
+    if (outcome.behind === 0) {
+      outcome.action = 'up-to-date'
+      if (dirty.length > 0) outcome.detail = `另有 ${dirty.length} 处本地改动未提交（同步不包含提交）`
+      continue
+    }
+    if (dirty.length > 0) {
+      outcome.action = 'blocked-dirty'
+      outcome.detail = `落后 ${outcome.behind} 个提交，但工作树有 ${dirty.length} 处已跟踪改动，快进会覆盖它们，所以没有改动：${dirty.slice(0, 8).join(' / ')}`
+      continue
+    }
+    const merged = await runGitCommand(cwd, [...SAFE_GIT_FLAGS_WITHOUT_CREDENTIALS, 'merge', '--ff-only', upstream], signal, 600_000)
+    if (merged.code === 0) {
+      outcome.action = 'fast-forward'
+      outcome.detail = `已快进 ${outcome.behind} 个提交到 ${upstream}`
+    } else {
+      outcome.detail = `快进失败：${merged.out.split('\n').slice(-3).join(' ').slice(0, 300)}`
+    }
+  }
+
+  const lines = outcomes.map((item) => {
+    const label = item.repo === '.' ? '根仓库' : item.repo
+    const who = item.branch ? `${label}（${item.branch}）` : label
+    if (item.action === 'up-to-date') return `- ${who}：已是最新${item.detail ? `；${item.detail}` : ''}`
+    if (item.action === 'fast-forward') return `- ${who}：${item.detail}`
+    if (item.action === 'blocked-dirty') return `- ${who}：未同步 —— ${item.detail}`
+    return `- ${who}：跳过 —— ${item.detail ?? '未知原因'}`
+  })
+  const pending = outcomes.filter((item) => item.action === 'blocked-dirty' || item.action === 'skipped')
+  // A dirty tree is a real state, not a broken tool: report it as a partial
+  // result with a zero exit so the model reads it and decides (stash or ask),
+  // instead of counting it as a failed retry and giving up on the operation.
+  const verdict = pending.length === 0 ? 'complete' : 'partial'
+  const raw = [
+    `RESULT: ${verdict}`,
+    `同步了 ${outcomes.length} 个仓库（remote=${remote}）`,
+    ...lines,
+    '',
+    JSON.stringify({ repos: outcomes }, null, 2)
+  ].join('\n')
+  return { output: redactGitOutput(raw).slice(0, 12_000), exitCode: 0 }
+}
+
 /**
  * Bulk working-tree operations (reset/checkout/clean) can rewrite tens of
  * thousands of files on a large repo; the old flat 120s timeout killed git
@@ -448,6 +606,7 @@ export interface GitWriteResult {
  * value here cannot make a run exceed its configured limit.
  */
 export function gitWriteTimeoutMs(operation: GitWriteOperation): number {
+  if (operation === 'sync') return 600_000
   if (operation === 'reset' || operation === 'checkout' || operation === 'clean') return 600_000
   if (operation === 'fetch' || operation === 'pull') return 180_000
   return 180_000 // stash
@@ -462,6 +621,9 @@ export async function runGitWrite(root: string, args: Record<string, unknown>, s
   signal?.throwIfAborted()
   const operation = String(args.operation ?? '') as GitWriteOperation
   if (!WRITE_OPERATIONS.includes(operation)) throw new Error(`不支持的 Git 写操作：${operation}`)
+  // `sync` orchestrates several commands per repository, so it cannot go
+  // through the single-command builder below.
+  if (operation === 'sync') return runGitSync(root, args, signal)
   const rootReal = await realpath(root)
   const { cwd, repo } = await resolveGitCwd(rootReal, args)
   const argv = buildWriteArguments(operation, args, rootReal)

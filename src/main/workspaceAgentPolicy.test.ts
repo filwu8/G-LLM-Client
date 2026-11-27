@@ -9,7 +9,7 @@ import test from 'node:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning } from './workspaceAgentPolicy.ts'
+import { assertWorkspacePathAllowed, isProtectedWorkspacePath, loadWorkspaceEnvironment, loadWorkspaceInstructions, needsWorkspaceApproval, workspaceApprovalInstructions, selectWorkspaceEnvironment, redactWorkspaceSecrets, retryableModelStatuses, isTransientModelHttpStatus, repeatedFailureSignature, trackOperationOutcome, workspaceFailureHint, mergeFailureHint, resumedToolWarning, admitUserQuestion, questionTextSignature, MAX_USER_QUESTIONS_PER_RUN } from './workspaceAgentPolicy.ts'
 
 test('transient upstream 5xx faults retry in place instead of failing the run', () => {
   // A gateway "Database error" surfaces as 500/503; these must be replayed.
@@ -203,4 +203,47 @@ test('failure hint stays on the most actionable symptom across a streak', () => 
   assert.equal(mergeFailureHint('timeout', 'permission'), 'permission')
   assert.equal(mergeFailureHint('permission', 'lock'), 'lock')
   assert.equal(mergeFailureHint(undefined, undefined), undefined)
+})
+
+test('one run cannot ask the same blocker twice, however it is worded', () => {
+  // The ERPv3 sync run asked five times about the same missing git identity,
+  // rewording it each time, because de-duplication compared question text.
+  // The blocker code is the key, so rewording changes nothing.
+  const asked = new Set<string>()
+  const first = admitUserQuestion(asked, 0, 'git-identity', '本机缺少 git 提交身份，如何继续？')
+  assert.equal(first.admitted, true)
+  if (first.admitted) asked.add(first.signature)
+
+  const reworded = admitUserQuestion(asked, 1, 'git-identity', '请在终端先执行 git config 配置作者身份')
+  assert.equal(reworded.admitted, false)
+  assert.equal(reworded.admitted === false ? reworded.reason : '', 'duplicate')
+
+  // A genuinely different blocker is still allowed.
+  const other = admitUserQuestion(asked, 1, 'dirty-worktree', '根仓库有未提交改动，要提交吗？')
+  assert.equal(other.admitted, true)
+})
+
+test('a verbatim retry without a blocker code is still refused', () => {
+  const asked = new Set<string>()
+  const text = '请打开终端执行三条命令后回来说一声'
+  const first = admitUserQuestion(asked, 0, undefined, text)
+  assert.equal(first.admitted, true)
+  if (first.admitted) asked.add(first.signature)
+  const again = admitUserQuestion(asked, 1, undefined, `${text}  `)
+  assert.equal(again.admitted, false)
+  // The fallback signature ignores ids and long numbers so a retry that only
+  // changed the run id is not treated as a new question.
+  assert.equal(questionTextSignature('request_id: 12345678 重试'), questionTextSignature('request_id: 87654321 重试'))
+})
+
+test('the per-run question budget is a hard cap', () => {
+  const asked = new Set<string>()
+  for (let index = 0; index < MAX_USER_QUESTIONS_PER_RUN; index += 1) {
+    const admission = admitUserQuestion(asked, index, `blocker-${index}`, `问题 ${index}`)
+    assert.equal(admission.admitted, true, `question ${index} should be allowed`)
+    if (admission.admitted) asked.add(admission.signature)
+  }
+  const over = admitUserQuestion(asked, MAX_USER_QUESTIONS_PER_RUN, 'brand-new-blocker', '另一个新问题')
+  assert.equal(over.admitted, false)
+  assert.equal(over.admitted === false ? over.reason : '', 'exhausted')
 })
