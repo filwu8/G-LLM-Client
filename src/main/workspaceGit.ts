@@ -723,14 +723,7 @@ export async function planProjectCheck(root: string, check: unknown): Promise<Pr
   const candidates = CHECK_SCRIPTS[category]
   if (!candidates) throw new Error('不支持的检查类型；请选择 test、build、typecheck 或 lint')
   const rootReal = await realpath(root)
-  const manifest = resolve(rootReal, 'package.json')
-  let scripts: Record<string, unknown> = {}
-  try {
-    const info = await stat(manifest)
-    if (info.isFile() && info.size <= 1_000_000) scripts = JSON.parse(await readFile(manifest, 'utf8')).scripts ?? {}
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
+  const scripts = await readProjectScripts(rootReal)
   const script = candidates.find((name) => typeof scripts[name] === 'string' && (scripts[name] as string).trim())
   if (!script) throw new Error(`项目 package.json 中没有可用的 ${candidates.join(' / ')} 脚本`)
   let manager = MANAGERS[MANAGERS.length - 1]
@@ -740,4 +733,30 @@ export async function planProjectCheck(root: string, check: unknown): Promise<Pr
     } catch { /* lock file not present */ }
   }
   return { label: `${manager.run(script)} (${category})`, code: manager.run(script) }
+}
+
+/**
+ * Which verification categories this project can actually answer.
+ *
+ * The agent uses this to decide whether it is allowed to call a coding task
+ * done: a project without a typecheck or test script has nothing to gate on, so
+ * the client must not invent a requirement it cannot check.
+ */
+export async function availableProjectChecks(root: string): Promise<string[]> {
+  const scripts = await readProjectScripts(await realpath(root))
+  return Object.keys(CHECK_SCRIPTS).filter((category) => CHECK_SCRIPTS[category].some((name) => typeof scripts[name] === 'string' && (scripts[name] as string).trim()))
+}
+
+async function readProjectScripts(rootReal: string): Promise<Record<string, unknown>> {
+  const manifest = resolve(rootReal, 'package.json')
+  try {
+    const info = await stat(manifest)
+    if (info.isFile() && info.size <= 1_000_000) {
+      const parsed = JSON.parse(await readFile(manifest, 'utf8')) as { scripts?: unknown }
+      return parsed.scripts && typeof parsed.scripts === 'object' ? parsed.scripts as Record<string, unknown> : {}
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  return {}
 }

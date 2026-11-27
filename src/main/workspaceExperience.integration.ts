@@ -2,7 +2,7 @@
 import { app } from 'electron'
 import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
-import { readFile, realpath, writeFile } from 'node:fs/promises'
+import { readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
@@ -102,9 +102,20 @@ async function main() {
         assert.equal(request.tools, undefined)
         assert.match(JSON.stringify(request.messages), new RegExp(`section-${step - 1}`))
         compactions += 1
-        delta = { role: 'assistant', content: JSON.stringify({ criteria: `检查并汇总全部 ${sections} 段`, verified: `已读取 ${step} 段`, remaining: `剩余 ${sections - step} 段`, next: `从偏移 ${step * 256} 继续` }) }
+        // The second checkpoint answers in prose. A model that ignores the JSON
+        // contract must not cost the run its evidence: the previous summary is
+        // kept and the last three raw tool turns travel with it.
+        delta = compactions === 2
+          ? { role: 'assistant', content: '我只用文字说明：已经读到第 28 段，剩下的继续读。' }
+          : { role: 'assistant', content: JSON.stringify({ criteria: `检查并汇总全部 ${sections} 段`, verified: `已读取 ${step} 段`, remaining: `剩余 ${sections - step} 段`, next: `从偏移 ${step * 256} 继续` }) }
       } else {
-        if (step > 0 && step % 14 === 0) {
+        if (step === 28) {
+          // The request right after the prose checkpoint still carries the
+          // evidence the unusable summary failed to describe.
+          assert.match(JSON.stringify(request.messages), /摘要不完整/)
+          assert.match(JSON.stringify(request.messages), /已读取 14 段/, 'the last usable summary survives a prose checkpoint')
+          assert.equal(request.messages.filter((item: { role: string }) => item.role === 'tool').length, 3, 'an unusable summary keeps three raw tool turns')
+        } else if (step > 0 && step % 14 === 0) {
           assert.match(JSON.stringify(request.messages), /客户端任务检查点/)
           assert.match(JSON.stringify(request.messages), new RegExp(`已读取 ${step} 段`))
           assert.ok(request.messages.filter((item: { role: string }) => item.role === 'tool').length <= 2)
@@ -139,6 +150,18 @@ async function main() {
       }
       delta = step === 0 ? call('write_file', { path: 'outputs/second.txt', content: '第二份交付物' })
         : verdict('执行记录确认两份文件已经写入。', '已交付两份文件。')
+    } else if (scenario === 'dev-gate') {
+      // A coding task is not finished because the model says so. The client
+      // checks that the project's own check passed *after* the last source edit
+      // and refuses the completion claim until it did.
+      if (step === 0) {
+        delta = call('write_file', { path: 'src/answer.ts', content: 'export const answer = 42\n' })
+      } else {
+        if (step === 1) assert.equal(JSON.stringify(request.messages).includes('run_project_check(check'), false, 'nothing asked for a check before the first completion claim')
+        if (step >= 2) assert.match(request.messages.at(-1).content, /客户端完成前检查/)
+        if (step >= 2) assert.match(request.messages.at(-1).content, /run_project_check\(check: "typecheck"\)/)
+        delta = verdict('已写入 src/answer.ts。', '已把答案写成 42。')
+      }
     } else if (scenario === 'limit') {
       delta = step === 0 ? call('write_file', { path: 'outputs/goal-draft.txt', content: '尚待核对的草稿' })
         : call('inspect_file', { path: 'outputs/goal-draft.txt' })
@@ -334,6 +357,28 @@ async function main() {
     assert.equal(uncertain.plan.status, 'succeeded')
     assert.match(uncertain.content, /已交付两份文件/)
     assert.ok(step >= 2, 'the resumed run proceeds to a verdict')
+
+    scenario = 'dev-gate'; step = 0
+    mkdirSync(join(workspace.rootPath, 'src'), { recursive: true })
+    await writeFile(join(workspace.rootPath, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { typecheck: 'tsc --noEmit' } }))
+    const devRequest = request('把答案写成 src/answer.ts 里的常量')
+    // Host mode is the strictest case for the gate: a project script is
+    // unconfined, so the client must not start it on its own and has to ask the
+    // model for the same check through the tool the user already approved.
+    devRequest.workspace = { ...devRequest.workspace, permission: 'read-write', nativeExecution: true, executionMode: 'host', approvalMode: 'full' }
+    const { probeNativeShell } = await import('./workspaceNative')
+    const hostShell = await probeNativeShell({ executionMode: 'host' })
+    if (!hostShell) assert.ok(!process.env.CI, 'a CI runner must be able to run the dev-check gate scenario')
+    if (hostShell) {
+      const gated = await runWorkspaceAgent(devRequest)
+      // Three completion claims, two of them sent back for a check, then a pause:
+      // the client never closes a source change as done without the project check.
+      assert.equal(gated.plan.status, 'waiting', JSON.stringify({ plan: gated.plan, activities: gated.activities }))
+      assert.match(gated.plan.verification!, /项目自检经过 2 轮修复仍未通过/)
+      assert.equal(step, 4, 'the completion claim is refused twice, then the task pauses instead of looping')
+      assert.equal(gated.changedFiles.map(file => file.replace(/\\/g, '/')).includes('src/answer.ts'), true)
+    }
+    await rm(join(workspace.rootPath, 'package.json'), { force: true })
 
     scenario = 'limit'; step = 0
     const limited = await runWorkspaceAgent({ ...request('编写草稿并核对所有要求'), executionLimits: { maxTurns: 3, maxDurationMs: 60_000 } })
