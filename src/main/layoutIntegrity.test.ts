@@ -175,3 +175,14 @@ test('the inline question scrolls its body, not its actions', () => {
   assert.match(footer, /flex:\s*0 0 auto/, 'the action row must keep its full height')
   assert.doesNotMatch(footer, /position:\s*sticky/, 'a sticky footer covers the options it floats over')
 })
+
+// A checklist is read top to bottom, one step per line. The lifecycle labels
+// were short enough for a wrapped multi-column grid, but a model-written plan
+// carries real titles; 125px columns turned those into stacked fragments that
+// look like a different step each. The panel's own list is already one column.
+test('the task checklist is one step per line, not a wrapped grid of columns', () => {
+  const steps = ruleBody('.agent-plan-steps')
+  assert.match(steps, /grid-template-columns:\s*minmax\(\s*0\s*,\s*1fr\s*\)/, 'auto-fit columns shred long step titles')
+  assert.doesNotMatch(steps, /auto-fit|auto-fill/, 'a repeating track sizes to the widest title and wraps the rest')
+  assert.match(ruleBody('.agent-plan-step > span:last-child'), /min-width:\s*0/, 'without this the title cannot shrink and pushes the row wide')
+})

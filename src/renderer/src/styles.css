@@ -10487,8 +10487,14 @@ img.space-logo {
 .agent-plan-goal { display: grid; gap: 3px; font-size: 12px; }
 .agent-plan-goal strong { color: hsl(var(--primary)); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .agent-plan-goal span { line-height: 1.45; }
-.agent-plan-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 5px; }
-.agent-plan-step { display: flex; align-items: center; gap: 5px; color: hsl(var(--muted-foreground)); font-size: 11px; }
+/* One line per step. The lifecycle labels were short enough for a wrapped
+   grid, but a model-written checklist carries real titles ("从 Docs 与各仓库
+   文档中查明该项目实际的测试方式"); columns of 125px turned those into cramped
+   three-line blocks. A checklist reads top to bottom, like the panel's. */
+.agent-plan-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.agent-plan-step { display: flex; align-items: flex-start; gap: 5px; min-width: 0; color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.45; }
+.agent-plan-step > svg { flex: 0 0 auto; margin-top: 2px; }
+.agent-plan-step > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .agent-plan-step.completed { color: hsl(var(--foreground)); }
 .agent-plan-step.completed svg { color: hsl(var(--success)); }
 .agent-plan-step.running { color: hsl(var(--primary)); font-weight: 600; }
